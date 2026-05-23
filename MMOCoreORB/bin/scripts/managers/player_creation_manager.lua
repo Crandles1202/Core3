@@ -58,3 +58,12 @@ professionSpecificItems = {
 }
 
 commonStartingItems = { marojMelon, survivalKnife, x31Speeder }
+-- Phase 1.3 — Starter gear pack
+-- Original commonStartingItems = { marojMelon, survivalKnife, x31Speeder }
+-- We extend it with: basic ranged weapon, basic clothing, healing
+basicPistol = "object/weapon/ranged/pistol/pistol_cdef.iff"
+basicShirt = "object/tangible/wearables/shirt/shirt_s03.iff"
+basicPants = "object/tangible/wearables/pants/pants_s01.iff"
+basicStimpack = "object/tangible/medicine/stimpack_sm_s1.iff"  -- useCount=10 baked in
+
+commonStartingItems = { marojMelon, survivalKnife, x31Speeder, basicPistol, basicShirt, basicPants, basicStimpack }
