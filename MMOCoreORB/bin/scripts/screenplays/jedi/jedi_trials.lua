@@ -498,20 +498,20 @@ function JediTrials:completeKnightForTesting(pPlayer, councilType)
 	self:setTrialsCompleted(pPlayer, #knightTrialQuests)
 	self:unlockJediKnight(pPlayer)
 
-	local enclaveLoc
-
-	if (isZoneEnabled("yavin4")) then
-		if (councilType == self.COUNCIL_LIGHT) then
-			enclaveLoc = { -5575, 0, 4905 }
-		else
-			enclaveLoc = { 5079, 0, 305 }
-		end
-
-		local player = CreatureObject(pPlayer)
-
-		if (player:isRidingMount()) then
-			player:dismount()
-		end
-		SceneObject(pPlayer):switchZone("yavin4", enclaveLoc[1], enclaveLoc[2], enclaveLoc[3], 0)
-	end
+-- 	local enclaveLoc
+-- 
+-- 	if (isZoneEnabled("yavin4")) then
+-- 		if (councilType == self.COUNCIL_LIGHT) then
+-- 			enclaveLoc = { -5575, 0, 4905 }
+-- 		else
+-- 			enclaveLoc = { 5079, 0, 305 }
+-- 		end
+-- 
+-- 		local player = CreatureObject(pPlayer)
+-- 
+-- 		if (player:isRidingMount()) then
+-- 			player:dismount()
+-- 		end
+-- 		SceneObject(pPlayer):switchZone("yavin4", enclaveLoc[1], enclaveLoc[2], enclaveLoc[3], 0)
+-- 	end
 end

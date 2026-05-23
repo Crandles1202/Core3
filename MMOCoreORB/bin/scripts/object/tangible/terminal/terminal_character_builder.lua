@@ -68,6 +68,15 @@ object_tangible_terminal_terminal_character_builder = object_tangible_terminal_s
 	},
 
 	itemList = {
+		"Combat Test Character",
+		{
+			"1. Make Me a Light Jedi (full setup)",      "frs_light_side",
+			"2. Make Me a Dark Jedi (full setup)",       "frs_dark_side",
+			"3. Spawn Gen4 Two-Handed Lightsaber",       "object/weapon/melee/2h_sword/crafted_saber/sword_lightsaber_two_handed_s10_gen4.iff",
+			"4. Max All XP",                             "max_xp",
+			"5. Enhance Character (Full Buffs)",         "enhance_character",
+			"6. +50,000 Credits",                        "credits",
+		},
 		"Jump to Lightspeed",
 		{
 			"Ship Deeds",
