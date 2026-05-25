@@ -732,3 +732,10 @@ includeFile("events/ServerEventAutomation.lua")
 
 -- Custom content - Loads last to allow for overrides
 includeFile("../custom_scripts/screenplays/screenplays.lua")
+
+-- Final Boss server: NPC buff providers (Phase 2.6)
+includeFile("tasks/tatooine/fb_mos_eisley_medical_droid_conv_handler.lua")
+includeFile("tasks/tatooine/fb_debug_reporter.lua")
+includeFile("tasks/tatooine/fb_mos_eisley_medical_droid.lua")
+includeFile("tasks/tatooine/fb_armory_droid_conv_handler.lua")
+includeFile("tasks/tatooine/fb_armory_droid.lua")

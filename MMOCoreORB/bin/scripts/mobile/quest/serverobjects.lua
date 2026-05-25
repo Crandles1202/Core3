@@ -870,3 +870,7 @@ includeFile("quest/yavin4/theme_park_rebel_big_creature_cage.lua")
 includeFile("quest/yavin4/theme_park_rebel_supervisor.lua")
 includeFile("quest/yavin4/vraker_orde.lua")
 includeFile("quest/yavin4/yith_seenath.lua")
+
+-- Final Boss server: medical droid for Mos Eisley (Phase 2.6 NPC buff provider MVP)
+includeFile("quest/tatooine/fb_mos_eisley_medical_droid.lua")
+includeFile("quest/tatooine/fb_armory_droid.lua")

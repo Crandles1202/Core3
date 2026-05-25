@@ -1,7 +1,17 @@
 admin = {
 	level = 15,
 	name = "admin",
-	flag = 0,
+	-- flag is the priviledgeFlag byte the server sends to the client in
+	-- PlayerObjectMessage6. The client's command_table.iff uses it to gate
+	-- which slash commands (e.g. /teleport, /planetwarp, /jediState) are
+	-- typeable. Upstream ships admin with flag=0 which means the most
+	-- powerful server-side level paradoxically gets ZERO client-side command
+	-- access — admins have all the skills but can't even type /teleport.
+	-- Bumping to 2 (Developer tier, matches dev.lua) unlocks the full set
+	-- of admin slash commands client-side without changing anything else.
+	-- See PermissionLevelList.h:117 (where flag is read) and
+	-- PlayerObjectMessage6.h:18 (where it's sent).
+	flag = 2,
 	tag = "SWGEmu-Admin",
 	skills = {
 		"admin_base",

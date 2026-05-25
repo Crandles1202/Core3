@@ -333,3 +333,7 @@ includeFile("conversations/junk_dealer/junk_dealer_quich_conv.lua")
 includeFile("conversations/junk_dealer/junk_dealer_reggi_conv.lua")
 includeFile("conversations/junk_dealer/junk_dealer_sheani_conv.lua")
 includeFile("conversations/junk_dealer/junk_dealer_sneg_conv.lua")
+
+-- Final Boss server: medical droid conversation (Phase 2.6)
+includeFile("conversations/tasks/fb_mos_eisley_medical_droid_conv.lua")
+includeFile("conversations/tasks/fb_armory_droid_conv.lua")
