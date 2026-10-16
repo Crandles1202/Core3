@@ -45,7 +45,10 @@ ClientCoreOptions::ClientCoreOptions(int argc, char** argv) {
 		("env", po::value<std::string>(), "Environment file to load");
 
 	po::variables_map env_vm;
-	po::store(po::command_line_parser(argc, argv).options(env_desc).allow_unregistered().run(), env_vm);
+	// no prefix guessing: action flags such as --wait and --options must not be taken for
+	// --wait-after-zone / --options-json
+	const auto style = po::command_line_style::default_style & ~po::command_line_style::allow_guessing;
+	po::store(po::command_line_parser(argc, argv).options(env_desc).style(style).allow_unregistered().run(), env_vm);
 	po::notify(env_vm);
 
 	// Load .env files
@@ -96,7 +99,7 @@ ClientCoreOptions::ClientCoreOptions(int argc, char** argv) {
 		("wait-after-zone", po::value<int>(), "Seconds to stay connected to zone before shutdown");
 
 	po::variables_map vm;
-	auto parsed = po::command_line_parser(argc, argv).options(desc).allow_unregistered().run();
+	auto parsed = po::command_line_parser(argc, argv).options(desc).style(style).allow_unregistered().run();
 	po::store(parsed, vm);
 	po::notify(vm);
 
@@ -370,6 +373,17 @@ void ClientCoreOptions::resolveDependencies() {
 			if (connector != nullptr) {
 				final.add(connector);
 				hasConnectToZone = true;
+			}
+		}
+
+		// Auto-insert zoneInCharacter before the first action that needs a character in the
+		// world (command, radial, converse) when the user did not list one explicitly
+		if (action->needsCharacter() && !hasZoneInCharacter && strcmp(name, "createCharacter") != 0) {
+			ActionBase* zoneIn = ActionManager::createAction("zoneInCharacter");
+			if (zoneIn != nullptr) {
+				final.add(zoneIn);
+				hasZoneInCharacter = true;
+				needsLogout = true;
 			}
 		}
 

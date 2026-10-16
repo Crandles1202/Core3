@@ -68,6 +68,31 @@ To check a value from another state in a test, `loadfile(path, "t", env)` the fi
   OID"), and `--wait-after-zone` now sleeps *before* the auto-appended `logoutCharacter` action.
 - Exit codes: 0 ok, `100 + action error code` (104 = create failed, 105 = create timeout).
 
+## Scenario testing (bot + oracle)
+- `tools/swg test scenario <name>` runs `tools/scenarios/<name>.sh`; `lib.sh` gives `bot …` (core3client
+  as the lab character), `lab fn:args` (Lua oracle via `runLuaFunction FbLabTests:…`), `check*`, `finish`.
+- Each `lab` round trip costs ~1 s; a `bot_bg --wait N` staging window must cover all of them.
+- Client action flags: `--command`, `--radial`, `--converse … --options`, `--wait`. Boost's option
+  parser used to prefix-match these to `--wait-after-zone`/`--options-json` (crash: "cannot be
+  specified more than once"); guessing is now disabled in `ClientCore.cpp`.
+- Actions that need a character set `needsCharacter()`; `resolveDependencies` auto-inserts
+  `zoneInCharacter` before the first one, so `--character-firstname X --command foo` just works.
+- CommandQueueRemove `error` (tab1): 1 locomotion, 2 general failure (command refused for its own
+  reasons, e.g. "No valid medicine found"), 3 invalid target, 4 too far, 5 state (state bit in tab2).
+- The client now renders string-id system messages as `@file:id TO=… DI=n` in its log, so a refused
+  command usually explains itself there.
+- New characters created by the bot land in the **tutorial** zone (`canSkipTutorial=false` for the
+  account). `lab travel:<char>:tatooine:3520:-4800` parks them at Mos Eisley starport, next to FB-72.
+- Lua bindings return floats (`getSkillMod` → `0.0`); format with `%d` / `math.floor` before bash
+  compares them.
+- Regen moves every pool by about the same amount while a scenario waits; compare the pool under
+  test against an untouched pool (health delta − mind delta) instead of a raw threshold.
+- **Content finding (Phase 1.3):** `stimpack_sm_s1` has `medicineUse = 5` and `HealDamageCommand`
+  only picks stimpacks whose `medicineUse <= healing_ability`. A fresh non-medic has
+  `healing_ability = 0`, so the starter stimpack cannot be used by most new characters. Either lower
+  `medicineUse` on the starter pack (own template), grant a small `healing_ability`, or hand out a
+  different consumable. Chuck's call.
+
 ## Server / lab
 - Boot ~45 s to `READY`; clean `shutdown` ~80 s. Start under gdb (`~/bin/gdb_settings`) so crashes
   leave a backtrace in `bin/gdb.log`; `swg stop` quits gdb afterwards.
@@ -81,6 +106,10 @@ To check a value from another state in a test, `loadfile(path, "t", env)` the fi
   any uint32. `DBSecret` = `Core3.DBSecret` in `config-local.lua`. `swg account create` does this.
 - `~/bin/build` passes `-DENABLE_BUILD_CLIENT=OFF` then your `CMAKE_ARGS`; the last `-D` wins.
 - Incremental rebuild ≈ 3.5 min (ccache warm, 24 threads). Client-only change ≈ 1 min.
+- Phase 0.3 backups already exist: cron `0 3 * * * ~/bin/swg-backup-daily.sh` → `~/backups/daily`
+  (7-day retention, source in `/mnt/c/SWGDev/phase0/`). WSL cron only fires while the distro is up, so
+  it last ran 2026-09-03; `swg start` runs the script when the newest dump is >24 h old. Don't add a
+  second backup mechanism.
 
 ## Git / workflow
 - Claude's auto-mode classifier refuses, regardless of what Chuck says in chat: `git merge` into
@@ -102,6 +131,11 @@ To check a value from another state in a test, `loadfile(path, "t", env)` the fi
   MySQL password or `DBSecret`. The guide in `docs/` had the password redacted before it went in.
 
 ## Session log
+- **2026-10-16 (evening)** — Test infrastructure: core3client gained command/radial/converse/wait
+  actions and decodes command results, conversations and string-id messages; `fb_lab_tests.lua` grew
+  an oracle/stage-hand API (ham, inflict, heal, wound, give, skill, travel, npc, findItem…);
+  `swg test scenario`, `swg build`, `swg logs --lua`; first scenarios: stimpack-heals-health,
+  npc-conversation; nightly MySQL backup script. Found the starter-stimpack medicineUse problem.
 - **2026-10-16 (later)** — Phase 2.x NPC batch merged into `feature/test-lab` (12 new Mos Eisley NPCs
   given combat stats for the unit test), lab tests made discovery-based, stash dropped, Chuck's
   accounts re-hashed (by Chuck), permissions allow-list handed to Chuck.

@@ -352,6 +352,197 @@ function FbLabTests:runAll(charName)
 	return summary
 end
 
+-- ---------------------------------------------------------------- scenario helpers (oracle + stage hand)
+--
+-- Used by tools/scenarios/*.sh through tools/swg (lab <fn>:<args>). Every helper prints one or
+-- more lines starting with "INFO " (machine-readable, key=value) or "ERROR " and returns a string.
+-- Pools: 0 health 1 strength 2 constitution 3 action 4 quickness 5 stamina 6 mind 7 focus 8 willpower.
+-- The CreatureObject write bindings (inflictDamage, setHAM, setWounds, healDamage) take their own
+-- locks, so they are safe to call from the console thread.
+
+FbLabTests.pools = { health = 0, strength = 1, constitution = 2, action = 3, quickness = 4, stamina = 5, mind = 6, focus = 7, willpower = 8 }
+
+local function poolIndex(name)
+	if FbLabTests.pools[name] ~= nil then return FbLabTests.pools[name] end
+	return tonumber(name)
+end
+
+local function onlinePlayer(charName)
+	local pPlayer = charName and getPlayerByName(charName) or nil
+	if pPlayer == nil then
+		print("ERROR no player named " .. tostring(charName))
+		return nil
+	end
+	local pGhost = CreatureObject(pPlayer):getPlayerObject()
+	if pGhost == nil or not PlayerObject(pGhost):isOnline() then
+		print("ERROR " .. charName .. " is not online")
+		return nil
+	end
+	return pPlayer
+end
+
+-- read-only helpers accept a loaded-but-offline player (link-dead right after a bot run)
+local function loadedPlayer(charName)
+	local pPlayer = charName and getPlayerByName(charName) or nil
+	if pPlayer == nil then print("ERROR no player named " .. tostring(charName)) end
+	return pPlayer
+end
+
+local function hamLine(charName, pPlayer)
+	local parts = { "INFO ham", "char=" .. charName }
+	for _, name in ipairs({ "health", "action", "mind" }) do
+		local i = FbLabTests.pools[name]
+		parts[#parts + 1] = string.format("%s=%d/%d/%d", name,
+			CreatureObject(pPlayer):getHAM(i), CreatureObject(pPlayer):getMaxHAM(i), CreatureObject(pPlayer):getBaseHAM(i))
+	end
+	local line = table.concat(parts, " ")
+	print(line)
+	return line
+end
+
+-- ham:<char> → health/action/mind as current/max/base
+function FbLabTests:ham(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	return hamLine(charName, pPlayer)
+end
+
+-- inventory:<char> → one line per item
+function FbLabTests:inventory(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pInv = SceneObject(pPlayer):getSlottedObject("inventory")
+	local n = SceneObject(pInv):getContainerObjectsSize()
+	for i = 0, n - 1 do
+		local pItem = SceneObject(pInv):getContainerObject(i)
+		if pItem ~= nil then
+			print("INFO item oid=" .. SceneObject(pItem):getObjectID() .. " path=" .. SceneObject(pItem):getTemplateObjectPath())
+		end
+	end
+	print("INFO inventory char=" .. charName .. " count=" .. n)
+	return tostring(n)
+end
+
+-- findItem:<char>:<fragment> → first inventory item whose template path contains <fragment>
+function FbLabTests:findItem(charName, fragment)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pInv = SceneObject(pPlayer):getSlottedObject("inventory")
+	local n = SceneObject(pInv):getContainerObjectsSize()
+	for i = 0, n - 1 do
+		local pItem = SceneObject(pInv):getContainerObject(i)
+		if pItem ~= nil then
+			local path = SceneObject(pItem):getTemplateObjectPath()
+			if path:find(fragment, 1, true) then
+				print("INFO item oid=" .. SceneObject(pItem):getObjectID() .. " path=" .. path)
+				return tostring(SceneObject(pItem):getObjectID())
+			end
+		end
+	end
+	print("ERROR no item matching '" .. tostring(fragment) .. "' in " .. charName .. "'s inventory")
+	return "none"
+end
+
+-- npc:<template>[:<char>] → every live spawn of that template, with distance to <char> if given
+function FbLabTests:npc(template, charName)
+	local pPlayer = charName and getPlayerByName(charName) or nil
+	local n = 0
+	for _, s in ipairs(FbLabTests.spawns[template] or {}) do
+		local pObj = getSceneObject(s.oid)
+		if pObj ~= nil then
+			local line = string.format("INFO npc template=%s oid=%d zone=%s x=%.1f y=%.1f cell=%d", template, s.oid,
+				SceneObject(pObj):getZoneName(), SceneObject(pObj):getWorldPositionX(), SceneObject(pObj):getWorldPositionY(), s.cell or 0)
+			if pPlayer ~= nil and SceneObject(pPlayer):getZoneName() == s.zone then
+				line = line .. string.format(" dist=%.1f", SceneObject(pPlayer):getDistanceTo(pObj))
+			end
+			print(line)
+			n = n + 1
+		end
+	end
+	if n == 0 then print("ERROR no live spawns recorded for " .. tostring(template)) end
+	return tostring(n)
+end
+
+-- inflict:<char>:<pool>:<amount> → damage the character (attacker = itself), then print ham
+function FbLabTests:inflict(charName, pool, amount)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	CreatureObject(pPlayer):inflictDamage(pPlayer, poolIndex(pool), tonumber(amount), 1)
+	return hamLine(charName, pPlayer)
+end
+
+-- heal:<char>:<pool>:<amount> → direct heal (bypasses items), then print ham
+function FbLabTests:heal(charName, pool, amount)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	CreatureObject(pPlayer):healDamage(tonumber(amount), poolIndex(pool))
+	return hamLine(charName, pPlayer)
+end
+
+-- wound:<char>:<pool>:<amount> → set wounds on a pool, then print ham
+function FbLabTests:wound(charName, pool, amount)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	CreatureObject(pPlayer):setWounds(poolIndex(pool), tonumber(amount))
+	return hamLine(charName, pPlayer)
+end
+
+-- give:<char>:<templatePath> → put an item in the inventory
+function FbLabTests:give(charName, template)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pInv = SceneObject(pPlayer):getSlottedObject("inventory")
+	local pItem = giveItem(pInv, template, -1)
+	if pItem == nil then
+		print("ERROR giveItem failed for " .. tostring(template))
+		return "failed"
+	end
+	print("INFO item oid=" .. SceneObject(pItem):getObjectID() .. " path=" .. SceneObject(pItem):getTemplateObjectPath())
+	return tostring(SceneObject(pItem):getObjectID())
+end
+
+-- skill:<char>:<skillName> → award a skill (e.g. science_medic_novice)
+function FbLabTests:skill(charName, skillName)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	awardSkill(pPlayer, skillName)
+	print("INFO skill char=" .. charName .. " awarded=" .. skillName .. " has=" .. tostring(CreatureObject(pPlayer):hasSkill(skillName)))
+	return tostring(CreatureObject(pPlayer):hasSkill(skillName))
+end
+
+-- skillmod:<char>:<modName> → current value of a skill mod (e.g. healing_ability)
+function FbLabTests:skillmod(charName, modName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "none" end
+	local v = math.floor(CreatureObject(pPlayer):getSkillMod(modName))   -- bindings hand back floats; scripts compare integers
+	print("INFO skillmod char=" .. charName .. " " .. modName .. "=" .. string.format("%d", v))
+	return string.format("%d", v)
+end
+
+-- travel:<char>:<planet>:<x>:<y> → move the character (cross-planet allowed), z from the terrain
+function FbLabTests:travel(charName, planet, x, y)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	x, y = tonumber(x), tonumber(y)
+	local z = getTerrainHeight(pPlayer, x, y)
+	SceneObject(pPlayer):switchZone(planet, x, z, y, 0)
+	print(string.format("INFO travel char=%s planet=%s x=%.1f z=%.1f y=%.1f", charName, planet, x, z, y))
+	return "ok"
+end
+
+-- where:<char> → current position
+function FbLabTests:where(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local line = string.format("INFO where char=%s oid=%d zone=%s x=%.1f z=%.1f y=%.1f cell=%d posture=%d combat=%s incap=%s dead=%s", charName,
+		SceneObject(pPlayer):getObjectID(), SceneObject(pPlayer):getZoneName(),
+		SceneObject(pPlayer):getWorldPositionX(), SceneObject(pPlayer):getWorldPositionZ(), SceneObject(pPlayer):getWorldPositionY(),
+		SceneObject(pPlayer):getParentID(), CreatureObject(pPlayer):getPosture(),
+		tostring(CreatureObject(pPlayer):isInCombat()), tostring(CreatureObject(pPlayer):isIncapacitated()), tostring(CreatureObject(pPlayer):isDead()))
+	print(line)
+	return line
+end
+
 -- runLuaFunction FbLabTests:isOnline:<firstName> — cheap poll used by tools/swg test bot.
 function FbLabTests:isOnline(charName)
 	local pPlayer = charName and getPlayerByName(charName) or nil

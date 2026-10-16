@@ -7,8 +7,9 @@
 #   swg restart [--no-gdb]           stop + start
 #   swg status                       is it running? pid, uptime, branch, last log line
 #   swg cmd "<console command>"      send a console command, print the log lines it produced
-#   swg logs [--errors] [--tail N] [--follow]
-#   swg test unit|lua|bot|all        see "Tests" below
+#   swg logs [--errors] [--lua] [--tail N] [--follow]
+#   swg test unit|lua|bot|scenario <name>|all   see "Tests" below
+#   swg build                        ~/bin/build (client on), errors/warnings summarised
 #   swg snap save|load|list <name>   mysqldump + copy of bin/databases (server stopped)
 #   swg account create <user> <admin_level> [--reset]
 #                                    create a test account the way the server hashes passwords;
@@ -21,7 +22,9 @@
 #   bot    core3client logs in as claude-player, creates a character, zones in, waits 30 s,
 #          runs the lua tests against that character, logs out.
 #          Pass = exit code 0 and no new ERROR lines in the server log.
-#   all    stop if running, unit, start, lua, bot (server is left running).
+#   scenario <name>|all   tools/scenarios/<name>.sh: bot + Lua oracle driving real gameplay
+#          (see tools/scenarios/lib.sh). Server must be running.
+#   all    stop if running, unit, start, lua, bot, scenarios (server is left running).
 #
 # Nothing here writes passwords into the repo: credentials live in ~/.swg-lab/ (mode 600).
 
@@ -99,6 +102,18 @@ rotate_logs() {
 
 # ---------------------------------------------------------------- start / stop
 
+# Chuck's Phase 0.3 cron job (~/bin/swg-backup-daily.sh, 03:00) only fires while WSL is up, which it
+# usually is not at 03:00. Run it on server start instead when the newest dump is older than a day.
+nightly_backup_if_due() {
+	local script="$HOME/bin/swg-backup-daily.sh" dir="$HOME/backups/daily"
+	[ -x "$script" ] || return 0
+	local newest; newest=$(ls -1t "$dir"/swgemu-*.sql.gz 2>/dev/null | head -n1)
+	if [ -z "$newest" ] || [ -n "$(find "$newest" -mmin +1440 2>/dev/null)" ]; then
+		say "MySQL backup is older than a day — running $script"
+		"$script" && say "backup: $(ls -1t "$dir"/swgemu-*.sql.gz | head -n1)"
+	fi
+}
+
 cmd_start() {
 	local use_gdb=1 clean=""
 	for a in "$@"; do
@@ -116,6 +131,7 @@ cmd_start() {
 
 	rotate_logs
 	: > "$LOG"
+	nightly_backup_if_due
 
 	local launch
 	if [ "$use_gdb" = 1 ]; then
@@ -234,15 +250,15 @@ cmd_cmd() {
 	tmux send-keys -t "$SESSION" -l -- "$command"
 	tmux send-keys -t "$SESSION" Enter
 
-	# wait until the log stops growing (3 quiet polls) or the timeout hits
+	# wait until the log stops growing (2 quiet polls of 0.25 s) or the timeout hits
 	local t0=$SECONDS last=$before now quiet=0
 	while (( SECONDS - t0 < timeout )); do
-		sleep 0.4
+		sleep 0.25
 		now=$(log_lines)
 		if (( now != last )); then last=$now; quiet=0
 		else
 			quiet=$((quiet + 1))
-			(( quiet >= 3 && now > before )) && break
+			(( quiet >= 2 && now > before )) && break
 		fi
 	done
 	tail -n "+$((before + 1))" "$LOG" | strip_tty | grep -av '^[[:space:]]*>*[[:space:]]*$'
@@ -252,6 +268,7 @@ cmd_logs() {
 	local errors=0 n=50 follow=0
 	while [ $# -gt 0 ]; do
 		case "$1" in
+			--lua) LOG="$BIN/log/lua.log"; shift ;;
 			--errors) errors=1; shift ;;
 			--tail)   n=$2; shift 2 ;;
 			--follow|-f) follow=1; shift ;;
@@ -382,6 +399,30 @@ test_bot() {
 	say "== bot: FAIL"; return 1
 }
 
+test_scenario() {
+	local name=${1:-all}
+	require_running
+	local -a files
+	if [ "$name" = all ]; then
+		files=("$REPO"/tools/scenarios/*.sh)
+	else
+		files=("$REPO/tools/scenarios/$name.sh")
+	fi
+	local rc=0 ran=0
+	for f in "${files[@]}"; do
+		[ "$(basename "$f")" = lib.sh ] && continue
+		[ -f "$f" ] || die "no scenario $f"
+		say "== scenario: $(basename "$f" .sh)"
+		SWG="$REPO/tools/swg" bash "$f" 2>&1 | sed 's/^/   /' | tee "$LABDIR/last-scenario-$(basename "$f" .sh).log"
+		local src=${PIPESTATUS[0]}
+		(( src == 0 )) || rc=1
+		ran=$((ran + 1))
+	done
+	(( ran > 0 )) || die "no scenarios found"
+	say "== scenario: $( (( rc == 0 )) && echo PASS || echo FAIL ) ($ran run)"
+	return $rc
+}
+
 cmd_test() {
 	local what=${1:-}; shift || true
 	mkdir -p "$LABDIR"; chmod 700 "$LABDIR"
@@ -389,6 +430,7 @@ cmd_test() {
 		unit) test_unit "$@" ;;
 		lua)  test_lua "$@" ;;
 		bot)  test_bot "$@" ;;
+		scenario) test_scenario "$@" ;;
 		all)
 			local rc=0
 			if is_running; then say "== all: stopping the running server for unit tests"; cmd_stop || exit 1; fi
@@ -396,10 +438,32 @@ cmd_test() {
 			cmd_start || exit 1
 			test_lua || rc=1
 			test_bot || rc=1
+			test_scenario all || rc=1
 			say "== all: $( (( rc == 0 )) && echo PASS || echo FAIL )  (server left running)"
 			return $rc ;;
-		*) die "usage: swg test unit|lua|bot|all" ;;
+		*) die "usage: swg test unit|lua|bot|scenario <name>|all" ;;
 	esac
+}
+
+# ---------------------------------------------------------------- build
+
+cmd_build() {
+	mkdir -p "$LABDIR"
+	local log="$LABDIR/last-build.log" t0=$SECONDS
+	say "== build: ~/bin/build (client on) → $log"
+	( cd "$REPO" && CMAKE_ARGS="-DENABLE_BUILD_CLIENT=ON ${CMAKE_ARGS:-}" "$HOME/bin/build" "$@" ) >"$log" 2>&1
+	local rc=$?
+	local errors; errors=$(grep -ac "error:" "$log")
+	local warnings; warnings=$(grep -ac "warning:" "$log")
+	if (( rc != 0 || errors > 0 )); then
+		grep -aE -B2 -A6 "error:" "$log" | head -n 80
+		say "== build: FAIL (rc=$rc, $errors error(s), $((SECONDS - t0))s)"
+		return 1
+	fi
+	(( warnings > 0 )) && grep -a "warning:" "$log" | grep -a "MMOCoreORB/src" | head -n 10
+	say "== build: OK ($warnings warning(s), $((SECONDS - t0))s)  core3 $(date -r "$BIN/core3" '+%T')  core3client $(date -r "$BIN/core3client" '+%T' 2>/dev/null || echo missing)"
+	is_running && say "   server is running an older binary — swg restart to pick it up"
+	return 0
 }
 
 # ---------------------------------------------------------------- snapshots
@@ -504,6 +568,7 @@ case "${1:-}" in
 	cmd)     shift; cmd_cmd "$@" ;;
 	logs)    shift; cmd_logs "$@" ;;
 	test)    shift; cmd_test "$@" ;;
+	build)   shift; cmd_build "$@" ;;
 	snap)    shift; cmd_snap "$@" ;;
 	account) shift; cmd_account "$@" ;;
 	-h|--help|help|"") usage ;;

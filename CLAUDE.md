@@ -85,15 +85,24 @@ tools/swg logs --errors         # ERROR/FATAL lines from the current run, minus 
 tools/swg test unit             # core3 runUnitTests (258 gtests, ~12 s; server must be stopped)
 tools/swg test lua [<char>]     # runLuaFunction FbLabTests:runAll on the live server → PASS/FAIL lines
 tools/swg test bot              # core3client: claude-player creates a char, zones in, 30 s, logs out
-tools/swg test all              # stop if running → unit → start → lua → bot (server left running)
+tools/swg test scenario <name>  # tools/scenarios/<name>.sh: bot acts + Lua oracle observes (gameplay tests)
+tools/swg test all              # stop if running → unit → start → lua → bot → scenarios (server left running)
+tools/swg build                 # ~/bin/build with the client on; prints only errors/warnings and timing
+tools/swg logs --lua            # bin/log/lua.log
 tools/swg snap save|list <name> # mysqldump + copy of bin/databases (~700 MB) to ~/swg-snapshots/<name>
 tools/swg snap load <name> --yes  # restore (server stopped). Ask Chuck first.
 tools/swg account create <user> <admin_level> [--reset]   # server's own hash recipe; pw → ~/.swg-lab/
 ```
 
 - Lua content checks live in `bin/scripts/custom_scripts/screenplays/fb_lab_tests.lua` (wraps `spawnMobile`
-  to record every `fb_*` spawn; static-loads manager/mobile/conversation files to verify wiring). Add a
-  check there whenever new content ships.
+  to record every `fb_*` spawn; discovers NPCs from the filesystem; static-loads manager/mobile/conversation
+  files to verify wiring). It also holds the **scenario oracle**: `ham`, `inventory`, `findItem`, `npc`,
+  `where`, `skillmod` (read) and `inflict`, `heal`, `wound`, `give`, `skill`, `travel` (set up), all callable
+  as `runLuaFunction FbLabTests:<fn>:<args>` or `lab fn:args` inside a scenario.
+- **Gameplay scenarios** (`tools/scenarios/*.sh`, see `lib.sh`): the bot acts through real packets
+  (`--command <slash command>`, `--radial <oid> <id>`, `--converse <npcOid> --options 0,2`, `--wait n`),
+  the oracle observes. Templates: `stimpack-heals-health.sh`, `npc-conversation.sh`. Write one for every
+  mechanic change; `swg test all` runs them.
 - Test accounts: `claude-admin` (admin_level 15), `claude-player` (admin_level 0). Passwords are in
   `~/.swg-lab/*.pass` (mode 600), never in the repo. Account hash = `SHA256(DBSecret + password + salt)`,
   salt = 32 hex chars (`AccountManager::createAccount`). `~/bin/run` resets an `admin` account that does
@@ -178,5 +187,12 @@ _Updated: 2026-10-16 (session 1: test lab set up)_
   `chuck` need `tools/swg account create <user> <level> --reset` (Claude's attempt was blocked; Chuck runs
   it) — new passwords land in `~/.swg-lab/<user>.pass`. Then fix the guide's SQL (old default secret).
 - [ ] Take a fresh `swg snap save post-phase2` once Chuck has play-tested the new NPCs.
+- [ ] **Chuck: starter stimpack is unusable by non-medics** (`stimpack_sm_s1` needs `healing_ability >= 5`,
+  a fresh character has 0 — found by the stimpack scenario). Decide: own starter template with
+  `medicineUse = 0`, a small `healing_ability` grant, or a different consumable. Ties into Phase 1.9.
+- [ ] Phase 0.3 backups: Chuck's cron (`~/bin/swg-backup-daily.sh` 03:00 → `~/backups/daily`, 7 days) last
+  fired 2026-09-03 because WSL is rarely up at 03:00. `swg start` now runs it when the newest dump is
+  >24 h old. For a true nightly job, a Windows Task Scheduler entry running
+  `wsl -d Debian -- /home/chuck/bin/swg-backup-daily.sh` is the fix.
 - [ ] Server-side: `decreaseOnlineCharCount missing account` ERROR when a client drops before its scene
   finishes (`PlayerManagerImplementation.cpp:5350`). Harmless, upstream code; seen once from the bot race.
