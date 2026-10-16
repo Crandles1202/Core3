@@ -83,11 +83,18 @@ To check a value from another state in a test, `loadfile(path, "t", env)` the fi
 - Incremental rebuild ≈ 3.5 min (ccache warm, 24 threads). Client-only change ≈ 1 min.
 
 ## Git / workflow
-- Claude's tooling is not allowed to merge into `unstable`, run `git submodule update`, or push.
-  Claude works on `feature/*`; Chuck merges/pushes. Engine3 can be moved by
-  `git -C MMOCoreORB/utils/engine3 checkout <sha>` after a fetch.
+- Claude's auto-mode classifier refuses, regardless of what Chuck says in chat: `git merge` into
+  `unstable`, `git submodule update`, `git push`, writing `.claude/settings.json` ("self-modification"),
+  and `swg account create --reset` on a real account ("secret-store write"). The fix is an allow-list
+  in `.claude/settings.json` (see CLAUDE.md "Permissions") which only Chuck can create. Until then
+  Claude works on `feature/*`; engine3 can be moved by `git -C MMOCoreORB/utils/engine3 checkout <sha>`
+  after a fetch.
+- `git stash drop` and `git merge` into a *feature* branch are fine.
 - Upstream (`swgemu/unstable`) merges so far have never touched a Final Boss file; check with
   `comm -12 <(git diff --name-only HEAD...swgemu/unstable | sort) <(git diff --name-only stable-20260523 HEAD | sort)`.
+- `fb_lab_tests.lua` discovers NPCs from the filesystem (`io.popen("ls …")` works in Core3's Lua):
+  one mobile file + one `<name>_conv.lua` + a screenplay that spawns it is all a new NPC needs to be
+  covered. The hard-coded `knownNpcs` list is only the popen fallback.
 - `MMOCoreORB/.gitignore` has an upstream `*test*` rule: any file with "test" in its name is silently
   ignored (`git status` never shows it). `fb_lab_tests.lua` is whitelisted with a `!` line; do the same
   for any new test file, or name it without "test".
@@ -95,6 +102,9 @@ To check a value from another state in a test, `loadfile(path, "t", env)` the fi
   MySQL password or `DBSecret`. The guide in `docs/` had the password redacted before it went in.
 
 ## Session log
+- **2026-10-16 (later)** — Phase 2.x NPC batch merged into `feature/test-lab` (12 new Mos Eisley NPCs
+  given combat stats for the unit test), lab tests made discovery-based, stash dropped, Chuck's
+  accounts re-hashed (by Chuck), permissions allow-list handed to Chuck.
 - **2026-10-16** — Lab set up: CLAUDE.md, docs/, `tools/swg`, test accounts, upstream merge (14
   commits) on `feature/test-lab`, baseline snapshot, 258/258 unit tests, 41/41 Lua content checks, bot
   smoke test. Phase 2.x uncommitted work parked on `feature/phase2-mos-eisley-npcs`.

@@ -97,20 +97,61 @@ FbLabTests.starterGear = {
 	"object/tangible/medicine/stimpack_sm_s1.iff",
 }
 
-FbLabTests.npcs = {
-	{ label = "FB-21 medical droid", template = "fb_mos_eisley_medical_droid", screenplay = "FbMosEisleyMedicalDroid",
-	  convo = "fbMosEisleyMedicalDroidConvoTemplate", handler = "fbMosEisleyMedicalDroidConvoHandler",
-	  mobileFile = "scripts/mobile/quest/tatooine/fb_mos_eisley_medical_droid.lua",
-	  convoFile = "scripts/mobile/conversations/tasks/fb_mos_eisley_medical_droid_conv.lua" },
-	{ label = "FB-72 armory droid", template = "fb_armory_droid", screenplay = "FbArmoryDroid",
-	  convo = "fbArmoryDroidConvoTemplate", handler = "fbArmoryDroidConvoHandler",
-	  mobileFile = "scripts/mobile/quest/tatooine/fb_armory_droid.lua",
-	  convoFile = "scripts/mobile/conversations/tasks/fb_armory_droid_conv.lua" },
-	{ label = "Vex Renn stim dealer", template = "fb_stim_dealer", screenplay = "FbStimDealer",
-	  convo = "fbStimDealerConvoTemplate", handler = "fbStimDealerConvoHandler",
-	  mobileFile = "scripts/mobile/quest/tatooine/fb_stim_dealer.lua",
-	  convoFile = "scripts/mobile/conversations/tasks/fb_stim_dealer_conv.lua" },
+-- Every Final Boss NPC follows one layout, so the list is discovered rather than maintained:
+--   mobile template   scripts/mobile/quest/tatooine/<name>.lua          (defines <name> = Creature:new{...})
+--   conversation      scripts/mobile/conversations/tasks/<name>_conv.lua (addConversationTemplate(...))
+--   screenplay(s)     scripts/screenplays/tasks/tatooine/fb_*.lua        (registerScreenPlay("Name", true))
+-- Add a new fb_* NPC with those files and it is covered automatically.
+FbLabTests.mobileDir = "scripts/mobile/quest/tatooine"
+FbLabTests.convoDir = "scripts/mobile/conversations/tasks"
+FbLabTests.screenplayDir = "scripts/screenplays/tasks/tatooine"
+
+-- Fallback when io.popen is unavailable: keep in sync with the files above.
+FbLabTests.knownNpcs = {
+	"fb_mos_eisley_medical_droid", "fb_armory_droid", "fb_stim_dealer",
+	"fb_armor_droid", "fb_cantina_dancer", "fb_cantina_manager", "fb_cantina_musician",
+	"fb_combat_quartermaster", "fb_droid_dispenser", "fb_imperial_armorer", "fb_pet_dealer",
+	"fb_pet_vet", "fb_property_agent", "fb_smuggler_goods", "fb_speeder_dealer",
 }
+
+local function listFiles(dir, pattern)
+	local names = {}
+	local p = io.popen and io.popen("ls " .. dir .. "/" .. pattern .. " 2>/dev/null")
+	if p ~= nil then
+		for line in p:lines() do names[#names + 1] = line:match("([^/]+)%.lua$") end
+		p:close()
+	end
+	return names
+end
+
+function FbLabTests.discoverNpcs()
+	local templates = listFiles(FbLabTests.mobileDir, "fb_*.lua")
+	if #templates == 0 then templates = FbLabTests.knownNpcs end
+	table.sort(templates)
+	local npcs = {}
+	for _, t in ipairs(templates) do
+		npcs[#npcs + 1] = {
+			template = t,
+			mobileFile = FbLabTests.mobileDir .. "/" .. t .. ".lua",
+			convoFile = FbLabTests.convoDir .. "/" .. t .. "_conv.lua",
+		}
+	end
+	return npcs
+end
+
+function FbLabTests.discoverScreenplays()
+	local names = {}
+	local files = listFiles(FbLabTests.screenplayDir, "fb_*.lua")
+	for _, f in ipairs(files) do
+		local fh = io.open(FbLabTests.screenplayDir .. "/" .. f .. ".lua", "r")
+		if fh ~= nil then
+			local text = fh:read("a"); fh:close()
+			for name in text:gmatch('registerScreenPlay%("([A-Za-z0-9_]+)"') do names[#names + 1] = name end
+		end
+	end
+	table.sort(names)
+	return names
+end
 
 -- ---------------------------------------------------------------- checks
 
@@ -176,17 +217,32 @@ function FbLabTests.checkNpc(npc)
 	local p = npc.template .. "."
 
 	check(p .. "mobile_template_registered", creatureTemplateExists(npc.template))
-	check(p .. "screenplay_loaded", type(_G[npc.screenplay]) == "table", "global " .. npc.screenplay .. " missing")
-	check(p .. "conv_handler_loaded", type(_G[npc.handler]) == "table", "global " .. npc.handler .. " missing")
-
-	-- include wiring
 	check(p .. "included_in_serverobjects", fileContains("scripts/mobile/quest/serverobjects.lua", npc.mobileFile:gsub("^scripts/mobile/", "")))
 	check(p .. "included_in_conversations", fileContains("scripts/mobile/conversations.lua", npc.convoFile:gsub("^scripts/mobile/", "")))
 
+	-- mobile template file: lives in CreatureTemplateManager's Lua state, so run it here with a
+	-- stand-in Creature class; unknown globals (MOB_NPC, NONE, INVULNERABLE, ...) read as 0.
+	-- It tells us which conversation template the NPC expects.
+	local mobEnv = setmetatable({
+		Creature = { new = function(self, t) return t end },
+		CreatureTemplates = { addCreatureTemplate = function() end },
+		includeFile = function() end,
+	}, { __index = function(_, k) local v = _G[k]; if v == nil then return 0 end; return v end })
+	local mchunk, merr = loadfile(npc.mobileFile, "t", mobEnv)
+	if mchunk ~= nil then
+		local mok, mrerr = pcall(mchunk)
+		if not mok then mchunk, merr = nil, mrerr end
+	end
+	if not check(p .. "mobile_file_loads", mchunk ~= nil, merr) then return end
+	local mob = mobEnv[npc.template]
+	local convoName = type(mob) == "table" and mob.conversationTemplate or nil
+	if not check(p .. "mobile_names_conversation", type(convoName) == "string" and convoName ~= "",
+			"global " .. npc.template .. " missing or has no conversationTemplate") then return end
+
 	-- conversation template: run the file in an isolated env that has the real ConvoTemplate /
 	-- ConvoScreen classes (scripts/mobile/conversation.lua) and a capturing addConversationTemplate,
-	-- then make sure the name it registers is the one the mobile template points at and that its
-	-- handler is loaded in this (DirectorManager) Lua state.
+	-- then make sure it registers the name the mobile points at and that its luaClassHandler is a
+	-- loaded global in this (DirectorManager) Lua state.
 	local registered = {}
 	local stubEnv = setmetatable({
 		addConversationTemplate = function(name, tmpl) registered[name] = tmpl end,
@@ -205,40 +261,22 @@ function FbLabTests.checkNpc(npc)
 	end
 	if not check(p .. "conversation_file_loads", ok, err) then return end
 
-	local tmpl = registered[npc.convo]
-	check(p .. "conversation_registered_as_" .. npc.convo, tmpl ~= nil,
-		"registered names: " .. table.concat((function() local k = {} for n in pairs(registered) do k[#k + 1] = n end return k end)(), ", "))
+	local tmpl = registered[convoName]
+	local names = {}
+	for n in pairs(registered) do names[#names + 1] = n end
+	check(p .. "conversation_registered_as_" .. convoName, tmpl ~= nil, "registered: " .. table.concat(names, ", "))
 	if tmpl ~= nil then
-		check(p .. "conversation_handler_matches", tmpl.luaClassHandler == npc.handler,
-			"luaClassHandler=" .. tostring(tmpl.luaClassHandler))
+		check(p .. "conversation_handler_loaded",
+			type(tmpl.luaClassHandler) == "string" and type(_G[tmpl.luaClassHandler]) == "table",
+			"luaClassHandler=" .. tostring(tmpl.luaClassHandler) .. " is not a loaded global")
 		check(p .. "conversation_has_screens", type(tmpl.screens) == "table" and #tmpl.screens > 0,
 			"screens=" .. tostring(tmpl.screens and #tmpl.screens))
 	end
 
-	-- mobile template file: lives in CreatureTemplateManager's Lua state, so run it here with a
-	-- stand-in Creature class; unknown globals (MOB_NPC, NONE, INVULNERABLE, ...) read as 0.
-	local mobEnv = setmetatable({
-		Creature = { new = function(self, t) return t end },
-		CreatureTemplates = { addCreatureTemplate = function() end },
-		includeFile = function() end,
-	}, { __index = function(_, k) local v = _G[k]; if v == nil then return 0 end; return v end })
-	local mchunk, merr = loadfile(npc.mobileFile, "t", mobEnv)
-	if mchunk ~= nil then
-		local mok, mrerr = pcall(mchunk)
-		if not mok then mchunk, merr = nil, mrerr end
-	end
-	if mchunk == nil then
-		check(p .. "mobile_file_loads", false, merr)
-	else
-		local mob = mobEnv[npc.template]
-		check(p .. "mobile_points_at_conversation", type(mob) == "table" and mob.conversationTemplate == npc.convo,
-			"conversationTemplate=" .. tostring(type(mob) == "table" and mob.conversationTemplate))
-	end
-
-	-- live spawns
+	-- live spawns recorded by the spawnMobile wrapper
 	local spawns = FbLabTests.spawns[npc.template] or {}
 	if #spawns == 0 then
-		check(p .. "spawned", false, "no spawnMobile calls recorded for this template (was fb_lab_tests.lua loaded before the screenplay started?)")
+		check(p .. "spawned", false, "no spawnMobile calls recorded for this template (no screenplay spawns it, or fb_lab_tests.lua loaded after start())")
 		return
 	end
 
@@ -258,6 +296,14 @@ function FbLabTests.checkNpc(npc)
 	check(p .. "spawned", alive == #spawns and alive > 0,
 		alive .. "/" .. #spawns .. " alive; missing: " .. table.concat(gone, ", "))
 	report("INFO", p .. "spawn_zones", table.concat(where, " "))
+end
+
+function FbLabTests.checkScreenplays()
+	local names = FbLabTests.discoverScreenplays()
+	check("screenplays.discovered", #names > 0, "no registerScreenPlay() found under " .. FbLabTests.screenplayDir)
+	for _, name in ipairs(names) do
+		check("screenplay." .. name .. ".loaded", type(_G[name]) == "table", "global missing")
+	end
 end
 
 function FbLabTests.checkShuttles()
@@ -289,7 +335,8 @@ function FbLabTests:runAll(charName)
 
 	local ok, err = pcall(function()
 		FbLabTests.checkStarterGear(charName)
-		for _, npc in ipairs(FbLabTests.npcs) do
+		FbLabTests.checkScreenplays()
+		for _, npc in ipairs(FbLabTests.discoverNpcs()) do
 			FbLabTests.checkNpc(npc)
 		end
 		FbLabTests.checkShuttles()
