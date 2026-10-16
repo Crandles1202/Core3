@@ -122,6 +122,30 @@ function fbMosEisleyMedicalDroidConvoHandler:teleportTo(pPlayer, dest)
 	SceneObject(pPlayer):switchZone(dest.planet, dest.x, dest.z, dest.y, dest.cellID or 0)
 end
 
+-- ==== Admin: dispense a portable FB Field Diagnostic Probe ====
+-- The probe is an inventory item with a Lua-driven "Use" handler that prints
+-- the player's current cell info. Same data as the FB-21 [ADMIN] cell report,
+-- but portable — no need to walk back to an FB-21 just to check a cell.
+function fbMosEisleyMedicalDroidConvoHandler:giveFieldProbe(pPlayer)
+	if pPlayer == nil then return end
+	local creature = CreatureObject(pPlayer)
+	local pInventory = creature:getSlottedObject("inventory")
+	if pInventory == nil then
+		creature:sendSystemMessage("FB-21: cannot access your inventory to dispense the probe.")
+		return
+	end
+	if SceneObject(pInventory):isContainerFullRecursive() then
+		creature:sendSystemMessage("FB-21: your inventory is full. Free a slot and try again.")
+		return
+	end
+	local pItem = giveItem(pInventory, "object/tangible/fb_field_probe/fb_field_probe.iff", -1)
+	if pItem == nil then
+		creature:sendSystemMessage("FB-21: probe template not loaded. Check that custom_scripts/object hooks registered the probe at server start.")
+		return
+	end
+	creature:sendSystemMessage("FB-21: one FB Field Diagnostic Probe dispensed. Right-click in inventory and pick 'Use' to report cell info.")
+end
+
 -- ==== Debug: schedule (or fire immediately) a cell-info report ====
 -- Player picks one of the [ADMIN] options from FB-21; we route here with the
 -- right delay. seconds == 0 fires immediately (no createEvent). Non-zero
@@ -164,6 +188,12 @@ function fbMosEisleyMedicalDroidConvoHandler:runScreenHandlers(pConvTemplate, pP
 		return pConvScreen
 	elseif screenID == "do_debug_cell_300" then
 		self:scheduleCellReport(pPlayer, 300)
+		return pConvScreen
+	elseif screenID == "do_give_probe" then
+		-- Admin dispenser for the portable FB Field Diagnostic Probe.
+		-- Bypasses /createItem (which the client filters) by giving the
+		-- item directly via the standard giveItem helper.
+		self:giveFieldProbe(pPlayer)
 		return pConvScreen
 	end
 

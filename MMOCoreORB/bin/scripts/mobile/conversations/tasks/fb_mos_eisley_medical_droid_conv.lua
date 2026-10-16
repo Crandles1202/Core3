@@ -51,6 +51,7 @@ intro_admin = ConvoScreen:new {
 		{"[ADMIN] Report my cell info NOW (no delay).",                  "do_debug_cell_now"},
 		{"[ADMIN] Report my cell info in 60 seconds.",                   "do_debug_cell_60"},
 		{"[ADMIN] Report my cell info in 5 minutes.",                    "do_debug_cell_300"},
+		{"[ADMIN] Give me a Field Diagnostic Probe.",                    "do_give_probe"},
 		{"Just looking around. Thank you, droid.",                       "do_decline"},
 	}
 }
@@ -127,6 +128,17 @@ do_debug_cell_300 = ConvoScreen:new {
 	options = {}
 }
 fbMosEisleyMedicalDroidConvoTemplate:addScreen(do_debug_cell_300)
+
+-- Admin-only: dispense a portable FB Field Diagnostic Probe item.
+-- Lets the admin use the same cell-info report anywhere without needing
+-- to walk back to an FB-21. Item is consumable-free (right-click Use any time).
+do_give_probe = ConvoScreen:new {
+	id = "do_give_probe",
+	customDialogText = "Dispensing one FB Field Diagnostic Probe. Right-click the item in your inventory and select 'Use' to report your current cell information.",
+	stopConversation = "true",
+	options = {}
+}
+fbMosEisleyMedicalDroidConvoTemplate:addScreen(do_give_probe)
 
 -- ==== Travel menu hub ====
 
