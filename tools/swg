@@ -1,0 +1,511 @@
+#!/usr/bin/env bash
+#
+# swg — Final Boss test-lab helper for the Core3 server.
+#
+#   swg start [--no-gdb] [clean]     start core3 in tmux session "swg", wait for READY
+#   swg stop                         send "shutdown" at the console, wait for a clean exit
+#   swg restart [--no-gdb]           stop + start
+#   swg status                       is it running? pid, uptime, branch, last log line
+#   swg cmd "<console command>"      send a console command, print the log lines it produced
+#   swg logs [--errors] [--tail N] [--follow]
+#   swg test unit|lua|bot|all        see "Tests" below
+#   swg snap save|load|list <name>   mysqldump + copy of bin/databases (server stopped)
+#   swg account create <user> <admin_level> [--reset]
+#                                    create a test account the way the server hashes passwords;
+#                                    the generated password is written to ~/.swg-lab/<user>.pass
+#
+# Tests
+#   unit   core3 runUnitTests (gtest). Server must be stopped.
+#   lua    runLuaFunction FbLabTests:runAll[:<char>] on the live server; prints PASS/FAIL lines.
+#          With <char> online, also checks that character's inventory for the starter gear.
+#   bot    core3client logs in as claude-player, creates a character, zones in, waits 30 s,
+#          runs the lua tests against that character, logs out.
+#          Pass = exit code 0 and no new ERROR lines in the server log.
+#   all    stop if running, unit, start, lua, bot (server is left running).
+#
+# Nothing here writes passwords into the repo: credentials live in ~/.swg-lab/ (mode 600).
+
+set -uo pipefail
+
+REPO=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
+BIN="$REPO/MMOCoreORB/bin"
+LOG="$BIN/screenlog.0"
+SESSION=${SWG_TMUX_SESSION:-swg}
+SNAPDIR=${SWG_SNAPDIR:-$HOME/swg-snapshots}
+LABDIR=${SWG_LABDIR:-$HOME/.swg-lab}
+GDB_SETTINGS=${SWG_GDB_SETTINGS:-$HOME/bin/gdb_settings}
+START_TIMEOUT=${SWG_START_TIMEOUT:-420}
+STOP_TIMEOUT=${SWG_STOP_TIMEOUT:-240}
+CMD_TIMEOUT=${SWG_CMD_TIMEOUT:-20}
+
+# ERROR lines that appear on every boot and are not ours (see CLAUDE.md "Known baseline log noise").
+NOISE_RE='MantisDatabase0\] ERROR - 1045|\[Console\] ERROR - 1045'
+
+# ---------------------------------------------------------------- helpers
+
+say()  { printf '%s\n' "$*"; }
+warn() { printf 'swg: %s\n' "$*" >&2; }
+die()  { warn "$@"; exit 1; }
+
+strip_tty() { sed -e 's/\x1b\[[0-9;?]*[A-Za-z]//g' -e 's/\r$//' -e 's/\r/\n/g'; }
+
+core3_pid()   { pgrep -x core3 | head -n1; }
+is_running()  { [ -n "$(core3_pid)" ]; }
+has_session() { tmux has-session -t "$SESSION" 2>/dev/null; }
+
+session_running_gdb() {
+	# pane command is "gdb" while gdb owns the pane
+	[ "$(tmux display-message -p -t "$SESSION" '#{pane_current_command}' 2>/dev/null)" = "gdb" ]
+}
+
+log_lines() { [ -f "$LOG" ] && wc -l < "$LOG" || echo 0; }
+
+count_errors() {
+	# ERROR/FATAL lines in the current run, minus known noise
+	[ -f "$LOG" ] || { echo 0; return; }
+	grep -acE '(^|[^A-Za-z])(ERROR|FATAL)( |$|:|\])' "$LOG" | tr -d ' ' >/dev/null
+	grep -aE '(ERROR|FATAL)' "$LOG" | grep -avE "$NOISE_RE" | wc -l | tr -d ' '
+}
+
+require_running() { is_running || die "server is not running (swg start)"; }
+require_stopped() {
+	if is_running; then die "server is running — stop it first (swg stop)"; fi
+	if has_session; then die "tmux session '$SESSION' still exists; attach with: tmux attach -t $SESSION"; fi
+}
+
+git_rev() { git -C "$REPO" describe --always --dirty --abbrev=10 2>/dev/null; }
+git_branch() { git -C "$REPO" rev-parse --abbrev-ref HEAD 2>/dev/null; }
+
+dbsecret() {
+	# Core3.DBSecret from config-local.lua wins, then the default in config.lua,
+	# then ConfigManager's compiled-in fallback.
+	local s
+	s=$(sed -n 's/^[[:space:]]*Core3\.DBSecret[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$BIN/conf/config-local.lua" 2>/dev/null | tail -n1)
+	[ -n "$s" ] || s=$(sed -n 's/^[[:space:]]*DBSecret[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$BIN/conf/config.lua" 2>/dev/null | tail -n1)
+	[ -n "$s" ] || s="swgemusecret"
+	printf '%s' "$s"
+}
+
+rotate_logs() {
+	# same scheme as ~/bin/run: keep 5 gzipped previous console logs
+	[ -f "$LOG" ] || return 0
+	local i j
+	for i in 5 4 3 2 1; do
+		j=$((i - 1))
+		mv "$BIN/o_screenlog.$j.gz" "$BIN/o_screenlog.$i.gz" 2>/dev/null
+	done
+	mv "$LOG" "$BIN/o_screenlog.0" && gzip -f "$BIN/o_screenlog.0"
+}
+
+# ---------------------------------------------------------------- start / stop
+
+cmd_start() {
+	local use_gdb=1 clean=""
+	for a in "$@"; do
+		case "$a" in
+			--no-gdb) use_gdb=0 ;;
+			--gdb)    use_gdb=1 ;;
+			clean)    clean="clean" ;;
+			*) die "start: unknown argument '$a'" ;;
+		esac
+	done
+	is_running && die "core3 is already running (pid $(core3_pid))"
+	has_session && die "tmux session '$SESSION' already exists; attach with: tmux attach -t $SESSION"
+	[ -x "$BIN/core3" ] || die "$BIN/core3 not found — run ~/bin/build"
+	[ -z "$clean" ] || die "refusing 'clean' (wipes bin/databases and MySQL characters) — do that by hand if you mean it"
+
+	rotate_logs
+	: > "$LOG"
+
+	local launch
+	if [ "$use_gdb" = 1 ]; then
+		[ -f "$GDB_SETTINGS" ] || die "gdb settings file $GDB_SETTINGS missing (use --no-gdb)"
+		launch="exec gdb --quiet --command=$GDB_SETTINGS ./core3"
+	else
+		launch="exec ./core3"
+	fi
+
+	tmux new-session -d -s "$SESSION" -c "$BIN" -x 250 -y 50 || die "could not create tmux session"
+	tmux pipe-pane -o -t "$SESSION" "cat >> '$LOG'"
+	tmux send-keys -t "$SESSION" -l -- "$launch"
+	tmux send-keys -t "$SESSION" Enter
+
+	say "starting core3 ($( [ "$use_gdb" = 1 ] && echo under gdb || echo no gdb ), branch $(git_branch) @ $(git_rev)) in tmux session '$SESSION'"
+	local t0=$SECONDS
+	while (( SECONDS - t0 < START_TIMEOUT )); do
+		if grep -aq '^READY' "$LOG" 2>/dev/null; then
+			say "READY after $((SECONDS - t0))s  (pid $(core3_pid), errors so far: $(count_errors))"
+			return 0
+		fi
+		if ! has_session; then
+			warn "tmux session ended before READY; last log lines:"
+			tail -n 25 "$LOG" | strip_tty >&2
+			return 1
+		fi
+		if grep -aqE '^\[Inferior 1 \(process [0-9]+\) exited|^exit\(|Program received signal|Program terminated' "$LOG" 2>/dev/null; then
+			warn "core3 exited before READY; last log lines:"
+			tail -n 25 "$LOG" | strip_tty >&2
+			return 1
+		fi
+		sleep 1
+	done
+	warn "timed out after ${START_TIMEOUT}s waiting for READY"
+	return 1
+}
+
+cmd_stop() {
+	if ! is_running; then
+		if has_session; then
+			if session_running_gdb; then
+				say "core3 not running but gdb is idle in the session — quitting gdb"
+				tmux send-keys -t "$SESSION" -l -- "quit"; tmux send-keys -t "$SESSION" Enter
+				sleep 2
+			fi
+			has_session && tmux kill-session -t "$SESSION"
+			say "cleaned up tmux session '$SESSION'"
+		else
+			say "server is not running"
+		fi
+		return 0
+	fi
+	has_session || die "core3 (pid $(core3_pid)) is running but not in tmux session '$SESSION' — it was not started by swg; stop it at its own console"
+
+	say "sending 'shutdown' to pid $(core3_pid)"
+	tmux send-keys -t "$SESSION" -l -- "shutdown"
+	tmux send-keys -t "$SESSION" Enter
+
+	local t0=$SECONDS
+	while is_running; do
+		if (( SECONDS - t0 >= STOP_TIMEOUT )); then
+			warn "core3 still running after ${STOP_TIMEOUT}s — NOT killing it. Attach with: tmux attach -t $SESSION"
+			return 1
+		fi
+		sleep 1
+	done
+	say "core3 exited after $((SECONDS - t0))s"
+
+	# under gdb the (gdb) prompt is left behind; quit it (hook-quit disables confirm)
+	local w=0
+	while has_session && (( w < 15 )); do
+		if session_running_gdb; then
+			tmux send-keys -t "$SESSION" -l -- "quit"; tmux send-keys -t "$SESSION" Enter
+		fi
+		sleep 1; w=$((w + 1))
+	done
+	if has_session; then
+		warn "tmux session still alive; killing it (core3 itself has already exited)"
+		tmux kill-session -t "$SESSION"
+	fi
+	if grep -aqE 'Program received signal|SIG(SEGV|ABRT) Caught' "$LOG" 2>/dev/null; then
+		warn "crash markers in the log — see $BIN/gdb.log"
+		return 2
+	fi
+	return 0
+}
+
+cmd_status() {
+	if is_running; then
+		local pid; pid=$(core3_pid)
+		say "core3 RUNNING  pid $pid  up $(ps -o etimes= -p "$pid" | tr -d ' ')s  $(has_session && echo "tmux:$SESSION" || echo "tmux:none")"
+	else
+		say "core3 STOPPED  $(has_session && echo "(tmux session '$SESSION' still exists)" || true)"
+	fi
+	say "branch $(git_branch) @ $(git_rev)"
+	[ -x "$BIN/core3" ] && say "binary  $(date -r "$BIN/core3" '+%F %T')  $( [ -x "$BIN/core3client" ] && echo "core3client: yes" || echo "core3client: missing")"
+	if [ -f "$LOG" ]; then
+		say "log     $LOG  ($(log_lines) lines, $(count_errors) ERROR/FATAL excl. noise)"
+		say "last:   $(tail -n 1 "$LOG" | strip_tty | cut -c1-160)"
+	fi
+}
+
+# ---------------------------------------------------------------- console
+
+cmd_cmd() {
+	[ $# -ge 1 ] || die "usage: swg cmd \"<console command>\" [--timeout N]"
+	local command="$1"; shift
+	local timeout=$CMD_TIMEOUT
+	while [ $# -gt 0 ]; do
+		case "$1" in --timeout) timeout=$2; shift 2 ;; *) die "cmd: unknown option $1" ;; esac
+	done
+	require_running
+	has_session || die "core3 is not running in tmux session '$SESSION'"
+
+	local before; before=$(log_lines)
+	tmux send-keys -t "$SESSION" -l -- "$command"
+	tmux send-keys -t "$SESSION" Enter
+
+	# wait until the log stops growing (3 quiet polls) or the timeout hits
+	local t0=$SECONDS last=$before now quiet=0
+	while (( SECONDS - t0 < timeout )); do
+		sleep 0.4
+		now=$(log_lines)
+		if (( now != last )); then last=$now; quiet=0
+		else
+			quiet=$((quiet + 1))
+			(( quiet >= 3 && now > before )) && break
+		fi
+	done
+	tail -n "+$((before + 1))" "$LOG" | strip_tty | grep -av '^[[:space:]]*>*[[:space:]]*$'
+}
+
+cmd_logs() {
+	local errors=0 n=50 follow=0
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--errors) errors=1; shift ;;
+			--tail)   n=$2; shift 2 ;;
+			--follow|-f) follow=1; shift ;;
+			*) die "logs: unknown option $1" ;;
+		esac
+	done
+	[ -f "$LOG" ] || die "no $LOG"
+	if [ "$errors" = 1 ]; then
+		grep -anE '(ERROR|FATAL)' "$LOG" | grep -avE "$NOISE_RE" | strip_tty
+		say "-- $(count_errors) ERROR/FATAL line(s) excluding known noise"
+	elif [ "$follow" = 1 ]; then
+		tail -n "$n" -f "$LOG" | strip_tty
+	else
+		tail -n "$n" "$LOG" | strip_tty
+	fi
+}
+
+# ---------------------------------------------------------------- tests
+
+test_unit() {
+	require_stopped
+	[ -x "$BIN/core3" ] || die "$BIN/core3 not found"
+	say "== unit: core3 runUnitTests $*"
+	( cd "$BIN" && ./core3 runUnitTests "$@" 2>&1 | strip_tty | tee "$LABDIR/last-unit.log" | grep -aE '^\[==========\]|^\[  (PASSED|FAILED)  \]|^\[  SKIPPED \]|FAILED TEST|Failure|^\[ RUN      \].*' | grep -av '^\[ RUN' )
+	local rc=${PIPESTATUS[0]}
+	# the real exit code is core3's, which the subshell pipeline above lost; read it from the summary
+	if grep -aq '^\[  PASSED  \]' "$LABDIR/last-unit.log" && ! grep -aq '^\[  FAILED  \]' "$LABDIR/last-unit.log"; then
+		say "== unit: PASS  (full output: $LABDIR/last-unit.log)"; return 0
+	fi
+	say "== unit: FAIL  (full output: $LABDIR/last-unit.log)"; return 1
+}
+
+test_lua() {
+	local char="${1:-}"
+	require_running
+	local fn="FbLabTests:runAll"
+	[ -n "$char" ] && fn="$fn:$char"
+	say "== lua: runLuaFunction $fn"
+	local out
+	out=$(cmd_cmd "runLuaFunction $fn" --timeout 30)
+	printf '%s\n' "$out" | grep -aE '^(PASS|FAIL|SKIP|INFO) ' | sed 's/^/   /'
+	if printf '%s\n' "$out" | grep -aq 'Failed to runLuaFunction\|Exception in runLuaFunction'; then
+		printf '%s\n' "$out" | grep -a 'runLuaFunction' | sed 's/^/   /'
+		say "== lua: FAIL (function did not run — is custom_scripts/screenplays/fb_lab_tests.lua included?)"; return 1
+	fi
+	local pass fail
+	pass=$(printf '%s\n' "$out" | grep -acE '^PASS ')
+	fail=$(printf '%s\n' "$out" | grep -acE '^FAIL ')
+	if (( pass == 0 )); then say "== lua: FAIL (no PASS lines seen)"; return 1; fi
+	if (( fail > 0 )); then say "== lua: FAIL ($fail failed, $pass passed)"; return 1; fi
+	say "== lua: PASS ($pass checks)"; return 0
+}
+
+# bot_session create|reuse <char>: one core3client run; sets lua_rc, returns the client's exit code.
+bot_session() {
+	local mode=$1 char=$2
+	local -a action
+	if [ "$mode" = create ]; then
+		action=(--create-character --char-name "$char" --char-race "${SWG_BOT_RACE:-object/creature/player/human_male.iff}" --char-profession "${SWG_BOT_PROF:-combat_marksman}")
+	else
+		action=(--character-firstname "$char")
+	fi
+
+	( cd "$BIN" && CORE3_CLIENT_PASSWORD="$(cat "$passfile")" ./core3client \
+		--username "$user" --login-host "${SWG_LOGIN_HOST:-127.0.0.1}" --login-port "${SWG_LOGIN_PORT:-44453}" \
+		"${action[@]}" --wait-after-zone "$wait" >"$clog" 2>&1 ) &
+	local botpid=$!
+
+	# once the server sees the character online, run the lua checks against it (the client's own
+	# log is block-buffered when redirected, so it cannot be polled for progress)
+	lua_rc=0
+	local t0=$SECONDS
+	while kill -0 "$botpid" 2>/dev/null && (( SECONDS - t0 < wait + 90 )); do
+		if cmd_cmd "runLuaFunction FbLabTests:isOnline:$char" --timeout 5 2>/dev/null | grep -aq "^INFO online $char"; then
+			sleep 3   # let the login finish populating containers before poking at them
+			test_lua "$char" || lua_rc=1
+			break
+		fi
+		sleep 2
+	done
+	wait "$botpid"
+}
+
+test_bot() {
+	require_running
+	[ -x "$BIN/core3client" ] || die "$BIN/core3client missing — build with: CMAKE_ARGS=-DENABLE_BUILD_CLIENT=ON ~/bin/build"
+	local user=${SWG_BOT_USER:-claude-player}
+	local passfile="$LABDIR/$user.pass"
+	[ -r "$passfile" ] || die "no credentials at $passfile (swg account create $user 0)"
+	local wait=${SWG_BOT_WAIT:-30}
+	local clog="$LABDIR/last-bot.log"
+	local err_before; err_before=$(count_errors)
+
+	# PlayerCreationManager allows admin_level < 9 accounts one new character per hour. When the
+	# account created one recently, zone in as its newest Lab* character instead of failing.
+	local recent newest
+	recent=$(mysql -N swgemu -e "SELECT COUNT(*) FROM characters c JOIN accounts a ON a.account_id = c.account_id WHERE a.username = '$user' AND c.creation_date > NOW() - INTERVAL 1 HOUR" 2>/dev/null || echo 0)
+	newest=$(mysql -N swgemu -e "SELECT c.firstname FROM characters c JOIN accounts a ON a.account_id = c.account_id WHERE a.username = '$user' AND c.firstname LIKE 'Lab%' ORDER BY c.character_oid DESC LIMIT 1" 2>/dev/null)
+
+	local char mode
+	if [ "${recent:-0}" != "0" ] && [ -n "$newest" ]; then
+		char=$newest; mode=reuse
+		say "== bot: $user zones in as existing '$char' (created one <1 h ago), waits ${wait}s, logs out"
+	else
+		# fresh character name each run so creation is exercised; first letter upper, rest lower
+		char="Lab$(tr -dc a-z </dev/urandom | head -c 6)"; mode=create
+		say "== bot: $user creates '$char', zones in, waits ${wait}s, logs out"
+	fi
+
+	local rc lua_rc
+	bot_session "$mode" "$char"; rc=$?
+	if (( rc != 0 )) && [ "$mode" = create ] && grep -aq 'one character per hour' "$clog" && [ -n "$newest" ]; then
+		say "   creation rate-limited by the server; retrying as existing '$newest'"
+		char=$newest
+		bot_session reuse "$char"; rc=$?
+	fi
+
+	local err_after; err_after=$(count_errors)
+	local new_errors=$((err_after - err_before))
+	say "   core3client exit code: $rc   new server ERROR lines: $new_errors   (client log: $clog)"
+	if (( new_errors > 0 )); then
+		grep -aE '(ERROR|FATAL)' "$LOG" | grep -avE "$NOISE_RE" | tail -n "$new_errors" | strip_tty | sed 's/^/   /'
+	fi
+	if (( rc != 0 )); then
+		grep -aiE 'error|fail|exception|timeout' "$clog" | tail -n 8 | sed 's/^/   /'
+	fi
+	if (( rc == 0 && new_errors == 0 && lua_rc == 0 )); then say "== bot: PASS"; return 0; fi
+	say "== bot: FAIL"; return 1
+}
+
+cmd_test() {
+	local what=${1:-}; shift || true
+	mkdir -p "$LABDIR"; chmod 700 "$LABDIR"
+	case "$what" in
+		unit) test_unit "$@" ;;
+		lua)  test_lua "$@" ;;
+		bot)  test_bot "$@" ;;
+		all)
+			local rc=0
+			if is_running; then say "== all: stopping the running server for unit tests"; cmd_stop || exit 1; fi
+			test_unit || rc=1
+			cmd_start || exit 1
+			test_lua || rc=1
+			test_bot || rc=1
+			say "== all: $( (( rc == 0 )) && echo PASS || echo FAIL )  (server left running)"
+			return $rc ;;
+		*) die "usage: swg test unit|lua|bot|all" ;;
+	esac
+}
+
+# ---------------------------------------------------------------- snapshots
+
+snap_name_ok() { [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]]; }
+
+cmd_snap() {
+	local op=${1:-}; local name=${2:-}; shift 2 2>/dev/null || true
+	case "$op" in
+		list)
+			[ -d "$SNAPDIR" ] || { say "no snapshots in $SNAPDIR"; return 0; }
+			for d in "$SNAPDIR"/*/; do
+				[ -f "$d/meta.txt" ] || continue
+				printf '%-24s %8s  %s\n' "$(basename "$d")" "$(du -sh "$d" | cut -f1)" "$(grep -a '^when' "$d/meta.txt" | cut -d' ' -f2-) $(grep -a '^rev' "$d/meta.txt" | cut -d' ' -f2-)"
+			done ;;
+		save)
+			[ -n "$name" ] && snap_name_ok "$name" || die "usage: swg snap save <name>   (letters, digits, . _ -)"
+			require_stopped
+			local dest="$SNAPDIR/$name"
+			if [ -e "$dest" ]; then
+				[ "${1:-}" = "--force" ] || die "$dest exists (use --force to overwrite)"
+				rm -rf "$dest"
+			fi
+			mkdir -p "$dest"
+			say "snap save '$name' -> $dest"
+			mysqldump --single-transaction --quick --routines swgemu | gzip -1 > "$dest/swgemu.sql.gz" || { rm -rf "$dest"; die "mysqldump failed"; }
+			cp -a "$BIN/databases" "$dest/databases" || { rm -rf "$dest"; die "copy of bin/databases failed"; }
+			{
+				echo "when $(date '+%F %T')"
+				echo "rev $(git_branch)@$(git_rev)"
+				echo "core3 $(date -r "$BIN/core3" '+%F %T' 2>/dev/null)"
+				echo "mysql $(gzip -dc "$dest/swgemu.sql.gz" | wc -c) bytes uncompressed"
+				echo "databases $(du -sh "$dest/databases" | cut -f1)"
+			} > "$dest/meta.txt"
+			cat "$dest/meta.txt" | sed 's/^/   /'
+			say "done ($(du -sh "$dest" | cut -f1))" ;;
+		load)
+			[ -n "$name" ] && snap_name_ok "$name" || die "usage: swg snap load <name> --yes"
+			local src="$SNAPDIR/$name"
+			[ -f "$src/meta.txt" ] && [ -f "$src/swgemu.sql.gz" ] && [ -d "$src/databases" ] || die "no complete snapshot at $src"
+			require_stopped
+			if [ "${1:-}" != "--yes" ]; then
+				say "This replaces the MySQL database 'swgemu' AND $BIN/databases with snapshot '$name':"
+				sed 's/^/   /' "$src/meta.txt"
+				die "re-run with --yes to proceed (ask Chuck first)"
+			fi
+			say "snap load '$name': restoring MySQL"
+			gzip -dc "$src/swgemu.sql.gz" | mysql swgemu || die "mysql restore failed"
+			say "snap load '$name': restoring bin/databases"
+			rm -rf "$BIN/databases"
+			cp -a "$src/databases" "$BIN/databases" || die "copy failed"
+			# navmeshes/exports regenerate; ODB environment files come with the snapshot
+			say "done" ;;
+		*) die "usage: swg snap save|load|list <name>" ;;
+	esac
+}
+
+# ---------------------------------------------------------------- accounts
+
+cmd_account() {
+	local op=${1:-}; shift || true
+	case "$op" in
+		create)
+			local user=${1:-} level=${2:-} reset=0
+			[ "${3:-}" = "--reset" ] && reset=1
+			[[ "$user" =~ ^[A-Za-z0-9_.-]{3,32}$ ]] || die "usage: swg account create <user> <admin_level> [--reset]"
+			[[ "$level" =~ ^[0-9]+$ ]] && (( level <= 15 )) || die "admin_level must be 0..15"
+			mkdir -p "$LABDIR"; chmod 700 "$LABDIR"
+
+			# Same recipe as AccountManager::createAccount():
+			#   salt = 32 hex chars, password column = SHA256(DBSecret + password + salt) as lowercase hex
+			local secret pass salt hash station exists
+			secret=$(dbsecret)
+			pass=$(openssl rand -base64 24 | tr -d '/+=' | cut -c1-20)
+			salt=$(openssl rand -hex 16)
+			hash=$(printf '%s%s%s' "$secret" "$pass" "$salt" | sha256sum | cut -d' ' -f1)
+			station=$(( (RANDOM << 15 | RANDOM) + 1 ))
+			exists=$(mysql -N swgemu -e "SELECT COUNT(*) FROM accounts WHERE username='$user'")
+			if [ "$exists" != "0" ]; then
+				(( reset == 1 )) || die "account '$user' exists (use --reset to set a new password / level)"
+				mysql swgemu -e "UPDATE accounts SET password='$hash', salt='$salt', admin_level=$level, active=1 WHERE username='$user'" || die "update failed"
+			else
+				mysql swgemu -e "INSERT INTO accounts (username, password, station_id, salt, admin_level) VALUES ('$user','$hash',$station,'$salt',$level)" || die "insert failed"
+			fi
+			( umask 077; printf '%s' "$pass" > "$LABDIR/$user.pass" )
+			mysql swgemu -e "SELECT account_id, username, admin_level, active, created FROM accounts WHERE username='$user'"
+			say "password written to $LABDIR/$user.pass (not in the repo)" ;;
+		list) mysql swgemu -e "SELECT account_id, username, admin_level, active, created FROM accounts" ;;
+		*) die "usage: swg account create <user> <admin_level> [--reset] | list" ;;
+	esac
+}
+
+# ---------------------------------------------------------------- main
+
+usage() { sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//' | sed '1d'; }
+
+case "${1:-}" in
+	start)   shift; cmd_start "$@" ;;
+	stop)    shift; cmd_stop "$@" ;;
+	restart) shift; cmd_stop && cmd_start "$@" ;;
+	status)  cmd_status ;;
+	cmd)     shift; cmd_cmd "$@" ;;
+	logs)    shift; cmd_logs "$@" ;;
+	test)    shift; cmd_test "$@" ;;
+	snap)    shift; cmd_snap "$@" ;;
+	account) shift; cmd_account "$@" ;;
+	-h|--help|help|"") usage ;;
+	*) die "unknown command '$1' (swg --help)" ;;
+esac

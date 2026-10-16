@@ -360,6 +360,12 @@ void ZonePacketHandler::handleClientCreateCharacterSuccess(Message* pack) {
 	// Store in vars
 	core->setVar("ClientCreateCharacterSuccess/oid", newCharacterOID);
 
+	// The server starts the scene for this OID as soon as it gets SelectCharacter below, and
+	// handleCmdStartScene checks it against selectedCharacterOid. Set it here, before sending,
+	// instead of leaving it to the action thread after waitForAny() wakes (which lost the race
+	// and aborted the scene).
+	core->selectedCharacterOid = newCharacterOID;
+
 	// Now send SelectCharacter with the new OID
 	BaseClient* client = (BaseClient*) pack->getClient();
 	info(true) << "Sending SelectCharacter(" << newCharacterOID << ")";

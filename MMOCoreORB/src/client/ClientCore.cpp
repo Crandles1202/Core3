@@ -411,6 +411,13 @@ void ClientCore::executeActions() {
 		ActionBase* action = options.actions.get(i);
 
 		info(true) << "Running action: " << action->getName();
+
+		// Honour --wait-after-zone while the character is still in the zone: before the
+		// (auto-appended) logoutCharacter runs, not after the whole list has finished.
+		if (strcmp(action->getName(), "logoutCharacter") == 0) {
+			waitInZoneIfRequested();
+		}
+
 		action->run(*this);
 
 		if (!action->isOK()) {
@@ -424,6 +431,20 @@ void ClientCore::executeActions() {
 
 			break;
 		}
+	}
+}
+
+void ClientCore::waitInZoneIfRequested() {
+	if (waitedInZone)
+		return;
+
+	int waitAfterZone = options.get<int>("/waitAfterZone", 0);
+
+	if (waitAfterZone > 0 && zone != nullptr && zone->isSceneReady()) {
+		waitedInZone = true;
+		info(true) << "Staying connected for " << waitAfterZone << " seconds...";
+		Thread::sleep(waitAfterZone * 1000);
+		info(true) << "Wait complete, proceeding to shutdown...";
 	}
 }
 
@@ -442,12 +463,7 @@ void ClientCore::run() {
 		exit_result = 0;
 	}
 
-	int waitAfterZone = options.get<int>("/waitAfterZone", 0);
-	if (waitAfterZone > 0 && zone != nullptr && zone->isSceneReady()) {
-		info(true) << "Staying connected for " << waitAfterZone << " seconds...";
-		Thread::sleep(waitAfterZone * 1000);
-		info(true) << "Wait complete, proceeding to shutdown...";
-	}
+	waitInZoneIfRequested();
 
 	std::string saveState = options.get<std::string>("/saveState", "");
 	if (!saveState.empty()) {

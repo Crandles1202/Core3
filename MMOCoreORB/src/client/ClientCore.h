@@ -56,6 +56,7 @@ public:
 	Zone* zone;
 	JSONSerializationType vars;  // Unified storage for dynamic data (async responses, user vars, etc.)
 	uint64 selectedCharacterOid;  // Which character we're playing as (set by zoneInCharacter, confirmed by server)
+	bool waitedInZone = false;    // --wait-after-zone already honoured (see waitInZoneIfRequested)
 	uint64 targetCharacterOid;    // Target character for operations (set by selectContext)
 	uint32 targetGalaxyId;        // Target galaxy (set by selectContext)
 
@@ -129,6 +130,9 @@ public:
 	void initialize();
 
 	void run();
+
+	// Sleep --wait-after-zone seconds if the scene is up and we have not done so yet.
+	void waitInZoneIfRequested();
 
 	void executeActions();
 

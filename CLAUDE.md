@@ -11,6 +11,7 @@ runs and tests. Host: WSL2 Debian 12.
   WSL networking, account SQL, gotchas, from-scratch rebuild. DB password is redacted in the repo copy.
   Stale on one point: it says DBSecret is still the default `swgemus3cr37!`; `config-local.lua` now sets
   its own `Core3.DBSecret`.
+- [docs/dev-notes.md](docs/dev-notes.md) — the long-form gotchas list and per-session log. Append to it.
 
 ## Paths
 
@@ -41,8 +42,10 @@ runs and tests. Host: WSL2 Debian 12.
   To build the client: `CMAKE_ARGS=-DENABLE_BUILD_CLIENT=ON ~/bin/build` (caller's `CMAKE_ARGS` are appended
   after the OFF, and cmake keeps the last `-D`). The next plain `~/bin/build` switches it back OFF, but an
   already-built `bin/core3client` stays.
-- Changing a `.idl` file regenerates code and triggers a large rebuild.
-- Lua-only changes need no rebuild: restart the server, or `reloadscreenplays` at the console for screenplays.
+- Incremental rebuild with a warm ccache is ~3.5 min wall clock; a changed `.idl` regenerates code and costs much more.
+- Lua-only changes need no rebuild. `swg cmd reloadscreenplays` re-runs `screenplays.lua` into each thread's
+  *existing* Lua state on next use (globals persist, functions are redefined, screenplay `start()` is **not**
+  re-run, so nothing re-spawns). Mobile/conversation/manager Lua lives in other Lua states and needs a restart.
 
 ## Run / stop
 
@@ -71,21 +74,33 @@ runs and tests. Host: WSL2 Debian 12.
 
 ## Test commands
 
-All via `tools/swg` (run from anywhere):
+All via `tools/swg` (run from anywhere; `tools/swg --help` for the full list):
 
 ```bash
-tools/swg start                 # start server in tmux "swg", wait for READY
-tools/swg stop                  # send "shutdown", wait for clean exit
+tools/swg start [--no-gdb]      # start core3 (under gdb by default) in tmux "swg", wait for READY (~45 s)
+tools/swg stop                  # send "shutdown", wait for clean exit (~80 s), quit gdb
+tools/swg status                # running? pid, branch, binary date, error count
 tools/swg cmd "<console cmd>"   # send a console command, print the log lines it produced
-tools/swg logs --errors         # ERROR lines from the current run
-tools/swg test unit             # core3 runUnitTests (gtest; server must be stopped)
-tools/swg test lua              # runLuaFunction on the live Final Boss content checks → PASS/FAIL lines
-tools/swg test bot              # core3client smoke test with claude-player
-tools/swg test all
-tools/swg snap save|load <name> # mysqldump + copy of bin/databases (server stopped). load = ask Chuck first
+tools/swg logs --errors         # ERROR/FATAL lines from the current run, minus known noise
+tools/swg test unit             # core3 runUnitTests (258 gtests, ~12 s; server must be stopped)
+tools/swg test lua [<char>]     # runLuaFunction FbLabTests:runAll on the live server → PASS/FAIL lines
+tools/swg test bot              # core3client: claude-player creates a char, zones in, 30 s, logs out
+tools/swg test all              # stop if running → unit → start → lua → bot (server left running)
+tools/swg snap save|list <name> # mysqldump + copy of bin/databases (~700 MB) to ~/swg-snapshots/<name>
+tools/swg snap load <name> --yes  # restore (server stopped). Ask Chuck first.
+tools/swg account create <user> <admin_level> [--reset]   # server's own hash recipe; pw → ~/.swg-lab/
 ```
 
-Test accounts: `claude-admin` (admin_level 15), `claude-player` (admin_level 0). Passwords live outside git.
+- Lua content checks live in `bin/scripts/custom_scripts/screenplays/fb_lab_tests.lua` (wraps `spawnMobile`
+  to record every `fb_*` spawn; static-loads manager/mobile/conversation files to verify wiring). Add a
+  check there whenever new content ships.
+- Test accounts: `claude-admin` (admin_level 15), `claude-player` (admin_level 0). Passwords are in
+  `~/.swg-lab/*.pass` (mode 600), never in the repo. Account hash = `SHA256(DBSecret + password + salt)`,
+  salt = 32 hex chars (`AccountManager::createAccount`). `~/bin/run` resets an `admin` account that does
+  not exist in this DB, so that line is a no-op.
+- Bot characters are named `Lab<6 letters>` on account `claude-player` and accumulate; delete them from the
+  blue-frog/`chars` side when they get in the way.
+- Snapshot `baseline` = post-upstream-merge boot, taken 2026-10-16 before any bot characters existed.
 
 ## Shipped Final Boss content (what tests should protect)
 
@@ -99,32 +114,56 @@ Test accounts: `claude-admin` (admin_level 15), `claude-player` (admin_level 0).
 | 2.7 | FB-72 armory droid (Mos Eisley starport + 2 weapon shops) | `fb_armory_droid*.lua` |
 | — | QoL: 100k cash/bank start, global XP ×2, group XP ×1.25, pet/vehicle call 5 s, 20 housing lots, resource stack 10M, admin `flag = 2` | `player_creation_manager.lua`, `player_manager.lua`, `*ControlDeviceImplementation.cpp`, `PlayerObject.idl`, `ResourceContainer.idl`, `staff/levels/admin.lua` |
 | 2.1 | Vex Renn stim/medical dealer (Mos Eisley) | `fb_stim_dealer*.lua` |
+| lab | FB mobiles given `mobType`/`chanceHit`/`damageMin`/`baseHAM` so `LuaMobileTemplatesTest` passes; `core3client` create-character race fixed (`ZonePacketHandler.cpp`) | `mobile/quest/tatooine/fb_*.lua`, `src/client/zone/` |
+
+Non-combat NPC templates still need positive `chanceHit`, `damageMin/Max`, `baseHAM/HAMmax` and a `mobType`
+(`MOB_NPC` / `MOB_DROID`) or the unit tests fail — copy from an existing FB mobile.
+
+## Gotchas (read before writing Lua or tests) — detail in [docs/dev-notes.md](docs/dev-notes.md)
+
+- `SceneObject(p)` / `CreatureObject(p)` / … return one **shared wrapper per class**, re-pointed on every
+  call. Never keep `local o = SceneObject(p)` across another `SceneObject(...)` call; wrap inline.
+  Breaking this throws a C++ exception that `pcall` can't catch and dirties the console Lua stack.
+- There are many Lua states. Screenplay Lua can't see manager globals (`shuttleportAwayTime`,
+  `commonStartingItems`), mobile/conversation templates, or `FBFeatures`. Sandbox-`loadfile` the file
+  to inspect it (pattern in `fb_lab_tests.lua`).
+- `reloadscreenplays` re-runs `screenplays.lua` into the existing state: functions update, `start()` does
+  not re-run, nothing re-spawns. Mobile/conversation/manager Lua needs a restart.
+- Non-combat mobiles still need `mobType`, `chanceHit`, `damageMin/Max`, `baseHAM/HAMmax` > 0 or the
+  unit tests fail.
+- Non-admin accounts create one character per hour; failed attempts reset the timer.
+- Claude can't merge into `unstable`, `git submodule update`, or push — those are Chuck's; Claude works
+  on `feature/*` and asks.
+- Keep this list and `docs/dev-notes.md` current: every non-obvious lesson gets written down the same
+  session it is learned (Chuck's standing request).
 
 ## Current status
 
-_Updated: 2026-10-16 (session 1, step 1 of lab setup)_
+_Updated: 2026-10-16 (session 1: test lab set up)_
 
-- `unstable` @ `d57444a85e` (Phase 2.1 Vex Renn), even with `origin/unstable`. Not yet merged with
-  the 14 new `swgemu/unstable` commits.
-- **Large uncommitted work in the tree** (Phase 2.x, never committed): ~12 new Mos Eisley NPCs (armor droid,
-  cantina dancer/manager/musician, combat quartermaster, droid dispenser, imperial armorer, pet dealer,
-  pet vet, property agent, smuggler goods, speeder dealer), FB field probe item, big rewrites of
-  `fb_armory_droid.lua` and `fb_stim_dealer.lua`, buff tuning in `player_manager.lua`
-  (backup at `player_manager.lua.fb_backup_pre_buff_tuning`). Must be committed to a feature branch or
-  stashed before merging upstream.
-- `stash@{0}` (auto-stash from the 2026-05-25 merge) has the same tree as HEAD, so it is redundant.
-- `bin/core3` is dated 2026-05-24, older than commit `2c87042d5e` (C++/IDL changes) — rebuild before trusting it.
-- `bin/core3client` does not exist yet (client build disabled in `~/bin/build`).
-- Lab setup plan: 1 CLAUDE.md ✅ · 2 `tools/swg` · 3 test accounts · 4 upstream merge + baseline snap ·
-  5 unit + Lua content tests · 6 bot smoke test.
+- Branches:
+  - `unstable` @ `d57444a85e` (Phase 2.1 Vex Renn) = `origin/unstable`. **Does not yet contain the upstream
+    merge** — the tooling refused to let Claude merge into `unstable`; Chuck does that (see to-do).
+  - `feature/test-lab` (current) = `unstable` + CLAUDE.md/docs + `tools/swg` + lab tests + mobile stat fixes
+    + `core3client` race fix + **merge of `swgemu/unstable` (14 commits, engine3 → `4cbf3933`)**. Merge was
+    conflict-free; no overlap with any Final Boss file. Boots clean (0 ERROR), 258/258 unit tests pass.
+  - `feature/phase2-mos-eisley-npcs` @ `e75728d6e1`: the previously uncommitted Phase 2.x work (12 new Mos
+    Eisley NPCs, field probe, armory/stim-dealer rewrites, buff tuning). Committed as-is, **untested**,
+    not merged anywhere. `player_manager.lua.fb_backup_pre_buff_tuning` is still untracked in the tree.
+- Binaries: `bin/core3` and `bin/core3client` built 2026-10-16 from `feature/test-lab`.
+- Snapshot `baseline` saved (`~/swg-snapshots/baseline`, 702 MB).
+- Test accounts `claude-admin` (id 4) and `claude-player` (id 5) exist; login verified via core3client.
+- `stash@{0}` (auto-stash from the 2026-05-25 merge) has the same tree as `d57444a85e`; safe to drop.
 
 ### To-do
 
-- [ ] **Phase 0.2 — change the default DBSecret.** Partly done already: `config-local.lua` sets a custom
-  random `Core3.DBSecret` (read by `ConfigManager::getDBSecret()`, used as `SHA256(DBSecret + password + salt)`
-  in `AccountManager.cpp`). Still to do: confirm `config.lua`'s default isn't winning; confirm existing
-  accounts (`chuck`, others) were re-hashed with the new secret (`~/bin/run` resets `admin` to a legacy
-  unsalted SHA1 on every start, which bypasses the secret); update the guide's account SQL to match.
-  Rotating the secret means re-hashing every account — ask Chuck first (DB write outside test accounts).
-- [ ] Decide what to do with the uncommitted Phase 2.x NPC work before the upstream merge.
-- [ ] Drop the redundant `stash@{0}` (same tree as HEAD) — with Chuck's OK.
+- [ ] **Chuck:** `git merge --no-ff feature/test-lab` into `unstable` (brings upstream + lab), then
+  `git submodule update --init --recursive`, then push. Tag `chuck-stable-20261016` once play-tested.
+- [ ] **Chuck:** decide whether `feature/phase2-mos-eisley-npcs` gets tested/merged or stays parked.
+- [ ] **Phase 0.2 — DBSecret.** `config-local.lua` already sets a custom `Core3.DBSecret`, and both test
+  accounts were hashed with it and log in, so the custom secret is live. Remaining: confirm `Chuckertons`
+  and `chuck` still log in (if they predate the change they need `swg account create <user> <lvl> --reset`
+  — ask first); fix the guide's SQL, which still hardcodes the old default `swgemus3cr37!`.
+- [ ] Drop the redundant `stash@{0}` — with Chuck's OK.
+- [ ] Server-side: `decreaseOnlineCharCount missing account` ERROR when a client drops before its scene
+  finishes (`PlayerManagerImplementation.cpp:5350`). Harmless, upstream code; seen once from the bot race.
