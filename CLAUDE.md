@@ -194,5 +194,5 @@ _Updated: 2026-10-16 (session 1: test lab set up)_
   fired 2026-09-03 because WSL is rarely up at 03:00. `swg start` now runs it when the newest dump is
   >24 h old. For a true nightly job, a Windows Task Scheduler entry running
   `wsl -d Debian -- /home/chuck/bin/swg-backup-daily.sh` is the fix.
-- [ ] Server-side: `decreaseOnlineCharCount missing account` ERROR when a client drops before its scene
-  finishes (`PlayerManagerImplementation.cpp:5350`). Harmless, upstream code; seen once from the bot race.
+- [x] `decreaseOnlineCharCount missing account` ERROR — was the bot logging out mid-connect after
+  creating a character; `CreateCharacterAction` now waits for the scene. Not a server bug.

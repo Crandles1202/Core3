@@ -309,7 +309,11 @@ test_lua() {
 	say "== lua: runLuaFunction $fn"
 	local out
 	out=$(cmd_cmd "runLuaFunction $fn" --timeout 30)
-	printf '%s\n' "$out" | grep -aE '^(PASS|FAIL|SKIP|INFO) ' | sed 's/^/   /'
+	if [ "${LAB_QUIET:-0}" = 1 ]; then   # inside test bot: only what needs attention
+		printf '%s\n' "$out" | grep -aE '^(FAIL|SKIP|INFO summary) ' | sed 's/^/   /'
+	else
+		printf '%s\n' "$out" | grep -aE '^(PASS|FAIL|SKIP|INFO) ' | sed 's/^/   /'
+	fi
 	if printf '%s\n' "$out" | grep -aq 'Failed to runLuaFunction\|Exception in runLuaFunction'; then
 		printf '%s\n' "$out" | grep -a 'runLuaFunction' | sed 's/^/   /'
 		say "== lua: FAIL (function did not run — is custom_scripts/screenplays/fb_lab_tests.lua included?)"; return 1
@@ -344,7 +348,7 @@ bot_session() {
 	while kill -0 "$botpid" 2>/dev/null && (( SECONDS - t0 < wait + 90 )); do
 		if cmd_cmd "runLuaFunction FbLabTests:isOnline:$char" --timeout 5 2>/dev/null | grep -aq "^INFO online $char"; then
 			sleep 3   # let the login finish populating containers before poking at them
-			test_lua "$char" || lua_rc=1
+			LAB_QUIET=1 test_lua "$char" || lua_rc=1
 			break
 		fi
 		sleep 2

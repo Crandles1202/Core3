@@ -98,8 +98,10 @@ To check a value from another state in a test, `loadfile(path, "t", env)` the fi
   leave a backtrace in `bin/gdb.log`; `swg stop` quits gdb afterwards.
 - Known noise on every boot: `[MantisDatabase0] ERROR - 1045` + `[Console] ERROR - 1045` (Mantis
   integration, not ours). `swg logs --errors` filters them.
-- `decreaseOnlineCharCount missing account N in onlineZoneClientMap` ERROR appears when a client drops
-  before its scene finished loading. Harmless.
+- `decreaseOnlineCharCount missing account N in onlineZoneClientMap` ERROR = a client disconnected
+  while the server was still connecting its player (SelectCharacter sent, scene not yet up). Our bot
+  did exactly that after character creation until `CreateCharacterAction` learned to wait for the
+  scene. If it shows up again, some client is logging out mid-connect.
 - `ServerCore::runLuaFunction` keeps a dirty Lua stack after a C++ exception; restart to clear.
 - `getPlayerByName` returns offline (cached) players too; check `PlayerObject(ghost):isOnline()`.
 - Accounts: `password = SHA256(DBSecret .. password .. salt)` hex, `salt` = 32 hex chars, `station_id`
