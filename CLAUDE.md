@@ -149,7 +149,8 @@ _Updated: 2026-10-16 (session 1: test lab set up)_
     conflict-free; no overlap with any Final Boss file. Boots clean (0 ERROR), 258/258 unit tests pass.
   - `feature/phase2-mos-eisley-npcs` @ `e75728d6e1`: the previously uncommitted Phase 2.x work (12 new Mos
     Eisley NPCs, field probe, armory/stim-dealer rewrites, buff tuning). Committed as-is, **untested**,
-    not merged anywhere. `player_manager.lua.fb_backup_pre_buff_tuning` is still untracked in the tree.
+    not merged anywhere. (The `player_manager.lua.fb_backup_pre_buff_tuning` file was identical to the
+    committed pre-tuning version and was deleted 2026-10-16.)
 - Binaries: `bin/core3` and `bin/core3client` built 2026-10-16 from `feature/test-lab`.
 - Snapshot `baseline` saved (`~/swg-snapshots/baseline`, 702 MB).
 - Test accounts `claude-admin` (id 4) and `claude-player` (id 5) exist; login verified via core3client.
