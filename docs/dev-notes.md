@@ -166,12 +166,24 @@ a flag is fine for those.
   default, because `config-local.lua` is parsed *after* `config.lua` and sets `Core3.DBSecret` to the
   same value (`ConfigManager::getDBSecret` reads `Core3.DBSecret`). One place for the secret, no
   hidden local edits that a `git stash`/`checkout` could clobber.
+- **Scripted doc edits need a diff check.** A Python rewrite of the CLAUDE.md status block duplicated
+  ~90 lines (two copies of the shipped table, gotchas, permissions, status) and the 2.2 merge carried
+  it. The tell was `CLAUDE.md | 97 +++` in a merge that should have touched a few lines. Before
+  committing, eyeball `git diff --stat` and `grep -c '^## '` on CLAUDE.md (each header once).
 - **Name filter.** `scripts/managers/name/name_manager.lua` holds regexes (DEV/GM/CSR/QA/profanity…)
   that `PlayerManager::checkPlayerName` runs *before* the one-per-hour rate limit, so a declined name
   costs nothing. Random letter soup gets declined (`Labvartgm` → `name_declined_developer`); the bot
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-17 — Phase 2.3.** Component vendor. Components spawned bare from an object template
+  would have no crafting values, so the dealer generates them through the loot system: Lua
+  `createLoot(pInventory, "<component_loot item>", level, false)` — `LootManager::createLoot` accepts a
+  loot *item* name as well as a group name (`lootGroupMap->lootItemExists`) and rolls the item's
+  `craftingValues` at that level. 27 standard items under `scripts/loot/items/component_loot/` each
+  have an `_advanced` twin; the dealer sells 23 of them in both tiers (standard = level 30, advanced =
+  level 60 at 3× price), skipping the exotic Kashyyykian/Zam segments. Scenario `parts-dealer` buys one
+  of each tier through the public `purchase()` (oracle `buyPart`) and counts the components.
 - **2026-10-17 — Phase 2.2.** Schematic broker NPC, built on Chuck's vendor pattern
   (`fb_smuggler_goods`: screenplay with a data table + SUI list boxes, conv template with a
   `do_<thing>` screen the handler turns into a SUI, mobile template, three include lines). "Starter and
