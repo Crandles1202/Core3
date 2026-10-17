@@ -83,7 +83,7 @@ tools/swg status                # running? pid, branch, binary date, error count
 tools/swg cmd "<console cmd>"   # send a console command, print the log lines it produced
 tools/swg logs --errors         # ERROR/FATAL lines from the current run, minus known noise
 tools/swg test unit             # core3 runUnitTests (258 gtests, ~12 s; server must be stopped)
-tools/swg test lua [<char>]     # runLuaFunction FbLabTests:runAll on the live server → PASS/FAIL lines
+tools/swg test lua [<char>]     # reloadscreenplays, then FbLabTests:runAll on the live server → PASS/FAIL lines
 tools/swg test bot              # core3client: claude-player creates a char, zones in, 30 s, logs out
 tools/swg test scenario <name>  # tools/scenarios/<name>.sh: bot acts + Lua oracle observes (gameplay tests)
 tools/swg test all              # stop if running → unit → start → lua → bot → scenarios (server left running)
@@ -101,8 +101,9 @@ tools/swg account create <user> <admin_level> [--reset]   # server's own hash re
   as `runLuaFunction FbLabTests:<fn>:<args>` or `lab fn:args` inside a scenario.
 - **Gameplay scenarios** (`tools/scenarios/*.sh`, see `lib.sh`): the bot acts through real packets
   (`--command <slash command>`, `--radial <oid> <id>`, `--converse <npcOid> --options 0,2`, `--wait n`),
-  the oracle observes. Templates: `stimpack-heals-health.sh`, `npc-conversation.sh`. Write one for every
-  mechanic change; `swg test all` runs them.
+  the oracle observes. Templates: `stimpack-heals.sh` (control round measures regen, then the command
+  round; asserts per-pool heal beyond regen), `npc-conversation.sh`. Write one for every mechanic
+  change; `swg test all` runs them.
 - Test accounts: `claude-admin` (admin_level 15), `claude-player` (admin_level 0). Passwords are in
   `~/.swg-lab/*.pass` (mode 600), never in the repo. Account hash = `SHA256(DBSecret + password + salt)`,
   salt = 32 hex chars (`AccountManager::createAccount`). `~/bin/run` resets an `admin` account that does
@@ -119,6 +120,7 @@ tools/swg account create <user> <admin_level> [--reset]   # server's own hash re
 | 0.5 | `custom-features.lua` git-ignored | `.gitignore` |
 | 1.3 | Starter gear: CDEF pistol, shirt, pants, stimpack added to `commonStartingItems` | `managers/player_creation_manager.lua` |
 | 1.7 | Shuttleport away time 300 s → 60 s (`shuttleportAwayTime`) | `managers/planet/planet_manager.lua` |
+| 1.9 | Player stimpacks (starter, crafted A–E, ranged/area, quest) heal mind too: `attributes = {0, 3, 6}` re-registered from `custom_scripts` | `custom_scripts/object/tangible/medicine/fb_stimpack_mind.lua` |
 | — | Blue frog "Combat Test Character" menu; Jedi trials no longer teleport to Yavin; FRS test build uses Defender Master | `terminal_character_builder.lua`, `jedi_trials.lua`, `PlayerManagerImplementation.cpp` |
 | 2.6 | FB-21 medical droid network (buffs, wound clear, travel) | `fb_mos_eisley_medical_droid*.lua` |
 | 2.7 | FB-72 armory droid (Mos Eisley starport + 2 weapon shops) | `fb_armory_droid*.lua` |
@@ -128,6 +130,13 @@ tools/swg account create <user> <admin_level> [--reset]   # server's own hash re
 
 Non-combat NPC templates still need positive `chanceHit`, `damageMin/Max`, `baseHAM/HAMmax` and a `mobType`
 (`MOB_NPC` / `MOB_DROID`) or the unit tests fail — copy from an existing FB mobile.
+
+**Changing an upstream object template:** don't edit the upstream file (merge conflicts). Add a file under
+`custom_scripts/object/…`, include it from `custom_scripts/object/serverobjects.lua` (loaded after every
+upstream template), modify the existing global table and call `ObjectTemplates:addTemplate(tbl, iff)` again;
+the later registration replaces the earlier one. Pattern: `fb_stimpack_mind.lua`. Restart to load.
+`~/custom-features.lua` (`FBFeatures.*` flags) is a scaffold nothing reads yet; shipped features are
+unconditional.
 
 ## Gotchas (read before writing Lua or tests) — detail in [docs/dev-notes.md](docs/dev-notes.md)
 
@@ -178,8 +187,12 @@ _Updated: 2026-10-17 (session 1 wrap-up: lab merged into unstable)_
 - Accounts: `claude-admin` (id 4, level 15), `claude-player` (id 5, level 0), `Chuckertons` (id 2, level 15)
   and `chuck` (id 3, level 0) all hashed with the custom `Core3.DBSecret` from `config-local.lua`;
   passwords in `~/.swg-lab/<user>.pass`. `config.lua` is back to the upstream default (no skip-worktree).
-- Last full cycle (2026-10-16, post-merge): 258/258 unit, 173 Lua checks, 2/2 scenarios, bot PASS after
-  the name-filter fix. Stash list empty; no stray backup files in `bin/conf`.
+- Phase 1.9 (stimpacks heal mind) shipped 2026-10-17 from `feature/phase1.9-stim-heals-mind`: Lua-only
+  template override, scenario `stimpack-heals` (9 checks), 4 new content checks. 177 Lua checks total.
+- Roadmap next: 1.4 (mission terminal level/direction), 1.5 (inventory `containerVolumeLimit` 80 → 100 in
+  `object/tangible/inventory/objects.lua`; the 20 lots half is done), 1.10 (entertainer XP without
+  audience), 1.11 (group bonus). 1.1, 1.2, 1.3, 1.6, 1.7, 1.8 were in before the lab.
+- Stash list empty; no stray backup files in `bin/conf`.
 
 ### To-do
 

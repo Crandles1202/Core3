@@ -326,6 +326,41 @@ function FbLabTests.checkQol()
 	check("qol.groupExpMultiplier_1.25", env.groupExpMultiplier == 1.25, "groupExpMultiplier=" .. tostring(env.groupExpMultiplier))
 end
 
+-- Phase 1.9: every player stimpack template re-registered by fb_stimpack_mind.lua must list
+-- health (0), action (3) and mind (6). Object templates live in another Lua state, so load the
+-- override file into a sandbox whose ObjectTemplates records what it is handed and whose unknown
+-- globals (the upstream template tables) are empty tables.
+function FbLabTests.checkStimMind()
+	local path = "scripts/custom_scripts/object/tangible/medicine/fb_stimpack_mind.lua"
+	local captured = {}
+	local env = setmetatable({
+		ObjectTemplates = { addTemplate = function(_, template, iff) captured[iff] = template.attributes end },
+	}, { __index = function(_, key)
+		local v = _G[key]
+		if v ~= nil then return v end
+		return {}
+	end })
+	env._G = env   -- the override indexes _G[name]; route that through the stub too
+	local chunk, err = loadfile(path, "t", env)
+	if chunk == nil then check("stim_mind.override_loads", false, err); return end
+	local ok, rerr = pcall(chunk)
+	if not ok then check("stim_mind.override_loads", false, rerr); return end
+
+	local n, allMind = 0, true
+	for iff, atts in pairs(captured) do
+		n = n + 1
+		if not (contains(atts, 0) and contains(atts, 3) and contains(atts, 6)) then
+			allMind = false
+			check("stim_mind." .. iff:match("([^/]+)%.iff$"), false, "attributes missing 0/3/6")
+		end
+	end
+	check("stim_mind.templates_reregistered", n == 15, n .. " templates (expected 15)")
+	check("stim_mind.all_heal_health_action_mind", allMind and n > 0)
+	check("stim_mind.included_in_serverobjects",
+		fileContains("scripts/custom_scripts/object/serverobjects.lua", "fb_stimpack_mind.lua"))
+	check("stim_mind.starter_stimpack_covered", captured["object/tangible/medicine/stimpack_sm_s1.iff"] ~= nil)
+end
+
 -- ---------------------------------------------------------------- entry points
 
 -- runLuaFunction passes the FbLabTests table as the first argument, then the ':'-separated args.
@@ -341,6 +376,7 @@ function FbLabTests:runAll(charName)
 		end
 		FbLabTests.checkShuttles()
 		FbLabTests.checkQol()
+		FbLabTests.checkStimMind()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)

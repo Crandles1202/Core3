@@ -49,6 +49,18 @@ To check a value from another state in a test, `loadfile(path, "t", env)` the fi
   objects from there.
 - The "result=[<no value>]" line is meaningless (it reads stack index 0).
 
+### Overriding an upstream object template from custom_scripts
+Object templates (`bin/scripts/object/**`) are globals in the TemplateManager Lua state, created in
+include order; `object/serverobjects.lua` includes `../custom_scripts/object/serverobjects.lua` last.
+`ObjectTemplates:addTemplate(tbl, iff)` ends in `templateCRCMap->put(crc, obj)`, which silently replaces
+an existing entry (the "duplicate template" error is commented out upstream). So a custom file can take
+the existing global, change a field and re-register it — no upstream file touched, no merge conflicts.
+Phase 1.9 does this for 15 stimpack templates (`fb_stimpack_mind.lua`): `attributes = {0, 3, 6}` makes
+`HealDamageCommand` heal mind as well, and the examine window shows "heals mind" automatically. Needs a
+restart; `reloadscreenplays` does not touch templates. Pet stimpacks and crafted `medpack_damage_*`
+already listed mind upstream. Mind is also the *cost* of `/healdamage` (50, focus-adjusted), so healing
+yourself now refunds part of it — fine for solo play.
+
 ### Mobile templates must have combat stats even for vendors
 `LuaMobileTest.LuaMobileTemplatesTest` fails on any mobile with `mobType` unset/0, `chanceHit <= 0`,
 `damageMin <= 0`, `baseHAM <= 0`. Non-combat NPCs: `mobType = MOB_NPC` (people) / `MOB_DROID`,
@@ -151,6 +163,14 @@ To check a value from another state in a test, `loadfile(path, "t", env)` the fi
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-17 — Phase 1.9.** Stimpacks heal mind. Turned out to be a template field, not C++:
+  `attributes = {0, 3, 6}` re-registered for 15 player stimpack templates from
+  `custom_scripts/object/tangible/medicine/fb_stimpack_mind.lua`. New scenario `stimpack-heals`
+  (control round measures regen: +54 per pool in a 4 s session on a fresh character; stimpack round
+  then showed "You heal yourself for 104 health, 104 action, and 104 mind damage"). Replaced the
+  health-only scenario. `swg test lua` now runs `reloadscreenplays` first so test-file edits apply
+  without a restart. Lesson: sandbox loaders must also stub `_G` (`env._G = env`) when the loaded
+  file indexes `_G[name]` directly.
 - **2026-10-16 (night) → 10-17** — `.claude/settings.json` allow-list created by Chuck and committed.
   `feature/test-lab` merged `--no-ff` into `unstable` (`fa635eaa38`) and pushed; all five merged local
   `feature/*` branches deleted. `Chuckertons` (15) and `chuck` (0) re-hashed under the custom DBSecret

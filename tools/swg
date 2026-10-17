@@ -307,6 +307,9 @@ test_lua() {
 	local fn="FbLabTests:runAll"
 	[ -n "$char" ] && fn="$fn:$char"
 	say "== lua: runLuaFunction $fn"
+	# pick up edits to fb_lab_tests.lua without a restart (its spawnMobile wrapper is reload-safe;
+	# screenplay start() is not re-run, so nothing re-spawns)
+	cmd_cmd "reloadscreenplays" --timeout 15 >/dev/null 2>&1
 	local out
 	out=$(cmd_cmd "runLuaFunction $fn" --timeout 30)
 	if [ "${LAB_QUIET:-0}" = 1 ]; then   # inside test bot: only what needs attention
