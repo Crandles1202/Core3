@@ -120,6 +120,7 @@ tools/swg account create <user> <admin_level> [--reset]   # server's own hash re
 | 0.5 | `custom-features.lua` git-ignored | `.gitignore` |
 | 1.3 | Starter gear: CDEF pistol, shirt, pants, stimpack added to `commonStartingItems` | `managers/player_creation_manager.lua` |
 | 1.7 | Shuttleport away time 300 s → 60 s (`shuttleportAwayTime`) | `managers/planet/planet_manager.lua` |
+| 1.5 | Character inventory 80 → 100 items: template re-registered (new characters) + `FBLogin` raises persisted limits on login (existing characters); Lua `SceneObject:setContainerVolumeLimit` added. Client's "/80" counter is cosmetic | `custom_scripts/object/tangible/inventory/fb_inventory_100.lua`, `custom_scripts/screenplays/fb_player_login.lua`, `LuaSceneObject.cpp` |
 | 1.9 | Player stimpacks (starter, crafted A–E, ranged/area, quest) heal mind too: `attributes = {0, 3, 6}` re-registered from `custom_scripts` | `custom_scripts/object/tangible/medicine/fb_stimpack_mind.lua` |
 | — | Blue frog "Combat Test Character" menu; Jedi trials no longer teleport to Yavin; FRS test build uses Defender Master | `terminal_character_builder.lua`, `jedi_trials.lua`, `PlayerManagerImplementation.cpp` |
 | 2.6 | FB-21 medical droid network (buffs, wound clear, travel) | `fb_mos_eisley_medical_droid*.lua` |
@@ -137,6 +138,10 @@ upstream template), modify the existing global table and call `ObjectTemplates:a
 the later registration replaces the earlier one. Pattern: `fb_stimpack_mind.lua`. Restart to load.
 `~/custom-features.lua` (`FBFeatures.*` flags) is a scaffold nothing reads yet; shipped features are
 unconditional.
+
+**Per-login fix-ups** (anything every existing character must be migrated to) go in `FBLogin.onLogin`
+(`custom_scripts/screenplays/fb_player_login.lua`), which wraps upstream `PlayerTriggers:playerLoggedIn`.
+Persisted object fields (`containerVolumeLimit`, …) are only read from the template at creation.
 
 ## Gotchas (read before writing Lua or tests) — detail in [docs/dev-notes.md](docs/dev-notes.md)
 

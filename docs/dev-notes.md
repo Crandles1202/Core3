@@ -61,6 +61,15 @@ restart; `reloadscreenplays` does not touch templates. Pet stimpacks and crafted
 already listed mind upstream. Mind is also the *cost* of `/healdamage` (50, focus-adjusted), so healing
 yourself now refunds part of it — fine for solo play.
 
+### Wrapping an upstream Lua function so it survives `reloadscreenplays`
+`reloadscreenplays` re-runs every screenplay file into the existing state, so a Lua-defined function
+you wrapped (e.g. `PlayerTriggers.playerLoggedIn`) is *put back* by its own file before your custom file
+runs again. A "wrapped already" flag then leaves it unwrapped — exactly what happened to the Phase 1.5
+login hook on its first scenario run (`swg test lua` reloads before every run). Guard by identity instead:
+`if Target.fn ~= Mine._wrapper then local up = Target.fn; Mine._wrapper = function(...) up(...) … end;
+Target.fn = Mine._wrapper end`. C-registered functions (`spawnMobile`) are not redefined by a reload, so
+a flag is fine for those.
+
 ### Mobile templates must have combat stats even for vendors
 `LuaMobileTest.LuaMobileTemplatesTest` fails on any mobile with `mobType` unset/0, `chanceHit <= 0`,
 `damageMin <= 0`, `baseHAM <= 0`. Non-combat NPCs: `mobType = MOB_NPC` (people) / `MOB_DROID`,
@@ -163,6 +172,14 @@ yourself now refunds part of it — fine for solo play.
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-17 — Phase 1.5.** Inventory 80 → 100. `containerVolumeLimit` is persisted per object and
+  only read from the template when the inventory is created, so two halves: template re-registered in
+  `custom_scripts/object/tangible/inventory/fb_inventory_100.lua` (new characters) and a login hook
+  (`fb_player_login.lua` wraps `PlayerTriggers:playerLoggedIn`, which `PlayerObjectImplementation::
+  notifyOnline` calls in the DirectorManager Lua state) that raises older inventories. Needed a one-line
+  C++ addition: `LuaSceneObject::setContainerVolumeLimit`. The client is never told the limit (not in any
+  baseline), so its "/80" counter is cosmetic; Chuck to confirm the client lets a 90th item drop in.
+  Scenario `inventory-100` reads the limit through the oracle after a login.
 - **2026-10-17 — Phase 1.9.** Stimpacks heal mind. Turned out to be a template field, not C++:
   `attributes = {0, 3, 6}` re-registered for 15 player stimpack templates from
   `custom_scripts/object/tangible/medicine/fb_stimpack_mind.lua`. New scenario `stimpack-heals`

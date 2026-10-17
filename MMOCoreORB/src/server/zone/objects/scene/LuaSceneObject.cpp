@@ -49,6 +49,7 @@ Luna<LuaSceneObject>::RegType LuaSceneObject::Register[] = {
 		{ "getContainerObjectsSize", &LuaSceneObject::getContainerObjectsSize },
 		{ "getCountableObjectsRecursive", &LuaSceneObject::getCountableObjectsRecursive },
 		{ "getContainerVolumeLimit", &LuaSceneObject::getContainerVolumeLimit },
+		{ "setContainerVolumeLimit", &LuaSceneObject::setContainerVolumeLimit },
 		{ "isContainerFull", &LuaSceneObject::isContainerFull },
 		{ "isContainerFullRecursive", &LuaSceneObject::isContainerFullRecursive },
 		{ "getSlottedObject", &LuaSceneObject::getSlottedObject },
@@ -513,6 +514,17 @@ int LuaSceneObject::getContainerVolumeLimit(lua_State* L) {
 	lua_pushnumber(L, num);
 
 	return 1;
+}
+
+// Final Boss: lets Lua raise a persisted container limit (Phase 1.5 inventory 80 -> 100 for
+// characters created before the template change; see custom_scripts/screenplays/fb_player_login.lua).
+int LuaSceneObject::setContainerVolumeLimit(lua_State* L) {
+	uint32 limit = lua_tointeger(L, -1);
+
+	Locker locker(realObject);
+	realObject->setContainerVolumeLimit(limit);
+
+	return 0;
 }
 
 int LuaSceneObject::isContainerFull(lua_State* L) {

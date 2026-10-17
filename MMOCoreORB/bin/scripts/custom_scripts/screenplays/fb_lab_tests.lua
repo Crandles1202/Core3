@@ -361,6 +361,19 @@ function FbLabTests.checkStimMind()
 	check("stim_mind.starter_stimpack_covered", captured["object/tangible/medicine/stimpack_sm_s1.iff"] ~= nil)
 end
 
+-- Phase 1.5: inventory template re-registered with 100 and the login hook that raises old ones.
+function FbLabTests.checkInventory()
+	local limit = FbLabTests:inventoryTemplateLimit()
+	check("inventory.template_limit_100", limit == "100", "limit=" .. tostring(limit))
+	check("inventory.included_in_serverobjects",
+		fileContains("scripts/custom_scripts/object/serverobjects.lua", "fb_inventory_100.lua"))
+	check("inventory.login_hook_included",
+		fileContains("scripts/custom_scripts/screenplays/screenplays.lua", "fb_player_login.lua"))
+	check("inventory.login_hook_wrapped", FBLogin ~= nil and PlayerTriggers.playerLoggedIn == FBLogin._wrapper
+		and FBLogin.INVENTORY_VOLUME == 100, "PlayerTriggers.playerLoggedIn must be FBLogin's wrapper (survives reloadscreenplays)")
+	-- the setContainerVolumeLimit binding itself is proven live by the inventory-100 scenario
+end
+
 -- ---------------------------------------------------------------- entry points
 
 -- runLuaFunction passes the FbLabTests table as the first argument, then the ':'-separated args.
@@ -377,6 +390,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkShuttles()
 		FbLabTests.checkQol()
 		FbLabTests.checkStimMind()
+		FbLabTests.checkInventory()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)
@@ -580,6 +594,57 @@ function FbLabTests:where(charName)
 end
 
 -- runLuaFunction FbLabTests:isOnline:<firstName> — cheap poll used by tools/swg test bot.
+-- inventoryLimit:<char> → the live inventory's item count and persisted containerVolumeLimit
+function FbLabTests:inventoryLimit(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "none" end
+	local pInventory = CreatureObject(pPlayer):getSlottedObject("inventory")
+	if pInventory == nil then print("ERROR " .. charName .. " has no inventory"); return "none" end
+	local limit = SceneObject(pInventory):getContainerVolumeLimit()
+	local count = SceneObject(pInventory):getCountableObjectsRecursive()
+	print(string.format("INFO inventory char=%s count=%d limit=%d", charName, count, limit))
+	return tostring(limit)
+end
+
+-- setInventoryLimit:<char>:<n> → force the persisted limit (scenarios use it to simulate an old character)
+function FbLabTests:setInventoryLimit(charName, limit)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "none" end
+	local pInventory = CreatureObject(pPlayer):getSlottedObject("inventory")
+	if pInventory == nil then print("ERROR " .. charName .. " has no inventory"); return "none" end
+	SceneObject(pInventory):setContainerVolumeLimit(tonumber(limit))
+	return FbLabTests:inventoryLimit(charName)
+end
+
+-- loginHook:<char> → run FBLogin.onLogin on a loaded character by hand, then print the inventory line
+function FbLabTests:loginHook(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "none" end
+	if FBLogin == nil then print("ERROR FBLogin not loaded in this Lua state"); return "none" end
+	FBLogin.onLogin(pPlayer)
+	return FbLabTests:inventoryLimit(charName)
+end
+
+-- inventoryTemplateLimit → what fb_inventory_100.lua registers, read in a sandbox (templates live
+-- in another Lua state)
+function FbLabTests:inventoryTemplateLimit()
+	local captured
+	local env = setmetatable({
+		ObjectTemplates = { addTemplate = function(_, template) captured = template.containerVolumeLimit end },
+	}, { __index = function(_, key)
+		local v = _G[key]
+		if v ~= nil then return v end
+		return {}
+	end })
+	env._G = env
+	local chunk, err = loadfile("scripts/custom_scripts/object/tangible/inventory/fb_inventory_100.lua", "t", env)
+	if chunk == nil then print("ERROR " .. tostring(err)); return "none" end
+	local ok, rerr = pcall(chunk)
+	if not ok then print("ERROR " .. tostring(rerr)); return "none" end
+	print("INFO inventory_template limit=" .. tostring(captured))
+	return tostring(captured)
+end
+
 function FbLabTests:isOnline(charName)
 	local pPlayer = charName and getPlayerByName(charName) or nil
 	local pGhost = pPlayer ~= nil and CreatureObject(pPlayer):getPlayerObject() or nil
