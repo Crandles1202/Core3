@@ -73,6 +73,15 @@ void ZonePacketHandler::handleMessage(Message* pack) {
 			break;
 		CASE_OPCODE("SceneDestroyObject");
 			break;
+		case 0x0E61CC92: what = "ItemSoldMessage";              // reply to CreateImmediateAuction
+			handleAuctionStatusMessage(pack, "sold");
+			break;
+		case 0x8FCBEF4A: what = "BidAuctionResponseMessage";    // reply to BidAuction
+			handleAuctionStatusMessage(pack, "bid");
+			break;
+		case 0x9499EF8C: what = "RetrieveAuctionItemResponseMessage"; // reply to RetrieveAuctionItem
+			handleAuctionStatusMessage(pack, "retrieve");
+			break;
 		}
 		break;
 
@@ -561,4 +570,18 @@ void ZonePacketHandler::handleClientRandomNameResponse(Message* pack) {
 	core->setVar("ClientRandomNameResponse/name", suggestedName.toString());
 	core->setVar("ClientRandomNameResponse/template", templatePath);
 	core->setVar("ClientRandomNameResponse/approval", approvalStatus);
+}
+
+// ItemSoldMessage / BidAuctionResponseMessage / RetrieveAuctionItemResponseMessage all carry
+// (long objectid, int status); status 0 = success, codes in the server's *Message.h headers.
+// Stored as Auction/<kind>/<oid>/status for the auction actions to poll.
+void ZonePacketHandler::handleAuctionStatusMessage(Message* pack, const char* kind) {
+	uint64 objectID = pack->parseLong();
+	uint32 status = pack->parseInt();
+
+	String key = String("Auction/") + kind + "/o" + String::valueOf(objectID);   // "o" prefix: a bare number would make the JSON pointer create an array
+	core->setVar(key + "/status", status);
+
+	info(true) << "Auction " << kind << " object=" << objectID << " status=" << status;
+	zone->signal(STRING_HASHCODE("AuctionStatus"));
 }

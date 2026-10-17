@@ -34,6 +34,8 @@ public:
 	void handleClientCreateCharacterFailed(Message* pack);
 	void handleClientRandomNameResponse(Message* pack);
 	void handleErrorMessage(Message* pack);
+	// auction replies (lab: --sell / --buy / --retrieve)
+	void handleAuctionStatusMessage(Message* pack, const char* kind);
 
 	const VectorMap<uint32, uint32>& getUnknownOpcodes() const {
 		return unknownOpcodes;
