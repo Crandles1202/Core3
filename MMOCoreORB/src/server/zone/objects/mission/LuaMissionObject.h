@@ -49,6 +49,15 @@ namespace mission {
 		int getQuestCRC(lua_State* L);
 		int isSpaceDutyMission(lua_State* L);
 
+		// Final Boss: read access for the lab oracle (tools/scenarios)
+		int getCreatorName(lua_State* L);
+		int getDifficultyLevel(lua_State* L);
+		int getStartPositionX(lua_State* L);
+		int getStartPositionY(lua_State* L);
+		int getStartPlanet(lua_State* L);
+		int getRewardCredits(lua_State* L);
+		int getTypeCRC(lua_State* L);
+
 	private:
 		MissionObject* realObject;
 	};

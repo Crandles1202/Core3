@@ -32,6 +32,13 @@ Luna<LuaMissionObject>::RegType LuaMissionObject::Register[] = {
 
 	{ "getQuestCRC", &LuaMissionObject::getQuestCRC },
 	{ "isSpaceDutyMission", &LuaMissionObject::isSpaceDutyMission },
+	{ "getCreatorName", &LuaMissionObject::getCreatorName },
+	{ "getDifficultyLevel", &LuaMissionObject::getDifficultyLevel },
+	{ "getStartPositionX", &LuaMissionObject::getStartPositionX },
+	{ "getStartPositionY", &LuaMissionObject::getStartPositionY },
+	{ "getStartPlanet", &LuaMissionObject::getStartPlanet },
+	{ "getRewardCredits", &LuaMissionObject::getRewardCredits },
+	{ "getTypeCRC", &LuaMissionObject::getTypeCRC },
 	{ 0, 0}
 };
 
@@ -351,5 +358,42 @@ int LuaMissionObject::isSpaceDutyMission(lua_State* L) {
 
 	lua_pushboolean(L, val);
 
+	return 1;
+}
+
+// ---- Final Boss: read access for the lab oracle ----------------------------------------------
+
+int LuaMissionObject::getCreatorName(lua_State* L) {
+	lua_pushstring(L, realObject->getCreatorName().toString().toCharArray());
+	return 1;
+}
+
+int LuaMissionObject::getDifficultyLevel(lua_State* L) {
+	lua_pushinteger(L, realObject->getDifficultyLevel());
+	return 1;
+}
+
+int LuaMissionObject::getStartPositionX(lua_State* L) {
+	lua_pushnumber(L, realObject->getStartPositionX());
+	return 1;
+}
+
+int LuaMissionObject::getStartPositionY(lua_State* L) {
+	lua_pushnumber(L, realObject->getStartPositionY());
+	return 1;
+}
+
+int LuaMissionObject::getStartPlanet(lua_State* L) {
+	lua_pushstring(L, realObject->getStartPlanet().toCharArray());
+	return 1;
+}
+
+int LuaMissionObject::getRewardCredits(lua_State* L) {
+	lua_pushinteger(L, realObject->getRewardCredits());
+	return 1;
+}
+
+int LuaMissionObject::getTypeCRC(lua_State* L) {
+	lua_pushinteger(L, realObject->getTypeCRC());
 	return 1;
 }

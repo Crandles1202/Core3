@@ -56,7 +56,9 @@ runs and tests. Host: WSL2 Debian 12.
 - Boot takes ~45 s; ready when the console prints `[Core] initialized` followed by `READY`.
 - Console commands (`help` lists them): `shutdown`, `save`, `info`, `chars`, `reloadscreenplays`,
   `reloadmanager`, `loglevel`, `broadcast`, `runLuaFunction module:function[:arg...]`, `dumpcfg`.
-- Known baseline log noise: `[MantisDatabase0] ERROR - 1045: Access denied for user 'swgemu'` (and the
+- Known baseline log noise (filtered by `swg logs --errors`): `[TemplateManager] ERROR - unknown appearance
+  type SPRT` (upstream: the server's appearance loader has no sprite reader; fires when a character with
+  randomized missions in their bag logs in), and `[MantisDatabase0] ERROR - 1045: Access denied for user 'swgemu'` (and the
   matching `[Console]` line). Not ours; ignore when diffing ERROR lines.
 
 ## Branch and release rules
@@ -120,6 +122,7 @@ tools/swg account create <user> <admin_level> [--reset]   # server's own hash re
 | 0.5 | `custom-features.lua` git-ignored | `.gitignore` |
 | 1.3 | Starter gear: CDEF pistol, shirt, pants, stimpack added to `commonStartingItems` | `managers/player_creation_manager.lua` |
 | 1.7 | Shuttleport away time 300 s → 60 s (`shuttleportAwayTime`) | `managers/planet/planet_manager.lua` |
+| 1.4 | Mission terminals show level + direction: creator name becomes `Name [Lvl 23 - 1.4km NE]` when a list is randomized (`fbApplyMissionHint` in `populateMissionList`); `core3client --missions <terminalOid>`; Lua mission getters | `MissionManagerImplementation.cpp`, `LuaMissionObject.cpp`, `client/actions/MissionListAction.cpp` |
 | 1.5 | Character inventory 80 → 100 items: template re-registered (new characters) + `FBLogin` raises persisted limits on login (existing characters); Lua `SceneObject:setContainerVolumeLimit` added. Client's "/80" counter is cosmetic | `custom_scripts/object/tangible/inventory/fb_inventory_100.lua`, `custom_scripts/screenplays/fb_player_login.lua`, `LuaSceneObject.cpp` |
 | 1.9 | Player stimpacks (starter, crafted A–E, ranged/area, quest) heal mind too: `attributes = {0, 3, 6}` re-registered from `custom_scripts` | `custom_scripts/object/tangible/medicine/fb_stimpack_mind.lua` |
 | — | Blue frog "Combat Test Character" menu; Jedi trials no longer teleport to Yavin; FRS test build uses Defender Master | `terminal_character_builder.lua`, `jedi_trials.lua`, `PlayerManagerImplementation.cpp` |

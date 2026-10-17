@@ -586,6 +586,55 @@ void MissionManagerImplementation::handleMissionAbort(MissionObject* mission, Cr
 	removeMission(mission, player);
 }
 
+// Final Boss Phase 1.4: mission terminals show level and direction. The client renders the title
+// and description from its own string files, so the only free-text field it displays per mission
+// is the creator name. Append "[Lvl N · 1.4km NE]" to it: N = the mission's own difficulty level
+// (lair level for destroy missions), distance/compass from the player at the terminal to the
+// mission's start position; a different planet shows the planet name instead.
+namespace {
+	String fbCompass(float dx, float dy) {
+		static const char* points[] = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" };
+		float deg = Math::rad2deg(atan2(dx, dy));   // Core3: +y is north, +x is east
+		if (deg < 0) deg += 360.f;
+		int idx = (int) ((deg + 22.5f) / 45.f) % 8;
+		return points[idx];
+	}
+
+	void fbApplyMissionHint(CreatureObject* player, MissionObject* mission) {
+		if (mission == nullptr || mission->getTypeCRC() == 0)
+			return;
+
+		String creator = mission->getCreatorName().toString();
+		int bracket = creator.indexOf(" [Lvl ");
+		if (bracket != -1)
+			creator = creator.subString(0, bracket);   // re-randomized mission: replace, don't stack
+
+		StringBuffer hint;
+		hint << creator << " [Lvl " << mission->getDifficultyLevel();
+
+		Zone* zone = player->getZone();
+		if (zone != nullptr && mission->getStartPlanet() == zone->getZoneName()) {
+			Vector3 here = player->getWorldPosition();
+			float dx = mission->getStartPositionX() - here.getX();
+			float dy = mission->getStartPositionY() - here.getY();
+			float dist = sqrt(dx * dx + dy * dy);
+			if (dist >= 50.f) {
+				hint << " - ";
+				if (dist >= 1000.f)
+					hint << String::valueOf((int) (dist / 100.f) / 10.f) << "km ";
+				else
+					hint << (int) dist << "m ";
+				hint << fbCompass(dx, dy);
+			}
+		} else if (!mission->getStartPlanet().isEmpty()) {
+			hint << " - " << mission->getStartPlanet();
+		}
+
+		hint << "]";
+		mission->setCreatorName(hint.toString());
+	}
+}
+
 void MissionManagerImplementation::populateMissionList(MissionTerminal* missionTerminal, CreatureObject* player, int counter) {
 	Locker crossLocker(missionTerminal, player);
 
@@ -605,6 +654,18 @@ void MissionManagerImplementation::populateMissionList(MissionTerminal* missionT
 		randomizeFactionTerminalMissions(player, counter, slicer, Factions::FACTIONIMPERIAL);
 	} else if (missionTerminal->isRebelTerminal()) {
 		randomizeFactionTerminalMissions(player, counter, slicer, Factions::FACTIONREBEL);
+	}
+
+	// Final Boss Phase 1.4: level + direction hint on every freshly randomized mission
+	SceneObject* missionBag = player->getSlottedObject("mission_bag");
+	if (missionBag != nullptr) {
+		for (int i = 0; i < missionBag->getContainerObjectsSize(); ++i) {
+			Reference<MissionObject*> mission = missionBag->getContainerObject(i).castTo<MissionObject*>();
+			if (mission == nullptr)
+				continue;
+			Locker locker(mission);
+			fbApplyMissionHint(player, mission);
+		}
 	}
 
 	// Remove the Slicer from the List. They have received their one time mission reward increase.

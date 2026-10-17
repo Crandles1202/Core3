@@ -172,6 +172,24 @@ a flag is fine for those.
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-17 — Phase 1.4.** Mission terminals show level + direction. Mission title/description are
+  StringIds the client resolves from its own STFs, so no free text there; the one free-text field the
+  client shows per mission is the creator name (`MissionObjectMessage3` unicode). A static helper in
+  `MissionManagerImplementation.cpp` (no IDL change) appends `[Lvl N - 1.4km NE]` (ASCII only: the creator name is a byte-per-char unicode string, UTF-8 renders as junk) after
+  `populateMissionList` randomizes the bag: N = `getDifficultyLevel()` (lair level for destroy, 5 for
+  deliver), distance/compass from the player's position to the mission start position (Core3: +y north,
+  +x east), planet name when it differs. Re-randomized missions get the bracket replaced, not stacked.
+  Test plumbing: `core3client --missions <terminalOid>` sends ObjController `0xF5`
+  (`MissionListRequestCallback`: int, byte flags, byte seq, long terminal). ObjController wire rule:
+  `ObjectControllerMessageCallback::parse` consumes priority, type, objid only; every callback's own
+  `parse()` starts with the "size" int. One extra int shifted the terminal id into garbage and the
+  server answered `@skill_teacher:skill_terminal_disabled` (its "terminal not found" message); Lua `LuaMissionObject`
+  gained read getters; oracle `spawnObjectNear` / `destroyObject` / `missions`. Scenario
+  `mission-hints` spawns a general terminal next to the character (terminals in the world have no
+  Lua lookup by template), requests the list, asserts every mission carries `[Lvl N` and at least
+  half carry distance+compass. Side finding: once a character has randomized missions in the bag,
+  every login logs `[TemplateManager] ERROR - unknown appearance type SPRT` (upstream, harmless: no
+  sprite appearance reader). Added to `NOISE_RE` in `tools/swg`.
 - **2026-10-17 — Phase 1.5.** Inventory 80 → 100. `containerVolumeLimit` is persisted per object and
   only read from the template when the inventory is created, so two halves: template re-registered in
   `custom_scripts/object/tangible/inventory/fb_inventory_100.lua` (new characters) and a login hook

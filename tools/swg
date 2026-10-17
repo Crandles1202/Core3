@@ -42,7 +42,7 @@ STOP_TIMEOUT=${SWG_STOP_TIMEOUT:-240}
 CMD_TIMEOUT=${SWG_CMD_TIMEOUT:-20}
 
 # ERROR lines that appear on every boot and are not ours (see CLAUDE.md "Known baseline log noise").
-NOISE_RE='MantisDatabase0\] ERROR - 1045|\[Console\] ERROR - 1045'
+NOISE_RE='MantisDatabase0\] ERROR - 1045|\[Console\] ERROR - 1045|TemplateManager\] ERROR - unknown appearance type SPRT'
 
 # ---------------------------------------------------------------- helpers
 
