@@ -755,6 +755,7 @@ includeFile("tasks/tatooine/fb_parts_dealer_conv_handler.lua")   -- Phase 2.3
 includeFile("tasks/tatooine/fb_parts_dealer.lua")
 includeFile("tasks/tatooine/fb_traveling_merchant_conv_handler.lua")   -- Phase 2.9
 includeFile("tasks/tatooine/fb_traveling_merchant.lua")
+includeFile("tasks/tatooine/fb_ambient_life.lua")   -- Phase 3.7
 includeFile("tasks/tatooine/fb_droid_dispenser_conv_handler.lua")
 includeFile("tasks/tatooine/fb_droid_dispenser.lua")
 includeFile("tasks/tatooine/fb_pet_dealer_conv_handler.lua")

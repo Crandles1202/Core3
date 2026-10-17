@@ -441,6 +441,24 @@ function FbLabTests.checkTravelingMerchant()
 	check("merchant.purchase_is_public", type(FbTravelingMerchant.purchase) == "function" and type(FbTravelingMerchant.move) == "function")
 end
 
+-- Phase 3.7: every ambient seat has a live patron in the right cell, and the beat is quiet with nobody near.
+function FbLabTests.checkAmbientLife()
+	if FbAmbientLife == nil then check("ambient.loaded", false); return end
+	for li, loc in ipairs(FbAmbientLife.locations) do
+		local alive, rightCell = 0, 0
+		for si = 1, #loc.seats do
+			local pMobile = FbAmbientLife:seatMobile(li, si)
+			if pMobile ~= nil then
+				alive = alive + 1
+				if SceneObject(pMobile):getParentID() == loc.seats[si].cell then rightCell = rightCell + 1 end
+			end
+		end
+		check("ambient." .. loc.key .. ".all_seats_filled", alive == #loc.seats, alive .. "/" .. #loc.seats)
+		check("ambient." .. loc.key .. ".patrons_in_their_cells", rightCell == alive, rightCell .. "/" .. alive)
+		check("ambient." .. loc.key .. ".has_lines", #loc.chatter >= 8 and #loc.newcomer >= 3 and #loc.emotes >= 4)
+	end
+end
+
 -- ---------------------------------------------------------------- entry points
 
 -- runLuaFunction passes the FbLabTests table as the first argument, then the ':'-separated args.
@@ -462,6 +480,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkSchematicBroker()
 		FbLabTests.checkPartsDealer()
 		FbLabTests.checkTravelingMerchant()
+		FbLabTests.checkAmbientLife()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)
@@ -902,6 +921,40 @@ function FbLabTests:buyMerchant(charName, itemName)
 		end
 	end
 	print("ERROR '" .. tostring(itemName) .. "' is not in this visit's stock"); return "bad_item"
+end
+
+-- travelCell:<char>:<planet>:<x>:<z>:<y>:<cellID> → teleport into a building cell (travel: is outdoors only)
+function FbLabTests:travelCell(charName, planet, x, z, y, cellID)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	SceneObject(pPlayer):switchZone(planet, tonumber(x), tonumber(z), tonumber(y), tonumber(cellID))
+	print(string.format("INFO travelCell char=%s planet=%s x=%s z=%s y=%s cell=%s", charName, planet, x, z, y, cellID))
+	return "ok"
+end
+
+-- ambient[:<loc>] → one INFO seat line per ambient patron of a location (default 1)
+function FbLabTests:ambient(li)
+	if FbAmbientLife == nil then print("ERROR FbAmbientLife not loaded"); return "none" end
+	local status = FbAmbientLife:status(li or 1)
+	local n = 0
+	for line in status:gmatch("[^\n]+") do print("INFO ambient " .. line); n = n + 1 end
+	return tostring(n)
+end
+
+-- ambientTick[:<loc>] → force one ambience beat; prints what happened
+function FbLabTests:ambientTick(li)
+	if FbAmbientLife == nil then print("ERROR FbAmbientLife not loaded"); return "none" end
+	local result = FbAmbientLife:tick(li or 1)
+	print("INFO ambientTick result=" .. tostring(result))
+	return tostring(result)
+end
+
+-- ambientChurn[:<loc>[:<seat>]] → replace the patron in a seat; prints the new oid
+function FbLabTests:ambientChurn(li, si)
+	if FbAmbientLife == nil then print("ERROR FbAmbientLife not loaded"); return "none" end
+	local oid = FbAmbientLife:churn(li or 1, si)
+	print("INFO ambientChurn seat=" .. tostring(si or "random") .. " oid=" .. tostring(oid))
+	return tostring(oid)
 end
 
 function FbLabTests:isOnline(charName)
