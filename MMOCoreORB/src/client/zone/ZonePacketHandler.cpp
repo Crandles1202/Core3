@@ -437,6 +437,25 @@ void ZonePacketHandler::handleObjectControllerMessage(Message* pack) {
 			zone->signal(STRING_HASHCODE("NpcConversationOptions"));
 			break;
 		}
+		case 0xF4: { // SpatialChat: what NPCs and players say out loud near us
+			uint64 senderID = pack->parseLong();
+			uint64 chatTargetID = pack->parseLong();
+			UnicodeString message;
+			pack->parseUnicode(message);
+			// remaining fields (volume, type, mood, flags, language, ...) are not needed here
+
+			String text = message.toString();
+			info(true) << "SpatialChat from=" << senderID << (chatTargetID != 0 ? " to=" + String::valueOf(chatTargetID) : String("")) << ": " << text;
+
+			auto& kept = core->vars[JSONSerializationType::json_pointer("/SpatialChat")];
+			if (!kept.is_array())
+				kept = JSONSerializationType::array();
+			if (kept.size() >= 50)
+				kept.erase(kept.begin());
+			kept.push_back(std::string(String::valueOf(senderID).toCharArray()) + ": " + std::string(text.toCharArray()));
+			zone->signal(STRING_HASHCODE("SpatialChat"));
+			break;
+		}
 		case 0xDE: { // StopNpcConversation
 			uint64 npcID = pack->parseLong();
 

@@ -128,6 +128,7 @@ tools/swg account create <user> <admin_level> [--reset]   # server's own hash re
 | 1.7 | Shuttleport away time 300 s → 60 s (`shuttleportAwayTime`) | `managers/planet/planet_manager.lua` |
 | 2.2 | Schematic broker "Dannik Vosa" at Mos Eisley starport (3535, -4813): 33 single-use loot schematics in three catalogues (decor, kitchen/cantina, workshop/tech incl. recyclers), 250–5000 cr cash, each labelled with and gated by its template's `requiredSkill`. Master-tier sets (Mandalorian, Geonosian, corvette) excluded, as are the 38 upstream stub templates with no draft. `FbSchematicBroker:purchase(pPlayer, cat, item)` is public for the lab | `fb_schematic_broker*.lua` (screenplay, conv handler, conv template, mobile) |
 | 2.3 | Parts dealer "Tamsin Rook" at Mos Eisley starport (3535, -4818): 46 crafting sub-components (weapon parts, armor segments, chemistry parts) generated through `createLoot` with the `component_loot` item names, standard rolled at level 30, advanced at level 60 for 3× the price | `fb_parts_dealer*.lua` |
+| 3.7 | Ambient life, first location Mos Eisley cantina: 5 extra patrons who mutter Huttese-flavoured lines, gesture, notice newcomers and change seats every 5–10 min — only while a player is within 20 m (stock Core3 already seats ~40 silent patrons there via `cities/tatooine_mos_eisley.lua`). Data-driven `FbAmbientLife.locations`; `tick`/`churn`/`status` public | `fb_ambient_life.lua` |
 | 2.9 | Traveling merchant "Ozlo Vantrek": one NPC that moves between 9 audited city stops every 3 h (persistent server event `FbMerchantMove`, state in quest status), selling 8 of a 34-item cosmetic pool (paintings, jewellery, hats, goggles) that rotates per visit. `FbTravelingMerchant:move()` / `:status()` are public for the lab | `fb_traveling_merchant*.lua` |
 | 2.10 | Vendor maintenance auto-skim: on a player vendor 5% of each sale (`Core3.Vendor.SaleMaintenancePercent`) goes into the vendor's maintenance, the owner banks 95%; bazaar sales untouched. **Not lab-verified** (a vendor needs an owned structure); Chuck checks with a real vendor | `AuctionManagerImplementation.cpp` (`doInstantBuy`), `VendorDataComponent.h` |
 | 2.5 | Bazaar limits config-driven with new defaults: 100 listings per character (was 25), one-year bazaar and vendor listing times (were 7 / 30 days); price caps unchanged. Scenario `bazaar-listings` lists 26 items. Keys `Core3.Auction.MaxSales`, `.CommodityExpireSeconds`, `.VendorExpireSeconds`, `.MaxBazaarPrice` in `config-local.lua` override | `AuctionManagerImplementation.cpp` (helpers at top) |
@@ -207,15 +208,16 @@ _Updated: 2026-10-17 (session 2: 1.9, 1.5, 1.4, 1.10, 2.5, 2.2, 2.3 shipped)_
   hook + Lua setter), 1.4 mission level/direction hints (C++ `populateMissionList`), 1.10 no-grind
   entertainer XP (C++ `awardEntertainerExperience`), 2.5 config-driven bazaar limits (C++), 2.2 schematic
   broker NPC (Lua), 2.3 parts dealer NPC (Lua, loot-generated components). Phase 1 complete (1.11 loot half
-  shipped unverified). Phase 2 left: 2.4 loot kits. 2.9 traveling merchant shipped. 2.10 shipped unverified (needs an owned
+  shipped unverified). Phase 2 left: 2.4 loot kits (scoping question open). Phase 3 started: 3.7 ambient life (Mos Eisley cantina). 2.10 shipped unverified (needs an owned
   structure to place a vendor; the bot has no SUI driving yet).
 - Binaries: `bin/core3` and `bin/core3client` built 2026-10-17 from this tree (`swg build`).
-- Lab now: 258 unit, 232 Lua checks, bot, 10 scenarios (+1 manual audit) (`stimpack-heals`, `npc-conversation`,
+- Lab now: 258 unit, 235 Lua checks, bot, 11 scenarios (+1 manual audit) (`stimpack-heals`, `npc-conversation`,
   `inventory-100`, `mission-hints`, `entertainer-xp`, `schematic-broker`, `schematic-broker-ui` (real SUI path),
-  `parts-dealer`, `bazaar-listings`, `traveling-merchant`; manual: `merchant-stops`). Oracle
+  `parts-dealer`, `bazaar-listings`, `traveling-merchant`, `ambient-cantina`; manual: `merchant-stops`). Oracle
   additions today: `inventoryLimit`, `setInventoryLimit`, `loginHook`, `spawnObjectNear`, `destroyObject`,
   `missions`, `xp`, `cash`, `buySchematic` / `buyPart` / `buyMerchant` (by item name), `hasSchematic`, `merchant`,
-  `merchantMove[:stop]`, `merchantStops`, `questStatus`. Bot
+  `merchantMove[:stop]`, `merchantStops`, `questStatus`, `travelCell`, `ambient`, `ambientTick`, `ambientChurn`. The
+  client now logs spatial chat (`SpatialChat from=<oid>: text`, last 50 kept in its var store). Bot
   additions: `--missions <terminalOid>`, `--command-nowait`, `--sell`/`--buy`/`--retrieve`, `--sui`, `--keep-going`, and an
   end-of-run `=> #N {...}` results dump that `bot_action_status`/`bot_action_count` read. Known gap: the client does not decode every
   StringId system-message shape (e.g. `@loot_schematic:not_enough_skill` arrived as an empty line).
@@ -242,7 +244,8 @@ _Updated: 2026-10-17 (session 2: 1.9, 1.5, 1.4, 1.10, 2.5, 2.2, 2.3 shipped)_
   Tamsin Rook next to him and examine its stats; (2.5) list 26+ items on a bazaar; (2.10) sell something from one of your vendors — 5% of the
   price lands in its maintenance, 95% in your bank; (2.9) `swg cmd "runLuaFunction FbLabTests:merchant"` tells
   you where Ozlo is; visit him, buy something, check he is not standing in a wall at that stop (the lab
-  audited all nine stops as reachable, but not as pretty).
+  audited all nine stops as reachable, but not as pretty); (3.7) sit in the Mos Eisley cantina for a minute —
+  patrons mutter and gesture, one notices you, and over 5–10 min a face at a table changes.
   Then `swg snap save phase1-quickwins` and tag `chuck-stable-20261017`.
 - [ ] Lab characters are followed by the new-player helper droid (R2-H4), which opens a SUI greeting every
   second (visible in every bot log). Harmless for the scenarios now that `--sui` scans all windows, but

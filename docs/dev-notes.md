@@ -182,6 +182,20 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-17 — Phase 3.7 (first location).** Ambient cantina life. Finding first: stock Core3's city
+  screenplays (`screenplays/cities/tatooine_mos_eisley.lua`, base `cities/city.lua`) already seat ~40
+  patrons with moods (`npc_sitting_chair`, `npc_standing_drinking`, "conversation", …) in the Mos Eisley
+  cantina (cells 1082876/1082877), so 3.7 adds behaviour, not bodies: `FbAmbientLife` spawns five extra
+  patrons (stock `patron*` creature templates, random moods) and runs two in-memory `createEvent` loops
+  per location — a beat every 25–45 s (spatial chatter 65 % / emote otherwise, a newcomer line when a
+  player id is seen for the first time since the last beat) and a churn every 5–10 min (one seat's
+  patron despawns and a different face sits down). Beats are quiet when `getPlayersInRange(20)` is empty
+  for every seat, so an empty server stays silent. Seat oids live in quest status
+  (`FbAmbientLife.<key>.seatN`) because the event callbacks run in whichever Lua state picks them up.
+  `createEvent(ms, play, callback, pObject, args)` accepts `nil` for the object. Lab: `travelCell` oracle
+  (`switchZone` with a cell id), `ambient`/`ambientTick`/`ambientChurn`, and the client now decodes
+  `SpatialChat` (ObjController 0xF4: long sender, long target, unicode text, …) so a scenario can prove a
+  spoken line reached a player. Scenario `ambient-cantina`.
 - **2026-10-17 — Phase 1.11 (loot half).** `CreatureManagerImplementation::droidHarvest…/notifyDestruction`
   kill-loot site: after the normal `createLoot`, a grouped killer gets a second `createLoot` roll with
   probability `Core3.Loot.GroupBonusChance` % (default 25), logged as its own `NPCLOOT` transaction with
