@@ -172,6 +172,10 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   default, because `config-local.lua` is parsed *after* `config.lua` and sets `Core3.DBSecret` to the
   same value (`ConfigManager::getDBSecret` reads `Core3.DBSecret`). One place for the secret, no
   hidden local edits that a `git stash`/`checkout` could clobber.
+- **Branch first, then edit.** The 3.8 cantina work was started on `unstable` straight after a merge and
+  had to be moved onto a branch with `git switch -c` before committing (uncommitted changes travel
+  with the switch, so it is recoverable, but it is the wrong order). First command of every item:
+  `git switch -c feature/<name>`.
 - **Scripted doc edits need a diff check.** A Python rewrite of the CLAUDE.md status block duplicated
   ~90 lines (two copies of the shipped table, gotchas, permissions, status) and the 2.2 merge carried
   it. The tell was `CLAUDE.md | 97 +++` in a merge that should have touched a few lines. Before
