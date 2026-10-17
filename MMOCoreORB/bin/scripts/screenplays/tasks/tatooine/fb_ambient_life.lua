@@ -15,6 +15,7 @@ FbAmbientLife = ScreenPlay:new {
 	chatterSeconds = { 25, 45 },      -- beat interval while players are near
 	churnSeconds = { 300, 600 },      -- how often one seat changes hands
 	noticeRange = 20,                 -- metres: a player this close keeps the room "alive"
+	galaxyShare = 35,                 -- % of spoken beats that are galaxy news (FbGalaxyChatter) instead of local lines
 }
 
 FbAmbientLife.locations = {
@@ -111,6 +112,34 @@ FbAmbientLife.locations = {
 		},
 		emotes = { "shrug_shoulders", "explain", "slow_down", "point_to_self", "nod_head_multiple" },
 	},
+	{
+		-- outdoors: travellers waiting outside the Mos Eisley starport (cell 0, height from the terrain)
+		key = "mos_eisley_starport", label = "Mos Eisley Starport (outside)", planet = "tatooine",
+		anchor = { x = 3508, z = 5, y = -4797, cell = 0 },
+		seats = {
+			{ x = 3504, y = -4794, dir = 140, cell = 0 },
+			{ x = 3511, y = -4792, dir = 220, cell = 0 },
+			{ x = 3498, y = -4800, dir = 60,  cell = 0 },
+		},
+		templates = { "commoner_tatooine", "commoner", "businessman", "patron_ithorian", "commoner_old" },
+		moods = { "bored", "worried", "conversation", "calm", "npc_standing_drinking" },
+		chatter = {
+			"Shuttle's late. Shuttle's always late.",
+			"Two hundred credits to Bestine? I could walk it. I won't, but I could.",
+			"Customs went through my bags twice. Twice!",
+			"If that droid asks me one more time whether I'd like to see the medical centre...",
+			"Anybody know a decent cantina? Not that one. The other one.",
+			"I'm not standing near the Wookiee. You stand near the Wookiee.",
+			"Three days on a freighter and the first thing I smell is bantha. Welcome home.",
+			"They searched the Rodian for an hour. Me? Waved straight through. I'm not sure that's a compliment.",
+		},
+		newcomer = {
+			"You waiting for the shuttle too? Get comfortable.",
+			"Just arrived? Mind your purse past the starport gate.",
+			"Another passenger. Line forms behind me, friend.",
+		},
+		emotes = { "shrug_shoulders", "sigh_deeply", "slow_down", "rub_chin_thoughtful", "nod_head_once" },
+	},
 }
 
 registerScreenPlay("FbAmbientLife", true)
@@ -139,7 +168,9 @@ function FbAmbientLife:spawnSeat(li, si)
 	local loc = self.locations[li]
 	local seat = loc.seats[si]
 	local template = pick(loc.templates)
-	local pMobile = spawnMobile(loc.planet, template, 0, seat.x, seat.z, seat.y, seat.dir, seat.cell)
+	local z = seat.z
+	if z == nil then z = getTerrainHeightAt(loc.planet, seat.x, seat.y) end   -- outdoor seat
+	local pMobile = spawnMobile(loc.planet, template, 0, seat.x, z, seat.y, seat.dir, seat.cell or 0)
 	if pMobile == nil then
 		printf("FbAmbientLife: could not spawn %s at %s seat %d\n", template, loc.label, si)
 		return nil
@@ -226,6 +257,14 @@ function FbAmbientLife:tick(li)
 		return "newcomer:" .. line
 	end
 	if getRandomNumber(1, 100) <= 65 then
+		-- Phase 3.6: a share of the talk is galaxy news rather than local colour
+		if FbGalaxyChatter ~= nil and getRandomNumber(1, 100) <= self.galaxyShare then
+			local news = FbGalaxyChatter.pick()
+			if news ~= nil then
+				spatialChat(pSpeaker, news)
+				return "galaxy:" .. news
+			end
+		end
 		local line = pick(loc.chatter)
 		spatialChat(pSpeaker, line)
 		return "chat:" .. line

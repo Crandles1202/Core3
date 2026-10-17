@@ -459,6 +459,24 @@ function FbLabTests.checkAmbientLife()
 	end
 end
 
+-- Phase 3.6: galaxy chatter has a static pool, reports the merchant's current city, and expires news.
+function FbLabTests.checkGalaxyChatter()
+	if FbGalaxyChatter == nil then check("galaxy.loaded", false); return end
+	check("galaxy.static_pool", #FbGalaxyChatter.static >= 8, #FbGalaxyChatter.static .. " lines")
+	local live = FbGalaxyChatter.liveLines()
+	local merchantLine = false
+	if FbTravelingMerchant ~= nil then
+		local label = FbTravelingMerchant.stops[FbTravelingMerchant:currentStop()].label
+		for _, l in ipairs(live) do if l:find(label, 1, true) then merchantLine = true end end
+	end
+	check("galaxy.mentions_merchant_city", merchantLine, table.concat(live, " | "))
+	FbGalaxyChatter.addNews("labtest_expired", "This line must never be heard.", -10)
+	local heard = false
+	for _, l in ipairs(FbGalaxyChatter.lines()) do if l == "This line must never be heard." then heard = true end end
+	check("galaxy.expired_news_dropped", not heard)
+	check("galaxy.ambient_uses_it", FbAmbientLife ~= nil and (FbAmbientLife.galaxyShare or 0) > 0)
+end
+
 -- ---------------------------------------------------------------- entry points
 
 -- runLuaFunction passes the FbLabTests table as the first argument, then the ':'-separated args.
@@ -481,6 +499,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkPartsDealer()
 		FbLabTests.checkTravelingMerchant()
 		FbLabTests.checkAmbientLife()
+		FbLabTests.checkGalaxyChatter()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)
@@ -929,6 +948,23 @@ function FbLabTests:travelCell(charName, planet, x, z, y, cellID)
 	if pPlayer == nil then return "offline" end
 	SceneObject(pPlayer):switchZone(planet, tonumber(x), tonumber(z), tonumber(y), tonumber(cellID))
 	print(string.format("INFO travelCell char=%s planet=%s x=%s z=%s y=%s cell=%s", charName, planet, x, z, y, cellID))
+	return "ok"
+end
+
+-- galaxyNews → every line the galaxy chatter can say right now (static + live + posted news)
+function FbLabTests:galaxyNews()
+	if FbGalaxyChatter == nil then print("ERROR FbGalaxyChatter not loaded"); return "none" end
+	local lines = FbGalaxyChatter.lines()
+	for i, l in ipairs(lines) do print(string.format("INFO galaxy_line i=%d text=%s", i, l)) end
+	print("INFO galaxy static=" .. #FbGalaxyChatter.static .. " live=" .. #FbGalaxyChatter.liveLines() .. " news=" .. #FbGalaxyChatter.newsLines() .. " total=" .. #lines)
+	return tostring(#lines)
+end
+
+-- galaxyAddNews:<key>:<ttlSeconds>:<text> → post a dated news line (what the Phase 3.5 ticker will do)
+function FbLabTests:galaxyAddNews(key, ttl, text)
+	if FbGalaxyChatter == nil then print("ERROR FbGalaxyChatter not loaded"); return "none" end
+	FbGalaxyChatter.addNews(key, text, tonumber(ttl))
+	print("INFO galaxy_news_added key=" .. tostring(key))
 	return "ok"
 end
 

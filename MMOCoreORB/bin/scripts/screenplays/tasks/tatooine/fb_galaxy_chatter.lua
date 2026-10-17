@@ -1,0 +1,85 @@
+-- fb_galaxy_chatter.lua — Phase 3.6: galaxy chatter.
+--
+-- One shared pool of "what people are talking about" lines that FbAmbientLife mixes into every
+-- location's local chatter. Two sources:
+--   * static galaxy news (roadmap: "static for now"), and
+--   * live facts the server already knows: where the traveling merchant is this visit and which
+--     phase the Bestine election is in. Phase 3.5 (story ticker) will push into addNews().
+-- Public: FbGalaxyChatter.lines() -> array of strings; FbGalaxyChatter.addNews(key, line, ttlSeconds).
+
+FbGalaxyChatter = {
+	static = {
+		"Did you hear about the Imperial garrison on Naboo? Doubled overnight.",
+		"They say a Rebel cell got rolled up on Corellia. CorSec's not talking.",
+		"Hutt freighters are running Kessel spice through Nal Hutta again. Prices are up.",
+		"Bounty went out on some senator. Nobody knows which one. Everybody's guessing.",
+		"Dantooine's quiet. Too quiet. Nobody goes to Dantooine for nothing.",
+		"A whole Star Destroyer parked over Talus last week. Just sat there.",
+		"Lok's getting worse. Nym's people shot at a supply ship, I heard.",
+		"The Empire's hiring on Yavin. Don't ask what for.",
+		"Shuttle fares are up again. Blame the blockade, blame the Hutts, blame anyone.",
+		"My cousin on Rori swears she saw a Jedi. My cousin also drinks.",
+	},
+}
+
+-- addNews(key, line, ttlSeconds): a dated line that expires; stored in quest status so every Lua
+-- state and the next server start see it. Keys must not contain ':'.
+function FbGalaxyChatter.addNews(key, line, ttlSeconds)
+	local expires = os.time() + (tonumber(ttlSeconds) or 7 * 24 * 3600)
+	setQuestStatus("FbGalaxyChatter.news." .. key, tostring(expires) .. "|" .. line)
+	local keys = getQuestStatus("FbGalaxyChatter.newsKeys") or ""
+	if not keys:find("," .. key .. ",", 1, true) then
+		setQuestStatus("FbGalaxyChatter.newsKeys", keys .. "," .. key .. ",")
+	end
+end
+
+function FbGalaxyChatter.newsLines()
+	local out = {}
+	local keys = getQuestStatus("FbGalaxyChatter.newsKeys") or ""
+	for key in keys:gmatch("[^,]+") do
+		local raw = getQuestStatus("FbGalaxyChatter.news." .. key)
+		if raw ~= nil and raw ~= "" then
+			local expires, line = raw:match("^(%d+)|(.*)$")
+			if expires ~= nil and tonumber(expires) > os.time() then out[#out + 1] = line end
+		end
+	end
+	return out
+end
+
+-- Live facts, each guarded: a missing screenplay or a Lua error just drops that line.
+function FbGalaxyChatter.liveLines()
+	local out = {}
+	pcall(function()
+		if FbTravelingMerchant ~= nil then
+			local stop = FbTravelingMerchant.stops[FbTravelingMerchant:currentStop()]
+			if stop ~= nil then
+				out[#out + 1] = "That traveling merchant, Ozlo? Someone saw him setting up at " .. stop.label .. ". Won't be there long."
+			end
+		end
+	end)
+	pcall(function()
+		if BestineElection ~= nil and type(BestineElection.getCurrentPhase) == "function" then
+			local phase = BestineElection:getCurrentPhase()
+			if phase == 1 then
+				out[#out + 1] = "Bestine's election is on. Both candidates are promising lower water taxes. Both are lying."
+			elseif phase ~= nil then
+				out[#out + 1] = "Election's over in Bestine. Half the town's sulking about it."
+			end
+		end
+	end)
+	return out
+end
+
+function FbGalaxyChatter.lines()
+	local all = {}
+	for _, l in ipairs(FbGalaxyChatter.static) do all[#all + 1] = l end
+	for _, l in ipairs(FbGalaxyChatter.newsLines()) do all[#all + 1] = l end
+	for _, l in ipairs(FbGalaxyChatter.liveLines()) do all[#all + 1] = l end
+	return all
+end
+
+function FbGalaxyChatter.pick()
+	local all = FbGalaxyChatter.lines()
+	if #all == 0 then return nil end
+	return all[getRandomNumber(1, #all)]
+end

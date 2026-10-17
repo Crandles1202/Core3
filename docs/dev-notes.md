@@ -186,6 +186,15 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-17 — Phase 3.6.** Galaxy chatter as a module (`fb_galaxy_chatter.lua`, included before
+  `fb_ambient_life.lua`): `lines()` = 10 static news lines + live facts (merchant's current stop label
+  via `FbTravelingMerchant:currentStop()`, Bestine election phase, each wrapped in `pcall`) + dated
+  news posted with `addNews(key, line, ttl)` into quest status (`FbGalaxyChatter.news.<key>` =
+  `<expires>|<line>`, key list in `FbGalaxyChatter.newsKeys`; expired entries are skipped). The 3.5
+  story ticker will call `addNews`. `FbAmbientLife.tick` spends `galaxyShare` (35 %) of spoken beats on
+  it and returns `galaxy:<text>`. Also added an outdoor ambient location (starport travellers: seats
+  without `z` get `getTerrainHeightAt`, cell 0). Scenario `galaxy-chatter` posts a bulletin, listens
+  to beats until a galaxy line is heard, confirms the client received it, then expires the bulletin.
 - **2026-10-17 — Phase 3.7 (first location).** Ambient cantina life. Finding first: stock Core3's city
   screenplays (`screenplays/cities/tatooine_mos_eisley.lua`, base `cities/city.lua`) already seat ~40
   patrons with moods (`npc_sitting_chair`, `npc_standing_drinking`, "conversation", …) in the Mos Eisley
