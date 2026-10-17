@@ -6,6 +6,7 @@
  */
 
 #include "server/zone/managers/creature/CreatureManager.h"
+#include "conf/ConfigManager.h"
 #include "server/zone/objects/creature/ai/CreatureTemplate.h"
 #include "CreatureTemplateManager.h"
 #include "SpawnAreaMap.h"
@@ -701,6 +702,25 @@ int CreatureManagerImplementation::notifyDestruction(TangibleObject* destructor,
 				trx.commit(true);
 			} else if (trx.isEnabled() && !trx.isAborted()) {
 				trx.abort() << "createLoot failed for ai object for unknown reason.";
+			}
+
+			// Final Boss Phase 1.11: grouped kills get a second loot roll some of the time
+			// (Core3.Loot.GroupBonusChance percent, default 25) - a carrot for grouping, never a
+			// penalty for playing alone. The second roll uses the creature's normal loot tables.
+			if (player->isGrouped() && destructedObject->isNonPlayerCreatureObject() && !destructedObject->isEventMob()) {
+				int bonusChance = ConfigManager::instance()->getInt("Core3.Loot.GroupBonusChance", 25);
+
+				if (bonusChance > 0 && System::random(99) < bonusChance) {
+					TransactionLog trxBonus(TrxCode::NPCLOOT, destructedObject);
+					trxBonus.addState("destructor", destructorObjectID);
+					trxBonus.addState("fbGroupLootBonus", bonusChance);
+
+					if (lootManager->createLoot(trxBonus, creatureInventory, destructedObject)) {
+						trxBonus.commit(true);
+					} else if (trxBonus.isEnabled() && !trxBonus.isAborted()) {
+						trxBonus.abort() << "group bonus createLoot failed.";
+					}
+				}
 			}
 		}
 
