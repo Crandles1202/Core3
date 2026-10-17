@@ -63,6 +63,7 @@ runs and tests. Host: WSL2 Debian 12.
 
 - `unstable` is the main branch (tracks `origin/unstable`). Upstream: `swgemu/unstable`.
 - New work goes on `feature/<name>` branched from `unstable`, then merged into `unstable` with `--no-ff`.
+  Doc-only touch-ups (status, to-do ticks) may go straight onto `unstable`.
 - Stable points are tagged `chuck-stable-YYYYMMDD` (the older `stable-20260523` tag predates this convention).
 - Remotes: `origin` (crandles1202/Core3, the only push target), `swgemu` (upstream), `mtg` (ModTheGalaxy),
   `flurry`, `orkwerks` — all non-origin remotes are fetch-only.
@@ -187,9 +188,8 @@ _Updated: 2026-10-17 (session 1 wrap-up: lab merged into unstable)_
   once Chuck has play-tested the Phase 2 NPCs.
 - [x] **Phase 0.2 — DBSecret.** All four accounts re-hashed under the custom secret; guide SQL updated.
 - [x] Snapshot `post-phase2` taken.
-- [ ] **Chuck:** `git push origin --delete feature/qol-starter-gear` and
-  `git remote set-url origin https://github.com/Crandles1202/Core3.git` (GitHub reports the repo moved to
-  the capitalised name; both commands are refused for Claude).
+- [x] Remote cleanup (Chuck, 2026-10-17): `origin/feature/qol-starter-gear` deleted, origin URL now
+  `https://github.com/Crandles1202/Core3.git`. Only `origin/unstable` remains on the fork.
 - [ ] **Chuck: starter stimpack is unusable by non-medics** (`stimpack_sm_s1` needs `healing_ability >= 5`,
   a fresh character has 0 — found by the stimpack scenario). Decide: own starter template with
   `medicineUse = 0`, a small `healing_ability` grant, or a different consumable. Ties into Phase 1.9.
