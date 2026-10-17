@@ -233,7 +233,7 @@ SET @username \= 'newuser';
 
 SET @password \= 'theirpassword';
 
-SET @db\_secret \= 'swgemus3cr37\!';
+SET @db\_secret \= '<Core3.DBSecret from bin/conf/config-local.lua>';
 
 SET @salt \= SUBSTRING(SHA1(RAND()), 1, 32);
 
@@ -258,7 +258,7 @@ SET @username \= 'chuck';
 
 SET @new\_password \= 'newpassword';
 
-SET @db\_secret \= 'swgemus3cr37\!';
+SET @db\_secret \= '<Core3.DBSecret from bin/conf/config-local.lua>';
 
 UPDATE accounts
 
@@ -280,7 +280,7 @@ For accounts with a salt (any modern account):
 
 stored\_password \= SHA256(DBSecret \+ password \+ salt)
 
-Where `DBSecret` lives in `config.lua` (currently `swgemus3cr37!` — see gotcha about changing this). Hex output, stored as a string.
+Where `DBSecret` is `Core3.DBSecret` from `config-local.lua` (this server uses its own value since 2026-10-16; `config.lua` keeps the upstream default and is overridden). Hex output, stored as a string. `tools/swg account create <user> <level> [--reset]` does all of this for you.
 
 For legacy accounts with empty salt (very old):
 
@@ -551,11 +551,10 @@ Not SHA1, not SHA256 of just password+salt — the DBSecret prefix matters. See 
 
 **The default `DBSecret` is `swgemus3cr37!`**, set in `config.lua`. The file's own comment says "Change this\!"
 
-**Fix before exposing the server publicly:** add to `config-local.lua`:
-
-DBSecret \= "some\_long\_random\_string\_only\_you\_know",
-
-Then re-hash any existing accounts with the new secret (or wipe them and recreate).
+**Done on this server (Phase 0.2, 2026-10-16):** `config-local.lua` sets `Core3.DBSecret` to a private
+64-character value (it is the `Core3` table entry that `ConfigManager::getDBSecret` reads, not a top-level
+`DBSecret`), `config.lua` is left at the upstream default, and all four accounts were re-hashed with
+`tools/swg account create <user> <level> --reset`. Changing the secret again means re-hashing every account.
 
 ### SWGEmu uses UDP, not TCP
 
@@ -858,7 +857,7 @@ SET @username \= 'chuck';
 
 SET @password \= '<choose\_a\_password>';
 
-SET @db\_secret \= 'swgemus3cr37\!';
+SET @db\_secret \= '<Core3.DBSecret from bin/conf/config-local.lua>';
 
 SET @salt \= SUBSTRING(SHA1(RAND()), 1, 32);
 

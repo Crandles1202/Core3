@@ -8,9 +8,8 @@ runs and tests. Host: WSL2 Debian 12.
 - [docs/SWG-Server-Roadmap.md](docs/SWG-Server-Roadmap.md) — vision, design questions Q1–Q10, Phases 0–6 with
   numbered items (commit messages reference these, e.g. "Phase 1.7").
 - [docs/SWG-PreCU-Server-Guide.md](docs/SWG-PreCU-Server-Guide.md) — Chuck's setup/ops guide: client connection,
-  WSL networking, account SQL, gotchas, from-scratch rebuild. DB password is redacted in the repo copy.
-  Stale on one point: it says DBSecret is still the default `swgemus3cr37!`; `config-local.lua` now sets
-  its own `Core3.DBSecret`.
+  WSL networking, account SQL, gotchas, from-scratch rebuild. DB password and DBSecret are redacted in
+  the repo copy (`config-local.lua` holds the real values).
 - [docs/dev-notes.md](docs/dev-notes.md) — the long-form gotchas list and per-session log. Append to it.
 
 ## Paths
@@ -107,9 +106,10 @@ tools/swg account create <user> <admin_level> [--reset]   # server's own hash re
   `~/.swg-lab/*.pass` (mode 600), never in the repo. Account hash = `SHA256(DBSecret + password + salt)`,
   salt = 32 hex chars (`AccountManager::createAccount`). `~/bin/run` resets an `admin` account that does
   not exist in this DB, so that line is a no-op.
-- Bot characters are named `Lab<6 letters>` on account `claude-player` and accumulate; delete them from the
-  blue-frog/`chars` side when they get in the way.
-- Snapshot `baseline` = post-upstream-merge boot, taken 2026-10-16 before any bot characters existed.
+- Bot characters are named `Lab` + three consonant-vowel syllables (random letters trip the server's
+  name filter) on account `claude-player` and accumulate; delete them when they get in the way.
+- Snapshots: `baseline` (2026-10-16, post-upstream-merge, before Phase 2 and any bot characters) and
+  `post-phase2` (2026-10-16, `unstable` @ `fa635eaa38`, after the Phase 2 merge).
 
 ## Shipped Final Boss content (what tests should protect)
 
@@ -140,10 +140,13 @@ Non-combat NPC templates still need positive `chanceHit`, `damageMin/Max`, `base
   not re-run, nothing re-spawns. Mobile/conversation/manager Lua needs a restart.
 - Non-combat mobiles still need `mobType`, `chanceHit`, `damageMin/Max`, `baseHAM/HAMmax` > 0 or the
   unit tests fail.
-- Non-admin accounts create one character per hour; failed attempts reset the timer.
-- Claude can't merge into `unstable`, `git submodule update`, push, write `.claude/settings.json`, or
-  reset a real account's password unless `.claude/settings.json` allow-lists it (see Permissions).
-  Otherwise Claude works on `feature/*` and asks.
+- Non-admin accounts create one character per hour; failed attempts reset the timer. The name filter
+  runs first, so a declined name does not count.
+- Allow-list rules match the whole command: run `git merge`, `git push`, `tools/swg …` as a single
+  command per Bash call, never inside `a && b`. The classifier still refuses some things (remote
+  URL changes, remote branch deletes, `git checkout -- <conf file>`); hand those to Chuck.
+- `git ls-files -v | grep ^S` shows skip-worktree files. `resource_manager_spawns.lua` is written by the
+  server and must stay that way; nothing else should carry the flag.
 
 ## Permissions (Chuck-owned)
 
@@ -163,31 +166,30 @@ Settings are read at session start, so restart Claude Code after creating it.
 
 ## Current status
 
-_Updated: 2026-10-16 (session 1: test lab set up)_
+_Updated: 2026-10-17 (session 1 wrap-up: lab merged into unstable)_
 
-- Branches:
-  - `unstable` @ `d57444a85e` (Phase 2.1 Vex Renn) = `origin/unstable`. **Does not yet contain the upstream
-    merge** — the tooling refused to let Claude merge into `unstable`; Chuck does that (see to-do).
-  - `feature/test-lab` (current) = `unstable` + CLAUDE.md/docs + `tools/swg` + lab tests + `core3client`
-    fixes + **merge of `swgemu/unstable` (14 commits, engine3 → `4cbf3933`)** + **merge of
-    `feature/phase2-mos-eisley-npcs`** (12 new Mos Eisley NPCs, field probe, armory/stim-dealer rewrites,
-    buff tuning; all 15 FB mobiles given valid combat stats). This is the intended new `unstable`.
-    Last full cycle: boot 40 s / 0 ERROR, 258/258 unit, 174/174 Lua checks, bot PASS.
-  - `feature/phase2-mos-eisley-npcs` is fully merged; can be deleted.
-- Binaries: `bin/core3` and `bin/core3client` built 2026-10-16 from `feature/test-lab`.
-- Snapshot `baseline` (`~/swg-snapshots/baseline`, 702 MB) predates the Phase 2 merge and bot characters.
-- Test accounts `claude-admin` (id 4) and `claude-player` (id 5) exist; login verified via core3client.
-- Old auto-stash dropped 2026-10-16; stash list is empty.
+- `unstable` @ `fa635eaa38` = `origin/unstable`: upstream sync (14 commits, engine3 `4cbf3933`), Phase 2
+  Mos Eisley NPCs (15 FB mobiles with valid combat stats), CLAUDE.md/docs, `tools/swg`, lab tests,
+  `core3client` actions. No feature branches exist locally; `origin/feature/qol-starter-gear` is merged
+  and awaits deletion by Chuck.
+- Binaries: `bin/core3` and `bin/core3client` built 2026-10-16 from this tree.
+- Snapshots: `baseline` (702 MB, pre-Phase 2) and `post-phase2` (700 MB, `unstable` @ `fa635eaa38`).
+- Accounts: `claude-admin` (id 4, level 15), `claude-player` (id 5, level 0), `Chuckertons` (id 2, level 15)
+  and `chuck` (id 3, level 0) all hashed with the custom `Core3.DBSecret` from `config-local.lua`;
+  passwords in `~/.swg-lab/<user>.pass`. `config.lua` is back to the upstream default (no skip-worktree).
+- Last full cycle (2026-10-16, post-merge): 258/258 unit, 173 Lua checks, 2/2 scenarios, bot PASS after
+  the name-filter fix. Stash list empty; no stray backup files in `bin/conf`.
 
 ### To-do
 
-- [x] `.claude/settings.json` created by Chuck 2026-10-16 (allow-list in Permissions, plus `~/bin/build` and `mysql swgemu`).
-- [ ] **Chuck (or Claude once permitted):** `git merge --no-ff feature/test-lab` into `unstable`,
-  `git submodule update --init --recursive`, push. Tag `chuck-stable-20261016` once play-tested.
-- [ ] **Phase 0.2 — DBSecret.** The custom secret is live (test accounts prove it). `Chuckertons` and
-  `chuck` need `tools/swg account create <user> <level> --reset` (Claude's attempt was blocked; Chuck runs
-  it) — new passwords land in `~/.swg-lab/<user>.pass`. Then fix the guide's SQL (old default secret).
-- [ ] Take a fresh `swg snap save post-phase2` once Chuck has play-tested the new NPCs.
+- [x] `.claude/settings.json` created by Chuck 2026-10-16 and committed.
+- [x] `feature/test-lab` merged into `unstable` and pushed (2026-10-16). Tag `chuck-stable-20261016`
+  once Chuck has play-tested the Phase 2 NPCs.
+- [x] **Phase 0.2 — DBSecret.** All four accounts re-hashed under the custom secret; guide SQL updated.
+- [x] Snapshot `post-phase2` taken.
+- [ ] **Chuck:** `git push origin --delete feature/qol-starter-gear` and
+  `git remote set-url origin https://github.com/Crandles1202/Core3.git` (GitHub reports the repo moved to
+  the capitalised name; both commands are refused for Claude).
 - [ ] **Chuck: starter stimpack is unusable by non-medics** (`stimpack_sm_s1` needs `healing_ability >= 5`,
   a fresh character has 0 — found by the stimpack scenario). Decide: own starter template with
   `medicineUse = 0`, a small `healing_ability` grant, or a different consumable. Ties into Phase 1.9.

@@ -131,8 +131,35 @@ To check a value from another state in a test, `loadfile(path, "t", env)` the fi
   for any new test file, or name it without "test".
 - Never commit: `conf/config-local.lua*`, `~/.env`, `~/.my.cnf`, `~/.swg-lab/`, anything with the
   MySQL password or `DBSecret`. The guide in `docs/` had the password redacted before it went in.
+- **Allow-list rules match the whole command string.** `Bash(git merge *)` allows `git merge …` but
+  not `cd x && git merge …` or `git switch … && git merge …`. Run one allow-listed command per Bash
+  call; chain only unprivileged steps. Settings are read at session start, so a freshly created
+  `.claude/settings.json` does nothing until Claude Code restarts. Even then the classifier still
+  refused (2026-10-16): `git remote set-url`, `git push --delete <branch>`, `git checkout -- <file>`
+  on a config file, and a `grep -F "$secret"` over tracked files ("credential materialization").
+- **`skip-worktree` files.** `git ls-files -v | grep ^S` lists them; `git status` hides their changes.
+  `bin/scripts/managers/resource_manager_spawns.lua` is *written by the server* (`ResourceSpawner`
+  dumps resource spawns into it, +23k lines) — upstream's own docker firstboot marks it
+  assume-unchanged. Keep the flag; never commit it. `bin/conf/config.lua` also carried the flag with
+  the real `DBSecret` pasted in (May setup); removed 2026-10-16 and the file restored to the upstream
+  default, because `config-local.lua` is parsed *after* `config.lua` and sets `Core3.DBSecret` to the
+  same value (`ConfigManager::getDBSecret` reads `Core3.DBSecret`). One place for the secret, no
+  hidden local edits that a `git stash`/`checkout` could clobber.
+- **Name filter.** `scripts/managers/name/name_manager.lua` holds regexes (DEV/GM/CSR/QA/profanity…)
+  that `PlayerManager::checkPlayerName` runs *before* the one-per-hour rate limit, so a declined name
+  costs nothing. Random letter soup gets declined (`Labvartgm` → `name_declined_developer`); the bot
+  now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-16 (night) → 10-17** — `.claude/settings.json` allow-list created by Chuck and committed.
+  `feature/test-lab` merged `--no-ff` into `unstable` (`fa635eaa38`) and pushed; all five merged local
+  `feature/*` branches deleted. `Chuckertons` (15) and `chuck` (0) re-hashed under the custom DBSecret
+  (passwords in `~/.swg-lab/`). Snapshot `post-phase2` taken (700 MB). Housekeeping: four May
+  `conf/*.backup-*` files removed, `config.lua` skip-worktree edit undone (secret lives only in
+  `config-local.lua`), resource spawns file left skip-worktree on purpose. `swg test all` after the
+  merge: 258 unit, 173 Lua, 2 scenarios PASS; bot FAIL on a filtered random name → CV-syllable names +
+  retry. Still Chuck's: delete `origin/feature/qol-starter-gear`, `git remote set-url origin` to the
+  capitalised URL GitHub now reports, Windows Task Scheduler backup.
 - **2026-10-16 (evening)** — Test infrastructure: core3client gained command/radial/converse/wait
   actions and decodes command results, conversations and string-id messages; `fb_lab_tests.lua` grew
   an oracle/stage-hand API (ham, inflict, heal, wound, give, skill, travel, npc, findItem…);

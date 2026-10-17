@@ -326,6 +326,14 @@ test_lua() {
 	say "== lua: PASS ($pass checks)"; return 0
 }
 
+# bot_name: "Lab" + 3 pronounceable consonant-vowel pairs. Random letter soup trips the server's
+# name filter (e.g. "Labvartgm" -> name_declined_developer); CV syllables almost never do.
+bot_name() {
+	local c=bdfklmnprstv v=aeiou n="Lab" i
+	for i in 1 2 3; do n+=${c:RANDOM%${#c}:1}${v:RANDOM%${#v}:1}; done
+	printf '%s' "$n"
+}
+
 # bot_session create|reuse <char>: one core3client run; sets lua_rc, returns the client's exit code.
 bot_session() {
 	local mode=$1 char=$2
@@ -377,13 +385,20 @@ test_bot() {
 		char=$newest; mode=reuse
 		say "== bot: $user zones in as existing '$char' (created one <1 h ago), waits ${wait}s, logs out"
 	else
-		# fresh character name each run so creation is exercised; first letter upper, rest lower
-		char="Lab$(tr -dc a-z </dev/urandom | head -c 6)"; mode=create
+		# fresh character name each run so creation is exercised
+		char=$(bot_name); mode=create
 		say "== bot: $user creates '$char', zones in, waits ${wait}s, logs out"
 	fi
 
-	local rc lua_rc
+	local rc lua_rc tries=0
 	bot_session "$mode" "$char"; rc=$?
+	# The name filter (scripts/managers/name/name_manager.lua) runs before the rate limit, so a
+	# declined name costs nothing: pick another and try again.
+	while (( rc != 0 && tries < 3 )) && [ "$mode" = create ] && grep -aq 'name_declined' "$clog"; do
+		tries=$((tries + 1)); char=$(bot_name)
+		say "   name declined by the server filter; retrying as '$char'"
+		bot_session create "$char"; rc=$?
+	done
 	if (( rc != 0 )) && [ "$mode" = create ] && grep -aq 'one character per hour' "$clog" && [ -n "$newest" ]; then
 		say "   creation rate-limited by the server; retrying as existing '$newest'"
 		char=$newest
