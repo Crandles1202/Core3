@@ -36,6 +36,24 @@
 #include "server/zone/objects/factorycrate/FactoryCrate.h"
 #include "server/zone/objects/transaction/TransactionLog.h"
 
+// Final Boss Phase 2.5: bazaar limits are config-driven (Core3.Auction.* in conf/config-local.lua)
+// with solo-friendly defaults: 100 listings per character and one-year listing times (upstream:
+// 25 and 7 days bazaar / 30 days vendor). The price caps keep upstream defaults but can be tuned.
+namespace {
+	inline int fbMaxSales() {
+		return ConfigManager::instance()->getInt("Core3.Auction.MaxSales", 100);
+	}
+	inline uint64 fbCommodityExpire() {
+		return ConfigManager::instance()->getInt("Core3.Auction.CommodityExpireSeconds", 365 * 24 * 3600);
+	}
+	inline uint64 fbVendorExpire() {
+		return ConfigManager::instance()->getInt("Core3.Auction.VendorExpireSeconds", 365 * 24 * 3600);
+	}
+	inline int fbMaxBazaarPrice() {
+		return ConfigManager::instance()->getInt("Core3.Auction.MaxBazaarPrice", AuctionManager::MAXBAZAARPRICE);
+	}
+}
+
 void AuctionManagerImplementation::initialize() {
 	Locker locker(_this.getReferenceUnsafeStaticCast());
 
@@ -122,8 +140,8 @@ void AuctionManagerImplementation::initialize() {
 			continue;
 		}
 
-		uint64 vendorExpire = time(0) + AuctionManager::VENDOREXPIREPERIOD;
-		uint64 commodityExpire = time(0) + AuctionManager::COMMODITYEXPIREPERIOD;
+		uint64 vendorExpire = time(0) + fbVendorExpire();
+		uint64 commodityExpire = time(0) + fbCommodityExpire();
 
 		if (auctionItem->getStatus() == AuctionItem::FORSALE && auctionItem->getExpireTime() > vendorExpire) {
 			auto oldExpire = auctionItem->getExpireTime();
@@ -396,8 +414,8 @@ void AuctionManagerImplementation::doAuctionMaint(TerminalListVector* items, con
 				continue;
 			}
 
-			uint64 vendorExpire = time(0) + AuctionManager::VENDOREXPIREPERIOD;
-			uint64 commodityExpire = time(0) + AuctionManager::COMMODITYEXPIREPERIOD;
+			uint64 vendorExpire = time(0) + fbVendorExpire();
+			uint64 commodityExpire = time(0) + fbCommodityExpire();
 			bool updatedExpire = false;
 			uint64 oldExpire = 0;
 
@@ -861,7 +879,7 @@ int AuctionManagerImplementation::checkSaleItem(CreatureObject* player, SceneObj
 					return ItemSoldMessage::TOOMANYITEMS;
 			}
 		} else {
-			if (auctionMap->getCommodityCount(player) >= MAXSALES)
+			if (auctionMap->getCommodityCount(player) >= fbMaxSales())
 				return ItemSoldMessage::TOOMANYITEMS;
 		}
 
@@ -870,10 +888,10 @@ int AuctionManagerImplementation::checkSaleItem(CreatureObject* player, SceneObj
 	}
 
 	if (vendor->isBazaarTerminal()) {
-		if (auctionMap->getCommodityCount(player) >= MAXSALES)
+		if (auctionMap->getCommodityCount(player) >= fbMaxSales())
 			return ItemSoldMessage::TOOMANYITEMS;
 
-		if (price > MAXBAZAARPRICE)
+		if (price > fbMaxBazaarPrice())
 			return ItemSoldMessage::INVALIDSALEPRICE;
 
 		if (player->getBankCredits() < SALESFEE)
@@ -908,8 +926,8 @@ AuctionItem* AuctionManagerImplementation::createVendorItem(CreatureObject* play
 	if (zone == nullptr)
 		return nullptr;
 
-	uint64 vendorExpire = time(0) + AuctionManager::VENDOREXPIREPERIOD;
-	uint64 commodityExpire = time(0) + AuctionManager::COMMODITYEXPIREPERIOD;
+	uint64 vendorExpire = time(0) + fbVendorExpire();
+	uint64 commodityExpire = time(0) + fbCommodityExpire();
 
 	String playername = player->getFirstName().toLowerCase();
 	String descr = description.toString();
@@ -990,7 +1008,7 @@ AuctionItem* AuctionManagerImplementation::createVendorItem(CreatureObject* play
 }
 
 int AuctionManagerImplementation::checkBidAuction(CreatureObject* player, AuctionItem* item, int price1, int price2) {
-	if ((price1 > MAXBAZAARPRICE || price2 > MAXBAZAARPRICE) && item->isOnBazaar()) {
+	if ((price1 > fbMaxBazaarPrice() || price2 > fbMaxBazaarPrice()) && item->isOnBazaar()) {
 		return BidAuctionResponseMessage::PRICEOVERFLOW;
 	}
 
@@ -1040,9 +1058,9 @@ void AuctionManagerImplementation::doInstantBuy(CreatureObject* player, AuctionI
 	Locker locker(item);
 
 	if(item->isOnBazaar() || item->getStatus() == AuctionItem::OFFERED)
-		availableTime = currentTime + AuctionManager::COMMODITYEXPIREPERIOD;
+		availableTime = currentTime + fbCommodityExpire();
 	else
-		availableTime = currentTime + AuctionManager::VENDOREXPIREPERIOD;
+		availableTime = currentTime + fbVendorExpire();
 
 	updateAuctionOwner(item, player);
 
@@ -1995,9 +2013,9 @@ void AuctionManagerImplementation::cancelItem(CreatureObject* player, uint64 obj
 		}
 
 		if(item->isOnBazaar())
-			availableTime = currentTime + AuctionManager::COMMODITYEXPIREPERIOD;
+			availableTime = currentTime + fbCommodityExpire();
 		else {
-			availableTime = currentTime + AuctionManager::VENDOREXPIREPERIOD;
+			availableTime = currentTime + fbVendorExpire();
 			forSaleOnVendor = true;
 		}
 
@@ -2010,7 +2028,7 @@ void AuctionManagerImplementation::cancelItem(CreatureObject* player, uint64 obj
 			return;
 		}
 		/// 7 Days
-		availableTime = currentTime + AuctionManager::COMMODITYEXPIREPERIOD;
+		availableTime = currentTime + fbCommodityExpire();
 
 	} else {
 		BaseMessage* msg = new CancelLiveAuctionResponseMessage(objectID, CancelLiveAuctionResponseMessage::ALREADYCOMPLETED);
@@ -2112,9 +2130,9 @@ void AuctionManagerImplementation::expireSale(AuctionItem* item) {
 	uint64 availableTime = 0;
 
 	if(item->isOnBazaar())
-		availableTime = currentTime + AuctionManager::COMMODITYEXPIREPERIOD;
+		availableTime = currentTime + fbCommodityExpire();
 	else
-		availableTime = currentTime + AuctionManager::VENDOREXPIREPERIOD;
+		availableTime = currentTime + fbVendorExpire();
 
 	item->setStatus(AuctionItem::EXPIRED);
 	item->setExpireTime(availableTime);
@@ -2153,9 +2171,9 @@ void AuctionManagerImplementation::expireBidAuction(AuctionItem* item) {
 	uint64 availableTime = 0;
 
 	if(item->isOnBazaar())
-		availableTime = currentTime + AuctionManager::COMMODITYEXPIREPERIOD;
+		availableTime = currentTime + fbCommodityExpire();
 	else
-		availableTime = currentTime + AuctionManager::VENDOREXPIREPERIOD;
+		availableTime = currentTime + fbVendorExpire();
 
 	item->setStatus(AuctionItem::EXPIRED);
 	item->setExpireTime(availableTime);
@@ -2192,7 +2210,7 @@ void AuctionManagerImplementation::expireAuction(AuctionItem* item) {
 
 	Time expireTime;
 	uint64 currentTime = expireTime.getMiliTime() / 1000;
-	uint64 availableTime = currentTime + AuctionManager::COMMODITYEXPIREPERIOD;
+	uint64 availableTime = currentTime + fbCommodityExpire();
 
 	Locker locker(item);
 	item->setExpireTime(availableTime);
