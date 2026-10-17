@@ -36,6 +36,8 @@ public:
 	void handleErrorMessage(Message* pack);
 	// auction replies (lab: --sell / --buy / --retrieve)
 	void handleAuctionStatusMessage(Message* pack, const char* kind);
+	// server UI windows (lab: --sui)
+	void handleSuiCreatePageMessage(Message* pack);
 
 	const VectorMap<uint32, uint32>& getUnknownOpcodes() const {
 		return unknownOpcodes;

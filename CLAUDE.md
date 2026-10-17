@@ -104,8 +104,8 @@ tools/swg account create <user> <admin_level> [--reset]   # server's own hash re
 - **Gameplay scenarios** (`tools/scenarios/*.sh`, see `lib.sh`): the bot acts through real packets
   (`--command <slash command>` [`--args`, `--command-nowait` for commands that send no queue ack such as
   `startdance`], `--radial <oid> <id>`, `--converse <npcOid> --options 0,2`, `--missions <terminalOid>`,
-  `--wait n`, `--sell <item> <vendor> <price>` / `--buy <item> <price>` / `--retrieve <item> <vendor>` for bazaars;
-  `--keep-going` runs on after a failed action),
+  `--wait n`, `--sell <item> <vendor> <price>` / `--buy <item> <price>` / `--retrieve <item> <vendor>` for bazaars; `--sui <row|text> [--sui-match <title fragment>]` answers server UI windows (list boxes by
+  row index or row text, input boxes by text); `--keep-going` runs on after a failed action),
   the oracle observes. Templates: `stimpack-heals.sh` (control round measures regen, then the command
   round; asserts per-pool heal beyond regen), `npc-conversation.sh`. Write one for every mechanic
   change; `swg test all` runs them.
@@ -205,11 +205,12 @@ _Updated: 2026-10-17 (session 2: 1.9, 1.5, 1.4, 1.10, 2.5, 2.2, 2.3 shipped)_
   1.11 loot half. Phase 2 left: 2.4 loot kits, 2.9 traveling merchant. 2.10 shipped unverified (needs an owned
   structure to place a vendor; the bot has no SUI driving yet).
 - Binaries: `bin/core3` and `bin/core3client` built 2026-10-17 from this tree (`swg build`).
-- Lab now: 258 unit, 214 Lua checks, bot, 8 scenarios (`stimpack-heals`, `npc-conversation`,
-  `inventory-100`, `mission-hints`, `entertainer-xp`, `schematic-broker`, `parts-dealer`, `bazaar-listings`). Oracle
+- Lab now: 258 unit, 214 Lua checks, bot, 9 scenarios (`stimpack-heals`, `npc-conversation`,
+  `inventory-100`, `mission-hints`, `entertainer-xp`, `schematic-broker`, `schematic-broker-ui` (real SUI path),
+  `parts-dealer`, `bazaar-listings`). Oracle
   additions today: `inventoryLimit`, `setInventoryLimit`, `loginHook`, `spawnObjectNear`, `destroyObject`,
   `missions`, `xp`, `cash`, `buySchematic` / `buyPart` (by indexes or item name), `hasSchematic`. Bot
-  additions: `--missions <terminalOid>`, `--command-nowait`, `--sell`/`--buy`/`--retrieve`, `--keep-going`, and an
+  additions: `--missions <terminalOid>`, `--command-nowait`, `--sell`/`--buy`/`--retrieve`, `--sui`, `--keep-going`, and an
   end-of-run `=> #N {...}` results dump that `bot_action_status`/`bot_action_count` read. Known gap: the client does not decode every
   StringId system-message shape (e.g. `@loot_schematic:not_enough_skill` arrived as an empty line).
 - Snapshots: `baseline` (702 MB, pre-Phase 2) and `post-phase2` (700 MB, `unstable` @ `fa635eaa38`,
@@ -235,6 +236,9 @@ _Updated: 2026-10-17 (session 2: 1.9, 1.5, 1.4, 1.10, 2.5, 2.2, 2.3 shipped)_
   Tamsin Rook next to him and examine its stats; (2.5) list 26+ items on a bazaar; (2.10) sell something from one of your vendors — 5% of the
   price lands in its maintenance, 95% in your bank.
   Then `swg snap save phase1-quickwins` and tag `chuck-stable-20261017`.
+- [ ] Lab characters are followed by the new-player helper droid (R2-H4), which opens a SUI greeting every
+  second (visible in every bot log). Harmless for the scenarios now that `--sui` scans all windows, but
+  noisy; fix by letting lab accounts skip the tutorial or by finishing it once per character.
 - [ ] **Chuck: starter stimpack is unusable by non-medics** (`stimpack_sm_s1` needs `healing_ability >= 5`,
   a fresh character has 0 — found by the stimpack scenario). Decide: own starter template with
   `medicineUse = 0`, a small `healing_ability` grant, or a different consumable. Ties into Phase 1.9.

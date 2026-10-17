@@ -51,6 +51,9 @@ void ZonePacketHandler::handleMessage(Message* pack) {
 			break;
 		CASE_OPCODE("ChatRoomList");
 			break;
+		case 0xD44B7259: what = "SuiCreatePageMessage";
+			handleSuiCreatePageMessage(pack);
+			break;
 		}
 		break;
 	case 3:
@@ -584,4 +587,81 @@ void ZonePacketHandler::handleAuctionStatusMessage(Message* pack, const char* ki
 
 	info(true) << "Auction " << kind << " object=" << objectID << " status=" << status;
 	zone->signal(STRING_HASHCODE("AuctionStatus"));
+}
+
+// SuiCreatePageMessage (0xD44B7259, opcount 2): int pageId, ascii rootPage, int commandCount,
+// commands (byte type, int wideCount, unicode..., int narrowCount, ascii...), then a footer the bot
+// does not need. Both the Lua page boxes (SuiPageData) and the legacy C++ boxes
+// (SuiBoxImplementation::insertOption) serialize commands this way:
+//   3 setProperty   wide[0]=value   narrow[0]=widget narrow[1]=property   (titles, prompts, list rows)
+//   4 addDataItem   wide[0]=value   narrow[0]=dataSource narrow[1]=name     (row declaration)
+//   5 subscribeToEvent narrow[0]=parent narrow[1]=eventType(1 byte) narrow[2]=callback
+// Stored under Sui/p<id>/{root,title,prompt,rowCount,rows/<n>,okEvent,cancelEvent} and Sui/last.
+void ZonePacketHandler::handleSuiCreatePageMessage(Message* pack) {
+	uint32 pageId = pack->parseInt();
+	String root;
+	pack->parseAscii(root);
+	int commandCount = pack->parseInt();
+
+	String base = "Sui/p" + String::valueOf(pageId);
+	core->setVar(base + "/root", root);
+	core->setVar(base + "/answered", false);
+
+	String title, prompt;
+	int rowCount = 0;
+	int okEvent = 0, cancelEvent = 1;
+	bool sawOk = false, sawCancel = false;
+
+	for (int c = 0; c < commandCount; ++c) {
+		uint8 type = pack->parseByte();
+		int wideCount = pack->parseInt();
+		Vector<UnicodeString> wide;
+		for (int i = 0; i < wideCount; ++i) {
+			UnicodeString w;
+			pack->parseUnicode(w);
+			wide.add(w);
+		}
+		int narrowCount = pack->parseInt();
+		Vector<String> narrow;
+		for (int i = 0; i < narrowCount; ++i) {
+			String n;
+			pack->parseAscii(n);
+			narrow.add(n);
+		}
+
+		if (type == 3 && narrow.size() >= 2 && wide.size() >= 1) {          // setProperty
+			const String& widget = narrow.get(0);
+			const String& property = narrow.get(1);
+			String value = wide.get(0).toString();
+			if (widget == "bg.caption.lblTitle" && property == "Text") title = value;
+			else if (widget == "Prompt.lblPrompt" && property == "Text") prompt = value;
+			else if (widget.beginsWith("List.dataList.") && property == "Text") {
+				core->setVar(base + "/rows/r" + String::valueOf(rowCount), value);
+				rowCount++;
+			}
+		} else if (type == 5 && narrow.size() >= 2) {                        // subscribeToEvent
+			uint8 eventType = narrow.get(1).length() > 0 ? (uint8) narrow.get(1).toCharArray()[0] : 0;
+			if (eventType == 0x09) { okEvent = c; sawOk = true; }
+			else if (eventType == 0x0A) { cancelEvent = c; sawCancel = true; }
+		}
+	}
+
+	core->setVar(base + "/title", title);
+	core->setVar(base + "/prompt", prompt);
+	core->setVar(base + "/rowCount", rowCount);
+	core->setVar(base + "/okEvent", okEvent);
+	core->setVar(base + "/cancelEvent", cancelEvent);
+	core->setVar("Sui/last", pageId);
+	// ordered list of every page seen, so an action can find a window that other windows (the
+	// new-player helper droid opens one every second) have pushed off "last"
+	int count = core->getVar<int>("Sui/count", 0);
+	core->setVar("Sui/ids/i" + String::valueOf(count), pageId);
+	core->setVar("Sui/count", count + 1);
+
+	info(true) << "SUI page " << pageId << " root='" << root << "' title='" << title << "' prompt='" << prompt
+		<< "' rows=" << rowCount << " okEvent=" << okEvent << (sawOk ? "" : "(default)") << " cancelEvent=" << cancelEvent << (sawCancel ? "" : "(default)");
+	for (int r = 0; r < rowCount && r < 60; ++r)
+		info(true) << "  [" << r << "] " << core->getVar(base + "/rows/r" + String::valueOf(r), String(""));
+
+	zone->signal(STRING_HASHCODE("SuiCreatePage"));
 }

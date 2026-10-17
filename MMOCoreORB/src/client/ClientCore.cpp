@@ -439,7 +439,7 @@ void ClientCore::executeActions() {
 
 		if (!action->isOK()) {
 			error() << action->getName() << " failed: " << action->getError();
-			if (exit_result == 0)
+			if (exit_result < 100)   // keep the first failure's code (exit_result starts at 1 = "not finished")
 				exit_result = 100 + action->getErrorCode();
 
 			if (options.get<bool>("/keepGoing", false))   // --keep-going: record the failure, run the rest anyway
