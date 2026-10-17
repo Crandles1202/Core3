@@ -932,6 +932,16 @@ function FbLabTests:travelCell(charName, planet, x, z, y, cellID)
 	return "ok"
 end
 
+-- ambientLocations → one INFO line per ambient-life location with its anchor (for the lab to teleport to)
+function FbLabTests:ambientLocations()
+	if FbAmbientLife == nil then print("ERROR FbAmbientLife not loaded"); return "none" end
+	for li, loc in ipairs(FbAmbientLife.locations) do
+		print(string.format("INFO ambient_location idx=%d key=%s planet=%s x=%.1f z=%.1f y=%.1f cell=%d seats=%d",
+			li, loc.key, loc.planet, loc.anchor.x, loc.anchor.z, loc.anchor.y, loc.anchor.cell, #loc.seats))
+	end
+	return tostring(#FbAmbientLife.locations)
+end
+
 -- ambient[:<loc>] → one INFO seat line per ambient patron of a location (default 1)
 function FbLabTests:ambient(li)
 	if FbAmbientLife == nil then print("ERROR FbAmbientLife not loaded"); return "none" end
