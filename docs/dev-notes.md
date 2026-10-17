@@ -195,7 +195,12 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   `createEvent(ms, play, callback, pObject, args)` accepts `nil` for the object. Lab: `travelCell` oracle
   (`switchZone` with a cell id), `ambient`/`ambientTick`/`ambientChurn`, and the client now decodes
   `SpatialChat` (ObjController 0xF4: long sender, long target, unicode text, …) so a scenario can prove a
-  spoken line reached a player. Scenario `ambient-cantina`.
+  spoken line reached a player. Scenario `ambient-cantina`. Then 3.8 as data: Bestine (stock cell
+  1528397, floor z 0.4, found by grouping the city file's seated-mood spawns by cell) and Coronet (cell
+  8105496 from its `-- Cantina` block) got their own patron mixes and lines. Theed's city file spawns
+  nothing seated in its cantina, so its cell is unknown — left out until someone reads it off the
+  client. `ambient-locations.manual.sh` audits every location (seats, quiet when empty, alive when a
+  player is at the anchor).
 - **2026-10-17 — Phase 1.11 (loot half).** `CreatureManagerImplementation::droidHarvest…/notifyDestruction`
   kill-loot site: after the normal `createLoot`, a grouped killer gets a second `createLoot` roll with
   probability `Core3.Loot.GroupBonusChance` % (default 25), logged as its own `NPCLOOT` transaction with

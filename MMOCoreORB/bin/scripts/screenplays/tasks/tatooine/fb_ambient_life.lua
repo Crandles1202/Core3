@@ -1,4 +1,4 @@
--- fb_ambient_life.lua — Phase 3.7: ambient life in public spaces (first location: Mos Eisley cantina).
+-- fb_ambient_life.lua — Phase 3.7/3.8: ambient life in public spaces (Mos Eisley, Bestine and Coronet cantinas).
 --
 -- Stock Core3 already seats ~40 silent patrons in the Mos Eisley cantina (cities/tatooine_mos_eisley.lua).
 -- This adds the *living* layer on top: a handful of extra patrons who mutter and gesture while someone
@@ -52,6 +52,64 @@ FbAmbientLife.locations = {
 			"Another one off the shuttle. Welcome to Mos Eisley.",
 		},
 		emotes = { "shrug_shoulders", "nod_head_once", "shake_head_disgust", "sigh_deeply", "rub_chin_thoughtful", "slow_down", "explain" },
+	},
+	{
+		-- 3.8 flavour: Imperial-leaning, tenser and quieter than Mos Eisley (stock cell 1528397, floor z 0.4)
+		key = "bestine_cantina", label = "Bestine Cantina", planet = "tatooine",
+		anchor = { x = 0.5, z = 0.4, y = -5.0, cell = 1528397 },
+		seats = {
+			{ x = 8.0,  z = 0.4, y = -7.5, dir = 300, cell = 1528397 },
+			{ x = -2.5, z = 0.4, y = -6.5, dir = 60,  cell = 1528397 },
+			{ x = 5.5,  z = 0.4, y = -4.2, dir = 200, cell = 1528397 },
+			{ x = -7.5, z = 0.4, y = -5.0, dir = 120, cell = 1528397 },
+		},
+		templates = { "patron", "commoner_tatooine", "businessman", "patron_devaronian", "patron_nikto", "commoner_old" },
+		moods = { "npc_sitting_chair", "npc_sitting_table", "npc_standing_drinking", "worried", "bored", "calm" },
+		chatter = {
+			"Keep it down. The garrison drinks here.",
+			"Governor's office doubled the patrols again. Good for business, they say.",
+			"Saw a shuttle full of stormtroopers land this morning. Routine, apparently.",
+			"You don't ask about the Rebellion in Bestine. You just don't.",
+			"The water tax went up. Of course it did.",
+			"Nice and orderly, this town. Too orderly, if you ask me. I didn't say that.",
+			"Somebody tell the bartender the Imperial blend is awful.",
+			"They say the Empire keeps the Tuskens away. They say a lot of things.",
+		},
+		newcomer = {
+			"New in town? Papers in order, I hope.",
+			"Another traveller. Don't make a scene, they don't like scenes here.",
+			"Sit down before a trooper decides you're loitering.",
+		},
+		emotes = { "nod_head_once", "shake_head_no", "sigh_deeply", "rub_chin_thoughtful", "wave_finger_warning" },
+	},
+	{
+		-- 3.8 flavour: working-class and pilot-heavy, louder, gambling talk (stock cell 8105496, floor z -0.9)
+		key = "coronet_cantina", label = "Coronet Cantina", planet = "corellia",
+		anchor = { x = 0.0, z = -0.9, y = -2.0, cell = 8105496 },
+		seats = {
+			{ x = -5.5, z = -0.9, y = -7.5, dir = 30,  cell = 8105496 },
+			{ x = 5.0,  z = -0.9, y = -6.5, dir = 220, cell = 8105496 },
+			{ x = 1.0,  z = -0.9, y = 8.5,  dir = 180, cell = 8105496 },
+			{ x = -6.5, z = -0.9, y = 2.0,  dir = 90,  cell = 8105496 },
+		},
+		templates = { "pilot", "businessman", "patron", "patron_quarren", "patron_ithorian", "commoner" },
+		moods = { "npc_standing_drinking", "npc_sitting_table", "conversation", "happy", "npc_sitting_chair", "bored" },
+		chatter = {
+			"Three hands in a row. Three! Deal again.",
+			"Hyperdrive's been whining since Talus. Anybody know a mechanic who takes credit?",
+			"CorSec were sniffing around the docks again.",
+			"Loudest cantina on the planet and I still can't hear myself drink.",
+			"Who's buying? Not me. I just lost my landing fees.",
+			"If you fly for the Diktat you can afford the good stuff. Rest of us drink this.",
+			"Heard a freighter came in from Tatooine loaded with... spice? Sand? Something.",
+			"Double or nothing. Come on. One more.",
+		},
+		newcomer = {
+			"Fresh off a transport? You look it.",
+			"Grab a seat, the game's about to turn ugly.",
+			"Pilot? No? Then you're buying.",
+		},
+		emotes = { "shrug_shoulders", "explain", "slow_down", "point_to_self", "nod_head_multiple" },
 	},
 }
 
