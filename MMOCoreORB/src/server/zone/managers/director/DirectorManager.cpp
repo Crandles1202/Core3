@@ -516,6 +516,7 @@ void DirectorManager::initializeLuaEngine(Lua* luaEngine) {
 	luaEngine->registerFunction("makeCreatureName", makeCreatureName);
 	luaEngine->registerFunction("getGCWDiscount", getGCWDiscount);
 	luaEngine->registerFunction("getTerrainHeight", getTerrainHeight);
+	luaEngine->registerFunction("getTerrainHeightAt", getTerrainHeightAt);
 	luaEngine->registerFunction("awardSkill", awardSkill);
 	luaEngine->registerFunction("getCityRegionAt", getCityRegionAt);
 	luaEngine->registerFunction("setDungeonTicketAttributes", setDungeonTicketAttributes);
@@ -4059,6 +4060,32 @@ int DirectorManager::getTerrainHeight(lua_State* L){
 		return 0;
 
 	lua_pushnumber(L, creatureObject->getZone()->getHeight(x, y));
+	return 1;
+}
+
+// Final Boss: terrain height by zone name, for screenplays that spawn things in a zone where no
+// creature is at hand yet (the traveling merchant's next city). getTerrainHeightAt(zoneName, x, y).
+int DirectorManager::getTerrainHeightAt(lua_State* L) {
+	if (checkArgumentCount(L, 3) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::getTerrainHeightAt";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	float y = lua_tonumber(L, -1);
+	float x = lua_tonumber(L, -2);
+	String zoneName = lua_tostring(L, -3);
+
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	Zone* zone = zoneServer != nullptr ? zoneServer->getZone(zoneName) : nullptr;
+
+	if (zone == nullptr) {
+		lua_pushnumber(L, 0);
+		return 1;
+	}
+
+	lua_pushnumber(L, zone->getHeight(x, y));
 	return 1;
 }
 

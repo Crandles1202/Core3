@@ -108,7 +108,8 @@ tools/swg account create <user> <admin_level> [--reset]   # server's own hash re
   row index or row text, input boxes by text); `--keep-going` runs on after a failed action),
   the oracle observes. Templates: `stimpack-heals.sh` (control round measures regen, then the command
   round; asserts per-pool heal beyond regen), `npc-conversation.sh`. Write one for every mechanic
-  change; `swg test all` runs them.
+  change; `swg test all` runs them. `*.manual.sh` scenarios (long audits such as `merchant-stops`, which
+  walks every merchant stop) run only by name: `swg test scenario merchant-stops`.
 - Test accounts: `claude-admin` (admin_level 15), `claude-player` (admin_level 0). Passwords are in
   `~/.swg-lab/*.pass` (mode 600), never in the repo. Account hash = `SHA256(DBSecret + password + salt)`,
   salt = 32 hex chars (`AccountManager::createAccount`). `~/bin/run` resets an `admin` account that does
@@ -127,6 +128,7 @@ tools/swg account create <user> <admin_level> [--reset]   # server's own hash re
 | 1.7 | Shuttleport away time 300 s → 60 s (`shuttleportAwayTime`) | `managers/planet/planet_manager.lua` |
 | 2.2 | Schematic broker "Dannik Vosa" at Mos Eisley starport (3535, -4813): 33 single-use loot schematics in three catalogues (decor, kitchen/cantina, workshop/tech incl. recyclers), 250–5000 cr cash, each labelled with and gated by its template's `requiredSkill`. Master-tier sets (Mandalorian, Geonosian, corvette) excluded, as are the 38 upstream stub templates with no draft. `FbSchematicBroker:purchase(pPlayer, cat, item)` is public for the lab | `fb_schematic_broker*.lua` (screenplay, conv handler, conv template, mobile) |
 | 2.3 | Parts dealer "Tamsin Rook" at Mos Eisley starport (3535, -4818): 46 crafting sub-components (weapon parts, armor segments, chemistry parts) generated through `createLoot` with the `component_loot` item names, standard rolled at level 30, advanced at level 60 for 3× the price | `fb_parts_dealer*.lua` |
+| 2.9 | Traveling merchant "Ozlo Vantrek": one NPC that moves between 9 audited city stops every 3 h (persistent server event `FbMerchantMove`, state in quest status), selling 8 of a 34-item cosmetic pool (paintings, jewellery, hats, goggles) that rotates per visit. `FbTravelingMerchant:move()` / `:status()` are public for the lab | `fb_traveling_merchant*.lua` |
 | 2.10 | Vendor maintenance auto-skim: on a player vendor 5% of each sale (`Core3.Vendor.SaleMaintenancePercent`) goes into the vendor's maintenance, the owner banks 95%; bazaar sales untouched. **Not lab-verified** (a vendor needs an owned structure); Chuck checks with a real vendor | `AuctionManagerImplementation.cpp` (`doInstantBuy`), `VendorDataComponent.h` |
 | 2.5 | Bazaar limits config-driven with new defaults: 100 listings per character (was 25), one-year bazaar and vendor listing times (were 7 / 30 days); price caps unchanged. Scenario `bazaar-listings` lists 26 items. Keys `Core3.Auction.MaxSales`, `.CommodityExpireSeconds`, `.VendorExpireSeconds`, `.MaxBazaarPrice` in `config-local.lua` override | `AuctionManagerImplementation.cpp` (helpers at top) |
 | 1.10 | No-grind entertainer: a 10 s tick without a flourish pays one flourish's XP (`flourishXpMod`; `baseXp` is 0 in the datatable, so stock pays nothing), and a solo performer counts as 25 watchers (`fbSoloAudienceMod = 0.5`). Healing XP still needs patrons | `EntertainingSessionImplementation.cpp` (`awardEntertainerExperience`) |
@@ -172,6 +174,9 @@ Persisted object fields (`containerVolumeLimit`, …) are only read from the tem
 - Allow-list rules match the whole command: run `git merge`, `git push`, `tools/swg …` as a single
   command per Bash call, never inside `a && b`. The classifier still refuses some things (remote
   URL changes, remote branch deletes, `git checkout -- <conf file>`); hand those to Chuck.
+- Screenplay table fields set in `start()` are not visible from the console or server-event Lua states;
+  persist cross-call state with `setQuestStatus`/`getQuestStatus` (keys without `:`). `getTerrainHeight`
+  needs a creature; use `getTerrainHeightAt(zone, x, y)` when there is none.
 - `git ls-files -v | grep ^S` shows skip-worktree files. `resource_manager_spawns.lua` is written by the
   server and must stay that way; nothing else should carry the flag.
 
@@ -202,14 +207,15 @@ _Updated: 2026-10-17 (session 2: 1.9, 1.5, 1.4, 1.10, 2.5, 2.2, 2.3 shipped)_
   hook + Lua setter), 1.4 mission level/direction hints (C++ `populateMissionList`), 1.10 no-grind
   entertainer XP (C++ `awardEntertainerExperience`), 2.5 config-driven bazaar limits (C++), 2.2 schematic
   broker NPC (Lua), 2.3 parts dealer NPC (Lua, loot-generated components). Roadmap left in Phase 1:
-  1.11 loot half. Phase 2 left: 2.4 loot kits, 2.9 traveling merchant. 2.10 shipped unverified (needs an owned
+  1.11 loot half. Phase 2 left: 2.4 loot kits. 2.9 traveling merchant shipped. 2.10 shipped unverified (needs an owned
   structure to place a vendor; the bot has no SUI driving yet).
 - Binaries: `bin/core3` and `bin/core3client` built 2026-10-17 from this tree (`swg build`).
-- Lab now: 258 unit, 214 Lua checks, bot, 9 scenarios (`stimpack-heals`, `npc-conversation`,
+- Lab now: 258 unit, 232 Lua checks, bot, 10 scenarios (+1 manual audit) (`stimpack-heals`, `npc-conversation`,
   `inventory-100`, `mission-hints`, `entertainer-xp`, `schematic-broker`, `schematic-broker-ui` (real SUI path),
-  `parts-dealer`, `bazaar-listings`). Oracle
+  `parts-dealer`, `bazaar-listings`, `traveling-merchant`; manual: `merchant-stops`). Oracle
   additions today: `inventoryLimit`, `setInventoryLimit`, `loginHook`, `spawnObjectNear`, `destroyObject`,
-  `missions`, `xp`, `cash`, `buySchematic` / `buyPart` (by indexes or item name), `hasSchematic`. Bot
+  `missions`, `xp`, `cash`, `buySchematic` / `buyPart` / `buyMerchant` (by item name), `hasSchematic`, `merchant`,
+  `merchantMove[:stop]`, `merchantStops`, `questStatus`. Bot
   additions: `--missions <terminalOid>`, `--command-nowait`, `--sell`/`--buy`/`--retrieve`, `--sui`, `--keep-going`, and an
   end-of-run `=> #N {...}` results dump that `bot_action_status`/`bot_action_count` read. Known gap: the client does not decode every
   StringId system-message shape (e.g. `@loot_schematic:not_enough_skill` arrived as an empty line).
@@ -234,7 +240,9 @@ _Updated: 2026-10-17 (session 2: 1.9, 1.5, 1.4, 1.10, 2.5, 2.2, 2.3 shipped)_
   direction against the waypoint; (1.10) dance alone without flourishing — XP message every 10 s; (2.2) talk to Dannik Vosa at the
   starport, buy a schematic you have the skill for, use the datapad; (2.3) buy a part from
   Tamsin Rook next to him and examine its stats; (2.5) list 26+ items on a bazaar; (2.10) sell something from one of your vendors — 5% of the
-  price lands in its maintenance, 95% in your bank.
+  price lands in its maintenance, 95% in your bank; (2.9) `swg cmd "runLuaFunction FbLabTests:merchant"` tells
+  you where Ozlo is; visit him, buy something, check he is not standing in a wall at that stop (the lab
+  audited all nine stops as reachable, but not as pretty).
   Then `swg snap save phase1-quickwins` and tag `chuck-stable-20261017`.
 - [ ] Lab characters are followed by the new-player helper droid (R2-H4), which opens a SUI greeting every
   second (visible in every bot log). Harmless for the scenarios now that `--sui` scans all windows, but
