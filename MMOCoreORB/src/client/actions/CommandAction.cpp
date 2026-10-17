@@ -4,7 +4,7 @@
  * Sends any ObjectController slash command (the way the real client does) and waits
  * for the server's CommandQueueRemove so the test knows whether it was accepted.
  *
- *   --command <name> [--target <oid>|self] [--args "<text>"] [--command-timeout <sec>]
+ *   --command <name> [--target <oid>|self] [--args "<text>"] [--command-timeout <sec>] [--command-nowait]
  *   JSON: {"action":"command","name":"healdamage","target":123,"args":"","timeout":10}
  *
  * Several --command groups may appear on one command line; they run in order.
@@ -40,6 +40,7 @@ class CommandAction : public ActionBase {
 	String targetSpec;      // "", "self" or a decimal OID
 	String arguments;
 	int timeoutSeconds;
+	bool noWait;   // --command-nowait: some commands (startdance, stopdance, ...) never send CommandQueueRemove
 
 	ActionResult result;
 	bool skipped;
@@ -53,7 +54,7 @@ class CommandAction : public ActionBase {
 	}
 
 public:
-	CommandAction() : timeoutSeconds(10), skipped(false), actionCount(0), errorCode(0), errorState(0) {
+	CommandAction() : timeoutSeconds(10), noWait(false), skipped(false), actionCount(0), errorCode(0), errorState(0) {
 		setLogLevel(Logger::INFO);
 		setLoggingName("Command");
 	}
@@ -126,6 +127,9 @@ public:
 			} else if (me != nullptr && args.get(i) == "--command-timeout" && i + 1 < args.size()) {
 				me->timeoutSeconds = Integer::valueOf(args.get(i + 1));
 				consumed += 2; i += 2;
+			} else if (me != nullptr && args.get(i) == "--command-nowait") {
+				me->noWait = true;
+				consumed += 1; i += 1;
 			}
 
 			if (consumed == lastConsumed) break;
@@ -142,6 +146,7 @@ public:
 		if (config.contains("name")) me->commandName = String(config["name"].get<std::string>().c_str());
 		if (config.contains("args")) me->arguments = String(config["args"].get<std::string>().c_str());
 		if (config.contains("timeout")) me->timeoutSeconds = config["timeout"].get<int>();
+		if (config.contains("nowait")) me->noWait = config["nowait"].get<bool>();
 		if (config.contains("target")) {
 			if (config["target"].is_string())
 				me->targetSpec = String(config["target"].get<std::string>().c_str());
@@ -162,6 +167,16 @@ public:
 		}
 
 		uint64 target = resolveTarget(targetSpec, core);
+
+		if (noWait) {
+			// fire and forget: the server's verdict (if any) shows up as a system message in the log
+			send(core, commandName, target, UnicodeString(arguments), 0, errorCode, errorState, this);
+			errorCode = 0; errorState = 0;
+			Thread::sleep(500);
+			result.setSuccess();
+			return;
+		}
+
 		bool ok = send(core, commandName, target, UnicodeString(arguments), timeoutSeconds, errorCode, errorState, this);
 
 		if (errorCode == 0xFFFFFFFF) {
@@ -190,6 +205,7 @@ public:
 		if (!targetSpec.isEmpty()) json["target"] = targetSpec.toCharArray();
 		if (!arguments.isEmpty()) json["args"] = arguments.toCharArray();
 		json["timeout"] = timeoutSeconds;
+		if (noWait) json["nowait"] = true;
 		if (skipped) {
 			json["status"] = "skipped";
 		} else if (result.isOK()) {
@@ -205,7 +221,7 @@ public:
 	}
 
 	String getHelpText() const override {
-		return "--command <name> [--target <oid>|self] [--args <text>] [--command-timeout <sec>]  Send a slash command and wait for the server's verdict";
+		return "--command <name> [--target <oid>|self] [--args <text>] [--command-timeout <sec>] [--command-nowait]  Send a slash command and wait for the server's verdict (nowait: just send)";
 	}
 
 	static ActionBase* factory() { return new CommandAction(); }

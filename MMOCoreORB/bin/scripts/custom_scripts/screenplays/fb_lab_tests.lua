@@ -654,6 +654,17 @@ function FbLabTests:missions(charName)
 	return tostring(shown)
 end
 
+-- xp:<char>:<type> → the character's experience of one type (dance, music, combat_general, …)
+function FbLabTests:xp(charName, xpType)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "none" end
+	local pGhost = CreatureObject(pPlayer):getPlayerObject()
+	if pGhost == nil then print("ERROR " .. charName .. " has no player object"); return "none" end
+	local amount = PlayerObject(pGhost):getExperience(xpType)
+	print(string.format("INFO xp char=%s type=%s amount=%d", charName, tostring(xpType), amount))
+	return tostring(amount)
+end
+
 -- setInventoryLimit:<char>:<n> → force the persisted limit (scenarios use it to simulate an old character)
 function FbLabTests:setInventoryLimit(charName, limit)
 	local pPlayer = loadedPlayer(charName)
