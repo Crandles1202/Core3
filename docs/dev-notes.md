@@ -176,6 +176,25 @@ a flag is fine for those.
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-17 — Lab: auction packets.** `core3client` gained `--sell <item> <vendor> <price>`
+  (CreateImmediateAuctionMessage 0x1E9CE308: long item, long vendor, int price, int duration, unicode
+  description, byte premium), `--buy <item> <price>` (BidAuctionMessage 0x91125453: long, int, int;
+  instant-sale items go through `doInstantBuy` whatever the prices) and `--retrieve <item> <vendor>`
+  (RetrieveAuctionItemMessage 0x12B0D449: long, long). Replies are three (long oid, int status) packets
+  with opcount 3: ItemSoldMessage 0x0E61CC92, BidAuctionResponseMessage 0x8FCBEF4A,
+  RetrieveAuctionItemResponseMessage 0x9499EF8C; status codes in the server's headers (13 =
+  TOOMANYITEMS, 12 = FULLINVENTORY, 0x100 = TOOFAR). Three lab lessons: (1) the client var store is a
+  JSON pointer tree — a path segment that is a bare number (`Auction/sold/2814749…`) makes nlohmann
+  create an *array* and throw inside the packet task ("unreported exception caught while running a
+  task", no reply ever arrives); prefix such segments (`o2814749…`, `c101`). (2) Until today the client
+  only dumped the *pre-run plan* (`#N {...}` with default status ok), so `bot_action_status` had been
+  reading the plan, not the outcome; the client now prints `=> #N {...}` results after the run and
+  `lib.sh` reads those (`bot_action_status`, `bot_action_count`). (3) `--keep-going` lets a session
+  run every action even after a failure (exit code still reports the first failure), which is what a
+  "list 26 items, count the rejections" scenario needs. Scenario `bazaar-listings` spawns a bazaar
+  terminal, lists 26 loaves, checks fee and inventory, then retrieves and destroys them so the
+  character's listing count stays flat. Listings left on a destroyed lab terminal are
+  dropped by `doAuctionMaint` ("missing vendor") at the next server start.
 - **2026-10-17 — Phase 2.3.** Component vendor. Components spawned bare from an object template
   would have no crafting values, so the dealer generates them through the loot system: Lua
   `createLoot(pInventory, "<component_loot item>", level, false)` — `LootManager::createLoot` accepts a
@@ -206,8 +225,9 @@ a flag is fine for those.
   the IDL regenerates code and recompiles everything that includes it, so instead the ~20 use sites in
   `AuctionManagerImplementation.cpp` now call file-local helpers that read `Core3.Auction.*` from the
   config (defaults 100 / 1 y / 1 y). `ConfigManager::getInt` does *not* register unknown keys, so
-  `dumpcfg` won't list them unless set in `config-local.lua`. Not lab-verified end to end: listing on
-  the bazaar needs auction packets the bot does not speak yet (see 2.10). Static check only.
+  `dumpcfg` won't list them unless set in `config-local.lua`. Verified later the same day by
+  scenario `bazaar-listings` once the bot learned auction packets: 26 listings accepted in one
+  session (stock would reject the 26th with ItemSoldMessage status 13), 20 cr fee each.
 - **2026-10-17 — Phase 1.10.** No-grind entertainer. `EntertainingSessionImplementation::
   awardEntertainerExperience` runs every 10 s (`EntertainingSessionTask`); stock pays
   `(flourishXp + baseXp) × (1 + audience/50 + applause/100 + 0.05/grouped entertainer)` but only when

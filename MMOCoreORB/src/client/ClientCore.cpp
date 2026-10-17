@@ -35,6 +35,7 @@ ClientCoreOptions::ClientCoreOptions(int argc, char** argv) {
 		{"characterFirstname", ""},
 		{"saveState", ""},
 		{"loginOnly", false},
+		{"keepGoing", false},
 		{"waitAfterZone", 0},
 		{"actions", JSONSerializationType::array()}
 	};
@@ -93,6 +94,7 @@ ClientCoreOptions::ClientCoreOptions(int argc, char** argv) {
 		("log-level", po::value<std::string>(), "Log level (0-5 or fatal/error/warning/log/info/debug)")
 		("save-state", po::value<std::string>(), "Save login state to JSON file")
 		("login-only", "Only perform login, skip zone connection")
+		("keep-going", "Run the remaining actions after one fails (exit code still reports the first failure)")
 		("options-json", po::value<std::string>(), "Load options from JSON file")
 		("generate-options-json", po::value<std::string>(), "Generate options JSON to file and exit")
 		("env", po::value<std::string>(), "Environment file to load")
@@ -173,6 +175,7 @@ ClientCoreOptions::ClientCoreOptions(int argc, char** argv) {
 	if (vm.count("log-level")) config["logLevel"] = parseLogLevel(String(vm["log-level"].as<std::string>().c_str()));
 	if (vm.count("save-state")) config["saveState"] = vm["save-state"].as<std::string>();
 	if (vm.count("login-only")) config["loginOnly"] = true;
+	if (vm.count("keep-going")) config["keepGoing"] = true;
 	if (vm.count("wait-after-zone")) config["waitAfterZone"] = vm["wait-after-zone"].as<int>();
 
 	// Store generate filename for later (need to resolve actions first)
@@ -436,7 +439,11 @@ void ClientCore::executeActions() {
 
 		if (!action->isOK()) {
 			error() << action->getName() << " failed: " << action->getError();
-			exit_result = 100 + action->getErrorCode();
+			if (exit_result == 0)
+				exit_result = 100 + action->getErrorCode();
+
+			if (options.get<bool>("/keepGoing", false))   // --keep-going: record the failure, run the rest anyway
+				continue;
 
 			// Mark remaining actions as skipped
 			for (int j = i + 1; j < options.actions.size(); j++) {
@@ -445,6 +452,14 @@ void ClientCore::executeActions() {
 
 			break;
 		}
+	}
+
+	// Final per-action results ("=> #N {...}"), distinct from the pre-run plan dump above so
+	// scenarios can read what actually happened (status ok / failed / skipped, error codes).
+	info(true) << "----------------------------------------";
+	info(true) << "Results:";
+	for (int i = 0; i < options.actions.size(); i++) {
+		info(true) << "    => #" << (i+1) << " " << options.actions.get(i)->toJSON().dump();
 	}
 }
 

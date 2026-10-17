@@ -84,8 +84,15 @@ wait_online() {
 }
 
 # bot_action_status <actionName>  → "ok" / "failed" / "skipped" for that action in the last client log
+# status of the last action of a kind, from the client's end-of-run "=> #N {...}" results (falls
+# back to any JSON line for older client builds, which only dumped the pre-run plan)
 bot_action_status() {
-	grep -ao "{\"action\":\"$1\"[^}]*}" "$BOTLOG" | tail -n1 | sed -n 's/.*"status":"\([a-z]*\)".*/\1/p'
+	local line
+	line=$(grep -ao "=> #[0-9]* {\"action\":\"$1\"[^}]*}" "$BOTLOG" | tail -n1)
+	[ -n "$line" ] || line=$(grep -ao "{\"action\":\"$1\"[^}]*}" "$BOTLOG" | tail -n1)
+	printf '%s\n' "$line" | sed -n 's/.*"status":"\([a-z]*\)".*/\1/p'
 }
+# count end-of-run results of a kind with a given status (ok|failed|skipped)
+bot_action_count() { grep -ao "=> #[0-9]* {\"action\":\"$1\"[^}]*\"status\":\"$2\"" "$BOTLOG" | wc -l; }
 
 bot_errors() { grep -a "ERROR" "$BOTLOG" | sed 's/^/   bot: /'; }

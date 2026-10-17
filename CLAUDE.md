@@ -104,7 +104,8 @@ tools/swg account create <user> <admin_level> [--reset]   # server's own hash re
 - **Gameplay scenarios** (`tools/scenarios/*.sh`, see `lib.sh`): the bot acts through real packets
   (`--command <slash command>` [`--args`, `--command-nowait` for commands that send no queue ack such as
   `startdance`], `--radial <oid> <id>`, `--converse <npcOid> --options 0,2`, `--missions <terminalOid>`,
-  `--wait n`),
+  `--wait n`, `--sell <item> <vendor> <price>` / `--buy <item> <price>` / `--retrieve <item> <vendor>` for bazaars;
+  `--keep-going` runs on after a failed action),
   the oracle observes. Templates: `stimpack-heals.sh` (control round measures regen, then the command
   round; asserts per-pool heal beyond regen), `npc-conversation.sh`. Write one for every mechanic
   change; `swg test all` runs them.
@@ -126,7 +127,7 @@ tools/swg account create <user> <admin_level> [--reset]   # server's own hash re
 | 1.7 | Shuttleport away time 300 s → 60 s (`shuttleportAwayTime`) | `managers/planet/planet_manager.lua` |
 | 2.2 | Schematic broker "Dannik Vosa" at Mos Eisley starport (3535, -4813): 33 single-use loot schematics in three catalogues (decor, kitchen/cantina, workshop/tech incl. recyclers), 250–5000 cr cash, each labelled with and gated by its template's `requiredSkill`. Master-tier sets (Mandalorian, Geonosian, corvette) excluded, as are the 38 upstream stub templates with no draft. `FbSchematicBroker:purchase(pPlayer, cat, item)` is public for the lab | `fb_schematic_broker*.lua` (screenplay, conv handler, conv template, mobile) |
 | 2.3 | Parts dealer "Tamsin Rook" at Mos Eisley starport (3535, -4818): 46 crafting sub-components (weapon parts, armor segments, chemistry parts) generated through `createLoot` with the `component_loot` item names, standard rolled at level 30, advanced at level 60 for 3× the price | `fb_parts_dealer*.lua` |
-| 2.5 | Bazaar limits config-driven with new defaults: 100 listings per character (was 25), one-year bazaar and vendor listing times (were 7 / 30 days); price caps unchanged. Keys `Core3.Auction.MaxSales`, `.CommodityExpireSeconds`, `.VendorExpireSeconds`, `.MaxBazaarPrice` in `config-local.lua` override | `AuctionManagerImplementation.cpp` (helpers at top) |
+| 2.5 | Bazaar limits config-driven with new defaults: 100 listings per character (was 25), one-year bazaar and vendor listing times (were 7 / 30 days); price caps unchanged. Scenario `bazaar-listings` lists 26 items. Keys `Core3.Auction.MaxSales`, `.CommodityExpireSeconds`, `.VendorExpireSeconds`, `.MaxBazaarPrice` in `config-local.lua` override | `AuctionManagerImplementation.cpp` (helpers at top) |
 | 1.10 | No-grind entertainer: a 10 s tick without a flourish pays one flourish's XP (`flourishXpMod`; `baseXp` is 0 in the datatable, so stock pays nothing), and a solo performer counts as 25 watchers (`fbSoloAudienceMod = 0.5`). Healing XP still needs patrons | `EntertainingSessionImplementation.cpp` (`awardEntertainerExperience`) |
 | 1.11 | Group XP ×1.25 was already in (`groupExpMultiplier`); the loot half is not done | `player_manager.lua` |
 | 1.4 | Mission terminals show level + direction: creator name becomes `Name [Lvl 23 - 1.4km NE]` when a list is randomized (`fbApplyMissionHint` in `populateMissionList`); `core3client --missions <terminalOid>`; Lua mission getters | `MissionManagerImplementation.cpp`, `LuaMissionObject.cpp`, `client/actions/MissionListAction.cpp` |
@@ -203,11 +204,12 @@ _Updated: 2026-10-17 (session 2: 1.9, 1.5, 1.4, 1.10, 2.5, 2.2, 2.3 shipped)_
   1.11 loot half. Phase 2 left: 2.4 loot kits, 2.9 traveling merchant, 2.10 vendor auto-skim (needs bot
   auction packets to verify).
 - Binaries: `bin/core3` and `bin/core3client` built 2026-10-17 from this tree (`swg build`).
-- Lab now: 258 unit, 214 Lua checks, bot, 7 scenarios (`stimpack-heals`, `npc-conversation`,
-  `inventory-100`, `mission-hints`, `entertainer-xp`, `schematic-broker`, `parts-dealer`). Oracle
+- Lab now: 258 unit, 214 Lua checks, bot, 8 scenarios (`stimpack-heals`, `npc-conversation`,
+  `inventory-100`, `mission-hints`, `entertainer-xp`, `schematic-broker`, `parts-dealer`, `bazaar-listings`). Oracle
   additions today: `inventoryLimit`, `setInventoryLimit`, `loginHook`, `spawnObjectNear`, `destroyObject`,
   `missions`, `xp`, `cash`, `buySchematic` / `buyPart` (by indexes or item name), `hasSchematic`. Bot
-  additions: `--missions <terminalOid>`, `--command-nowait`. Known gap: the client does not decode every
+  additions: `--missions <terminalOid>`, `--command-nowait`, `--sell`/`--buy`/`--retrieve`, `--keep-going`, and an
+  end-of-run `=> #N {...}` results dump that `bot_action_status`/`bot_action_count` read. Known gap: the client does not decode every
   StringId system-message shape (e.g. `@loot_schematic:not_enough_skill` arrived as an empty line).
 - Snapshots: `baseline` (702 MB, pre-Phase 2) and `post-phase2` (700 MB, `unstable` @ `fa635eaa38`,
   before today's Phase 1 work).
