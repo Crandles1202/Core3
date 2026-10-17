@@ -275,6 +275,17 @@ public:
 			core.setVar("createdCharacterName", charName);
 
 			info() << "Character created successfully - OID: " << createdOid;
+
+			// handleClientCreateCharacterSuccess already sent SelectCharacter, so the server is
+			// loading the new character into the world. Wait for the scene like zoneInCharacter
+			// does; logging out before it is up leaves a half-connected player behind
+			// ("decreaseOnlineCharCount missing account" on the server).
+			int zoneTimeout = ClientCore::getZoneTimeout() * 1000;
+			if (!core.zone->waitForSceneReady(zoneTimeout)) {
+				result.setError("Character created but the zone scene did not start within the timeout", 8);
+				return;
+			}
+			info() << "New character is in the world (scene ready)";
 			return;
 		}
 

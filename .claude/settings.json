@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git push origin *)",
+      "Bash(git push -u origin *)",
+      "Bash(git merge *)",
+      "Bash(git submodule update *)",
+      "Bash(git stash drop *)",
+      "Bash(tools/swg *)",
+      "Bash(/home/chuck/workspace/Core3/tools/swg *)",
+      "Bash(/home/chuck/bin/build *)",
+      "Bash(mysql swgemu *)"
+    ]
+  }
+}

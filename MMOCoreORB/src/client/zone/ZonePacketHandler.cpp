@@ -287,6 +287,43 @@ void ZonePacketHandler::handleChatSystemMessage(Message* pack) {
 	UnicodeString message;
 	pack->parseUnicode(message);
 
+	// StringId form (ChatSystemMessage(StringIdChatParameter&)): empty unicode, then a sized
+	// block holding @file:id plus TU/TT/TO parameters and DI/DF. Render it roughly the way the
+	// real client would: "@file:id TO=... DI=n".
+	try {
+		int paramSize = pack->parseInt();
+		if (message.isEmpty() && paramSize > 0) {
+			pack->parseByte();
+			String file, id;
+			pack->parseAscii(file);
+			pack->parseInt();
+			pack->parseAscii(id);
+			StringBuffer text;
+			text << "@" << file << ":" << id;
+
+			const char* names[3] = { "TU", "TT", "TO" };
+			for (int k = 0; k < 3; ++k) {
+				uint64 oid = pack->parseLong();
+				String pfile, pid;
+				pack->parseAscii(pfile);
+				pack->parseInt();
+				pack->parseAscii(pid);
+				UnicodeString custom;
+				pack->parseUnicode(custom);
+				if (oid != 0) text << " " << names[k] << "=#" << oid;
+				else if (!custom.isEmpty()) text << " " << names[k] << "=" << custom.toString();
+				else if (!pid.isEmpty()) text << " " << names[k] << "=@" << pfile << ":" << pid;
+			}
+			int di = pack->parseInt();
+			float df = pack->parseFloat();
+			if (di != 0) text << " DI=" << di;
+			if (df != 0) text << " DF=" << df;
+			message = UnicodeString(text.toString());
+		}
+	} catch (const Exception& e) {
+		// unexpected layout: keep whatever plain text we already have
+	}
+
 	info(true) << "type=" << type << "; len=" << message.length();
 
 	StringTokenizer lines(message.toString());
@@ -296,21 +333,111 @@ void ZonePacketHandler::handleChatSystemMessage(Message* pack) {
 		String line;
 		lines.getStringToken(line);
 		info(true) << "> " << line;
+
+		// keep the last 200 lines so a scenario can look for "You heal ..." etc.
+		auto& kept = core->vars[JSONSerializationType::json_pointer("/SystemMessages")];
+		if (!kept.is_array())
+			kept = JSONSerializationType::array();
+		if (kept.size() >= 200)
+			kept.erase(kept.begin());
+		kept.push_back(line.toCharArray());
 	}
 }
 
 void ZonePacketHandler::handleObjectControllerMessage(Message* pack) {
 	uint32 header1 = pack->parseInt();
 	uint32 header2 = pack->parseInt();
-
 	uint64 objectID = pack->parseLong();
-
 	pack->parseInt();
 
-	SceneObject* object = zone->getObject(objectID);
+	// The sub-messages the bot cares about are decoded into core->vars so actions can poll
+	// for them; everything else is ignored. Each one also signals a synthetic opcode.
+	try {
+		switch (header2) {
+		case 0x117: { // CommandQueueRemove: the server's verdict on a queued command
+			uint32 actionCount = pack->parseInt();
+			float timer = pack->parseFloat();
+			uint32 error = pack->parseInt();
+			uint32 state = pack->parseInt();
 
-	if (object != nullptr) {
-		// No object controller handling needed
+			String key = "CommandQueueRemove/c" + String::valueOf(actionCount);
+			core->setVar(key + "/error", error);
+			core->setVar(key + "/state", state);
+			core->setVar(key + "/timer", timer);
+
+			info(true) << "CommandQueueRemove count=" << actionCount << " error=" << error << " state=" << state;
+			zone->signal(STRING_HASHCODE("CommandQueueRemove"));
+			break;
+		}
+		case 0xDD: { // StartNpcConversation
+			uint64 npcID = pack->parseLong();
+			uint8 starter = pack->parseByte();
+
+			core->setVar("Conversation/npc", npcID);
+			core->setVar("Conversation/active", true);
+			core->setVar("Conversation/optionCount", 0);
+			core->vars[JSONSerializationType::json_pointer("/Conversation/options")] = JSONSerializationType::array();
+
+			info(true) << "StartNpcConversation npc=" << npcID << " starter=" << (int) starter;
+			zone->signal(STRING_HASHCODE("StartNpcConversation"));
+			break;
+		}
+		case 0xDF: { // NpcConversationMessage: plain unicode, or a StringId (size, short, byte, ascii file, int, ascii id)
+			String text;
+			int start = pack->getOffset();
+			int32 len = pack->parseInt();
+
+			if (len >= 0 && pack->getOffset() + len * 2 <= pack->size() && len < 8192) {
+				pack->setOffset(start);
+				UnicodeString uni;
+				pack->parseUnicode(uni);
+				text = uni.toString();
+			} else {
+				pack->parseShort();
+				pack->parseByte();
+				String file, id;
+				pack->parseAscii(file);
+				pack->parseInt();
+				pack->parseAscii(id);
+				text = "@" + file + ":" + id;
+			}
+
+			core->setVar("Conversation/message", text);
+			core->vars[JSONSerializationType::json_pointer("/Conversation/transcript")].push_back(std::string("NPC: ") + text.toCharArray());
+
+			info(true) << "NpcConversationMessage: " << text;
+			zone->signal(STRING_HASHCODE("NpcConversationMessage"));
+			break;
+		}
+		case 0xE0: { // StringList: the conversation options
+			uint8 count = pack->parseByte();
+			JSONSerializationType options = JSONSerializationType::array();
+
+			for (int i = 0; i < count; ++i) {
+				UnicodeString option;
+				pack->parseUnicode(option);
+				options.push_back(option.toString().toCharArray());
+				info(true) << "  option[" << i << "] " << option.toString();
+			}
+
+			core->vars[JSONSerializationType::json_pointer("/Conversation/options")] = options;
+			core->setVar("Conversation/optionCount", (int) count);
+			zone->signal(STRING_HASHCODE("NpcConversationOptions"));
+			break;
+		}
+		case 0xDE: { // StopNpcConversation
+			uint64 npcID = pack->parseLong();
+
+			core->setVar("Conversation/active", false);
+			info(true) << "StopNpcConversation npc=" << npcID;
+			zone->signal(STRING_HASHCODE("StopNpcConversation"));
+			break;
+		}
+		default:
+			break;
+		}
+	} catch (const Exception& e) {
+		error() << "could not decode ObjController 0x" << hex << header2 << ": " << e.getMessage();
 	}
 }
 
@@ -359,6 +486,12 @@ void ZonePacketHandler::handleClientCreateCharacterSuccess(Message* pack) {
 
 	// Store in vars
 	core->setVar("ClientCreateCharacterSuccess/oid", newCharacterOID);
+
+	// The server starts the scene for this OID as soon as it gets SelectCharacter below, and
+	// handleCmdStartScene checks it against selectedCharacterOid. Set it here, before sending,
+	// instead of leaving it to the action thread after waitForAny() wakes (which lost the race
+	// and aborted the scene).
+	core->selectedCharacterOid = newCharacterOID;
 
 	// Now send SelectCharacter with the new OID
 	BaseClient* client = (BaseClient*) pack->getClient();
