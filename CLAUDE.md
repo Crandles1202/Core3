@@ -127,6 +127,7 @@ tools/swg account create <user> <admin_level> [--reset]   # server's own hash re
 | 1.7 | Shuttleport away time 300 s → 60 s (`shuttleportAwayTime`) | `managers/planet/planet_manager.lua` |
 | 2.2 | Schematic broker "Dannik Vosa" at Mos Eisley starport (3535, -4813): 33 single-use loot schematics in three catalogues (decor, kitchen/cantina, workshop/tech incl. recyclers), 250–5000 cr cash, each labelled with and gated by its template's `requiredSkill`. Master-tier sets (Mandalorian, Geonosian, corvette) excluded, as are the 38 upstream stub templates with no draft. `FbSchematicBroker:purchase(pPlayer, cat, item)` is public for the lab | `fb_schematic_broker*.lua` (screenplay, conv handler, conv template, mobile) |
 | 2.3 | Parts dealer "Tamsin Rook" at Mos Eisley starport (3535, -4818): 46 crafting sub-components (weapon parts, armor segments, chemistry parts) generated through `createLoot` with the `component_loot` item names, standard rolled at level 30, advanced at level 60 for 3× the price | `fb_parts_dealer*.lua` |
+| 2.10 | Vendor maintenance auto-skim: on a player vendor 5% of each sale (`Core3.Vendor.SaleMaintenancePercent`) goes into the vendor's maintenance, the owner banks 95%; bazaar sales untouched. **Not lab-verified** (a vendor needs an owned structure); Chuck checks with a real vendor | `AuctionManagerImplementation.cpp` (`doInstantBuy`), `VendorDataComponent.h` |
 | 2.5 | Bazaar limits config-driven with new defaults: 100 listings per character (was 25), one-year bazaar and vendor listing times (were 7 / 30 days); price caps unchanged. Scenario `bazaar-listings` lists 26 items. Keys `Core3.Auction.MaxSales`, `.CommodityExpireSeconds`, `.VendorExpireSeconds`, `.MaxBazaarPrice` in `config-local.lua` override | `AuctionManagerImplementation.cpp` (helpers at top) |
 | 1.10 | No-grind entertainer: a 10 s tick without a flourish pays one flourish's XP (`flourishXpMod`; `baseXp` is 0 in the datatable, so stock pays nothing), and a solo performer counts as 25 watchers (`fbSoloAudienceMod = 0.5`). Healing XP still needs patrons | `EntertainingSessionImplementation.cpp` (`awardEntertainerExperience`) |
 | 1.11 | Group XP ×1.25 was already in (`groupExpMultiplier`); the loot half is not done | `player_manager.lua` |
@@ -201,8 +202,8 @@ _Updated: 2026-10-17 (session 2: 1.9, 1.5, 1.4, 1.10, 2.5, 2.2, 2.3 shipped)_
   hook + Lua setter), 1.4 mission level/direction hints (C++ `populateMissionList`), 1.10 no-grind
   entertainer XP (C++ `awardEntertainerExperience`), 2.5 config-driven bazaar limits (C++), 2.2 schematic
   broker NPC (Lua), 2.3 parts dealer NPC (Lua, loot-generated components). Roadmap left in Phase 1:
-  1.11 loot half. Phase 2 left: 2.4 loot kits, 2.9 traveling merchant, 2.10 vendor auto-skim (needs bot
-  auction packets to verify).
+  1.11 loot half. Phase 2 left: 2.4 loot kits, 2.9 traveling merchant. 2.10 shipped unverified (needs an owned
+  structure to place a vendor; the bot has no SUI driving yet).
 - Binaries: `bin/core3` and `bin/core3client` built 2026-10-17 from this tree (`swg build`).
 - Lab now: 258 unit, 214 Lua checks, bot, 8 scenarios (`stimpack-heals`, `npc-conversation`,
   `inventory-100`, `mission-hints`, `entertainer-xp`, `schematic-broker`, `parts-dealer`, `bazaar-listings`). Oracle
@@ -231,7 +232,8 @@ _Updated: 2026-10-17 (session 2: 1.9, 1.5, 1.4, 1.10, 2.5, 2.2, 2.3 shipped)_
   read "90/80"; (1.4) open a mission terminal — creator column reads `Name [Lvl N - 1.4km NE]`, check the
   direction against the waypoint; (1.10) dance alone without flourishing — XP message every 10 s; (2.2) talk to Dannik Vosa at the
   starport, buy a schematic you have the skill for, use the datapad; (2.3) buy a part from
-  Tamsin Rook next to him and examine its stats; (2.5) list 26+ items on a bazaar.
+  Tamsin Rook next to him and examine its stats; (2.5) list 26+ items on a bazaar; (2.10) sell something from one of your vendors — 5% of the
+  price lands in its maintenance, 95% in your bank.
   Then `swg snap save phase1-quickwins` and tag `chuck-stable-20261017`.
 - [ ] **Chuck: starter stimpack is unusable by non-medics** (`stimpack_sm_s1` needs `healing_ability >= 5`,
   a fresh character has 0 — found by the stimpack scenario). Decide: own starter template with

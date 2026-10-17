@@ -1208,8 +1208,28 @@ void AuctionManagerImplementation::doInstantBuy(CreatureObject* player, AuctionI
 
 	locker.release();
 
+	// Final Boss Phase 2.10: on a player vendor, a slice of every sale (Core3.Vendor.SaleMaintenancePercent,
+	// default 5) tops up the vendor's maintenance instead of reaching the owner's bank, so a vendor left
+	// alone keeps paying for itself as long as it sells. Bazaar sales are untouched.
+	int sellerShare = item->getPrice();
+	if (!item->isOnBazaar() && vendor != nullptr && vendor->getDataObjectComponent() != nullptr) {
+		VendorDataComponent* vendorData = cast<VendorDataComponent*>(vendor->getDataObjectComponent()->get());
+		int percent = ConfigManager::instance()->getInt("Core3.Vendor.SaleMaintenancePercent", 5);
+		int skim = (item->getPrice() * percent) / 100;
+
+		if (vendorData != nullptr && skim > 0) {
+			Locker vlocker(vendor, player);
+			vendorData->addMaintenanceCredits(skim);
+			sellerShare -= skim;
+
+			TransactionLog trxSkim(seller, vendor, TrxCode::VENDORMAINTANENCE, skim, false);
+			trxSkim.groupWith(trx);
+			trxSkim.addState("fbSaleMaintenancePercent", percent);
+		}
+	}
+
 	Locker slocker(seller);
-	seller->addBankCredits(item->getPrice());
+	seller->addBankCredits(sellerShare);
 	trx.commit();
 
 	if (city != nullptr && tax > 0) {
