@@ -132,7 +132,7 @@ tools/swg account create <user> <admin_level> [--reset]   # server's own hash re
 | 2.10 | Vendor maintenance auto-skim: on a player vendor 5% of each sale (`Core3.Vendor.SaleMaintenancePercent`) goes into the vendor's maintenance, the owner banks 95%; bazaar sales untouched. **Not lab-verified** (a vendor needs an owned structure); Chuck checks with a real vendor | `AuctionManagerImplementation.cpp` (`doInstantBuy`), `VendorDataComponent.h` |
 | 2.5 | Bazaar limits config-driven with new defaults: 100 listings per character (was 25), one-year bazaar and vendor listing times (were 7 / 30 days); price caps unchanged. Scenario `bazaar-listings` lists 26 items. Keys `Core3.Auction.MaxSales`, `.CommodityExpireSeconds`, `.VendorExpireSeconds`, `.MaxBazaarPrice` in `config-local.lua` override | `AuctionManagerImplementation.cpp` (helpers at top) |
 | 1.10 | No-grind entertainer: a 10 s tick without a flourish pays one flourish's XP (`flourishXpMod`; `baseXp` is 0 in the datatable, so stock pays nothing), and a solo performer counts as 25 watchers (`fbSoloAudienceMod = 0.5`). Healing XP still needs patrons | `EntertainingSessionImplementation.cpp` (`awardEntertainerExperience`) |
-| 1.11 | Group XP ×1.25 was already in (`groupExpMultiplier`); the loot half is not done | `player_manager.lua` |
+| 1.11 | Group XP ×1.25 (`groupExpMultiplier`, already in) + group loot bonus: a grouped kill gets a second loot roll 25% of the time (`Core3.Loot.GroupBonusChance`). **Not lab-verified** (needs a grouped kill) | `player_manager.lua`, `CreatureManagerImplementation.cpp` |
 | 1.4 | Mission terminals show level + direction: creator name becomes `Name [Lvl 23 - 1.4km NE]` when a list is randomized (`fbApplyMissionHint` in `populateMissionList`); `core3client --missions <terminalOid>`; Lua mission getters | `MissionManagerImplementation.cpp`, `LuaMissionObject.cpp`, `client/actions/MissionListAction.cpp` |
 | 1.5 | Character inventory 80 → 100 items: template re-registered (new characters) + `FBLogin` raises persisted limits on login (existing characters); Lua `SceneObject:setContainerVolumeLimit` added. Client's "/80" counter is cosmetic | `custom_scripts/object/tangible/inventory/fb_inventory_100.lua`, `custom_scripts/screenplays/fb_player_login.lua`, `LuaSceneObject.cpp` |
 | 1.9 | Player stimpacks (starter, crafted A–E, ranged/area, quest) heal mind too: `attributes = {0, 3, 6}` re-registered from `custom_scripts` | `custom_scripts/object/tangible/medicine/fb_stimpack_mind.lua` |
@@ -206,8 +206,8 @@ _Updated: 2026-10-17 (session 2: 1.9, 1.5, 1.4, 1.10, 2.5, 2.2, 2.3 shipped)_
 - Shipped today: 1.9 stimpacks heal mind (Lua template override), 1.5 inventory 100 (template + login
   hook + Lua setter), 1.4 mission level/direction hints (C++ `populateMissionList`), 1.10 no-grind
   entertainer XP (C++ `awardEntertainerExperience`), 2.5 config-driven bazaar limits (C++), 2.2 schematic
-  broker NPC (Lua), 2.3 parts dealer NPC (Lua, loot-generated components). Roadmap left in Phase 1:
-  1.11 loot half. Phase 2 left: 2.4 loot kits. 2.9 traveling merchant shipped. 2.10 shipped unverified (needs an owned
+  broker NPC (Lua), 2.3 parts dealer NPC (Lua, loot-generated components). Phase 1 complete (1.11 loot half
+  shipped unverified). Phase 2 left: 2.4 loot kits. 2.9 traveling merchant shipped. 2.10 shipped unverified (needs an owned
   structure to place a vendor; the bot has no SUI driving yet).
 - Binaries: `bin/core3` and `bin/core3client` built 2026-10-17 from this tree (`swg build`).
 - Lab now: 258 unit, 232 Lua checks, bot, 10 scenarios (+1 manual audit) (`stimpack-heals`, `npc-conversation`,

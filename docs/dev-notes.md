@@ -182,6 +182,14 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-17 — Phase 1.11 (loot half).** `CreatureManagerImplementation::droidHarvest…/notifyDestruction`
+  kill-loot site: after the normal `createLoot`, a grouped killer gets a second `createLoot` roll with
+  probability `Core3.Loot.GroupBonusChance` % (default 25), logged as its own `NPCLOOT` transaction with
+  state `fbGroupLootBonus`. Chosen over scaling `lootChance` because `createLootFromCollection` has no
+  caller-supplied multiplier and LootManager is IDL-managed (changing its signatures regenerates code).
+  **Not lab-verified:** a grouped kill needs two characters, group invite/join packets and combat in the
+  bot — the next lab milestone if group play matters to Chuck. Statistical by nature; set the chance to
+  100 in `config-local.lua` to see it every kill.
 - **2026-10-17 — Phase 2.9.** Traveling merchant. Lua only: a screenplay with a stop table (city
   centres from `managers/planet/*_regions.lua`, z from `getTerrainHeight`), a 34-item cosmetic pool and
   a deterministic rotating stock (`stockFor(visit)` = 8 consecutive pool entries from `visit*5 mod n`).
