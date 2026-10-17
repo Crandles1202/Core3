@@ -427,12 +427,16 @@ test_scenario() {
 	local -a files
 	if [ "$name" = all ]; then
 		files=("$REPO"/tools/scenarios/*.sh)
+	elif [ -f "$REPO/tools/scenarios/$name.manual.sh" ]; then
+		files=("$REPO/tools/scenarios/$name.manual.sh")
 	else
 		files=("$REPO/tools/scenarios/$name.sh")
 	fi
 	local rc=0 ran=0
 	for f in "${files[@]}"; do
 		[ "$(basename "$f")" = lib.sh ] && continue
+		# *.manual.sh are long audits run by name only (swg test scenario <name>), never by "all"
+		case "$(basename "$f")" in *.manual.sh) [ "$name" = all ] && continue ;; esac
 		[ -f "$f" ] || die "no scenario $f"
 		say "== scenario: $(basename "$f" .sh)"
 		SWG="$REPO/tools/swg" bash "$f" 2>&1 | sed 's/^/   /' | tee "$LABDIR/last-scenario-$(basename "$f" .sh).log"

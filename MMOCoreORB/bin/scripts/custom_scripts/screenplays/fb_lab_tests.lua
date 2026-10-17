@@ -424,6 +424,23 @@ function FbLabTests.checkPartsDealer()
 	check("parts_dealer.purchase_is_public", type(FbPartsDealer.purchase) == "function")
 end
 
+-- Phase 2.9: traveling merchant — every pool item is a real template, stops are sane, stock rotates.
+function FbLabTests.checkTravelingMerchant()
+	if FbTravelingMerchant == nil then check("merchant.loaded", false); return end
+	local missing = {}
+	for _, item in ipairs(FbTravelingMerchant.pool) do
+		if not templateExists(item.template) then missing[#missing + 1] = item.name end
+	end
+	check("merchant.pool_templates_exist", #missing == 0, table.concat(missing, ", "))
+	check("merchant.pool_size", #FbTravelingMerchant.pool >= 30, #FbTravelingMerchant.pool .. " items")
+	check("merchant.stops", #FbTravelingMerchant.stops >= 5, #FbTravelingMerchant.stops .. " stops")
+	local s1, s2 = FbTravelingMerchant:stockFor(1), FbTravelingMerchant:stockFor(2)
+	check("merchant.stock_size", #s1 == FbTravelingMerchant.stockSize)
+	check("merchant.stock_rotates", s1[1].name ~= s2[1].name, s1[1].name .. " vs " .. s2[1].name)
+	check("merchant.move_event_scheduled", hasServerEvent(FbTravelingMerchant.eventName) == true)
+	check("merchant.purchase_is_public", type(FbTravelingMerchant.purchase) == "function" and type(FbTravelingMerchant.move) == "function")
+end
+
 -- ---------------------------------------------------------------- entry points
 
 -- runLuaFunction passes the FbLabTests table as the first argument, then the ':'-separated args.
@@ -444,6 +461,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkBazaar()
 		FbLabTests.checkSchematicBroker()
 		FbLabTests.checkPartsDealer()
+		FbLabTests.checkTravelingMerchant()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)
@@ -552,7 +570,8 @@ function FbLabTests:npc(template, charName)
 	local n = 0
 	for _, s in ipairs(FbLabTests.spawns[template] or {}) do
 		local pObj = getSceneObject(s.oid)
-		if pObj ~= nil then
+		-- a despawned object can still resolve for a while; one with no zone is not in the world
+		if pObj ~= nil and SceneObject(pObj):getZoneName() ~= "" then
 			local line = string.format("INFO npc template=%s oid=%d zone=%s x=%.1f y=%.1f cell=%d", template, s.oid,
 				SceneObject(pObj):getZoneName(), SceneObject(pObj):getWorldPositionX(), SceneObject(pObj):getWorldPositionY(), s.cell or 0)
 			if pPlayer ~= nil and SceneObject(pPlayer):getZoneName() == s.zone then
@@ -627,7 +646,8 @@ function FbLabTests:travel(charName, planet, x, y)
 	local pPlayer = onlinePlayer(charName)
 	if pPlayer == nil then return "offline" end
 	x, y = tonumber(x), tonumber(y)
-	local z = getTerrainHeight(pPlayer, x, y)
+	-- height in the *destination* zone (getTerrainHeight uses the creature's current zone)
+	local z = getTerrainHeightAt(planet, x, y)
 	SceneObject(pPlayer):switchZone(planet, x, z, y, 0)
 	print(string.format("INFO travel char=%s planet=%s x=%.1f z=%.1f y=%.1f", charName, planet, x, z, y))
 	return "ok"
@@ -818,6 +838,70 @@ function FbLabTests:buyPart(charName, catIdx, itemIdx)
 	print(string.format("INFO buyPart cat=%d item=%d name=%s loot=%s level=%d price=%d result=%s",
 		c, i, item and item.name or "?", item and item.loot or "?", item and item.level or 0, item and item.price or 0, tostring(result)))
 	return tostring(result)
+end
+
+-- questStatus:<key>[:<value>] → read (or set) a global quest-status entry; screenplays keep
+-- cross-state data there (e.g. FbTravelingMerchant.stop / .visit / .oid; keys must not contain ":")
+function FbLabTests:questStatus(key, value)
+	if value ~= nil then setQuestStatus(key, tostring(value)) end
+	local current = getQuestStatus(key)
+	print(string.format("INFO queststatus key=%s value=%s", tostring(key), tostring(current)))
+	return tostring(current)
+end
+
+-- merchant → where the traveling merchant is and what he sells this visit
+function FbLabTests:merchant()
+	if FbTravelingMerchant == nil then print("ERROR FbTravelingMerchant not loaded"); return "none" end
+	print("INFO merchant " .. FbTravelingMerchant:status())
+	local stock = FbTravelingMerchant:stockFor(FbTravelingMerchant:visit())
+	for i, item in ipairs(stock) do
+		print(string.format("INFO merchant_item i=%d price=%d name=%s template=%s", i, item.price, item.name, item.template))
+	end
+	return tostring(#stock)
+end
+
+-- merchantShowStock:<char> → open the merchant's stock window for an online character by hand,
+-- reporting any Lua error the conversation handler would have swallowed
+function FbLabTests:merchantShowStock(charName)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	if FbTravelingMerchant == nil then print("ERROR FbTravelingMerchant not loaded"); return "none" end
+	local ok, err = pcall(function() FbTravelingMerchant:showStock(pPlayer, nil) end)
+	print("INFO merchantShowStock ok=" .. tostring(ok) .. " err=" .. tostring(err))
+	return tostring(ok)
+end
+
+-- merchantStops → one line per configured stop
+function FbLabTests:merchantStops()
+	if FbTravelingMerchant == nil then print("ERROR FbTravelingMerchant not loaded"); return "none" end
+	for i, stop in ipairs(FbTravelingMerchant.stops) do
+		print(string.format("INFO merchant_stop idx=%d planet=%s label=%s x=%d y=%d", i, stop.planet, stop.label, stop.x, stop.y))
+	end
+	return tostring(#FbTravelingMerchant.stops)
+end
+
+-- merchantMove[:<stopIdx>] → relocate the traveling merchant now (what the 3-hour server event does)
+function FbLabTests:merchantMove(target)
+	if FbTravelingMerchant == nil then print("ERROR FbTravelingMerchant not loaded"); return "none" end
+	local status = FbTravelingMerchant:move(tonumber(target))
+	print("INFO merchant " .. status)
+	return status
+end
+
+-- buyMerchant:<char>:<item name> → FbTravelingMerchant:purchase() for the named item of this visit
+function FbLabTests:buyMerchant(charName, itemName)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	if FbTravelingMerchant == nil then print("ERROR FbTravelingMerchant not loaded"); return "none" end
+	local stock = FbTravelingMerchant:stockFor(FbTravelingMerchant:visit())
+	for i, item in ipairs(stock) do
+		if item.name == itemName then
+			local result = FbTravelingMerchant:purchase(pPlayer, i)
+			print(string.format("INFO buyMerchant idx=%d name=%s price=%d result=%s", i, item.name, item.price, tostring(result)))
+			return tostring(result)
+		end
+	end
+	print("ERROR '" .. tostring(itemName) .. "' is not in this visit's stock"); return "bad_item"
 end
 
 function FbLabTests:isOnline(charName)

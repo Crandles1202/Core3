@@ -70,6 +70,12 @@ login hook on its first scenario run (`swg test lua` reloads before every run). 
 Target.fn = Mine._wrapper end`. C-registered functions (`spawnMobile`) are not redefined by a reload, so
 a flag is fine for those.
 
+### Screenplay state does not travel between Lua states
+`FbX.someField = …` set in `start()` lives only in the thread state that ran `start()`; a later call
+from the console (`runLuaFunction`) or from a server event may run in a different state and see nil.
+Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys without `:`), as
+`FbTravelingMerchant` does for its stop, visit counter and live NPC id.
+
 ### Mobile templates must have combat stats even for vendors
 `LuaMobileTest.LuaMobileTemplatesTest` fails on any mobile with `mobType` unset/0, `chanceHit <= 0`,
 `damageMin <= 0`, `baseHAM <= 0`. Non-combat NPCs: `mobType = MOB_NPC` (people) / `MOB_DROID`,
@@ -176,6 +182,34 @@ a flag is fine for those.
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-17 — Phase 2.9.** Traveling merchant. Lua only: a screenplay with a stop table (city
+  centres from `managers/planet/*_regions.lua`, z from `getTerrainHeight`), a 34-item cosmetic pool and
+  a deterministic rotating stock (`stockFor(visit)` = 8 consecutive pool entries from `visit*5 mod n`).
+  Persistence: `createServerEvent(ms, "FbTravelingMerchant", "onMoveEvent", "FbMerchantMove")` is the
+  3-hour timer (survives restarts; `hasServerEvent` guards re-creation, `rescheduleServerEvent` after a
+  forced move) and the current stop / visit counter live in the global quest-status store
+  (`setQuestStatus("FbTravelingMerchant:stop", …)`). `spawnMobile` NPCs are not persisted, so `start()`
+  respawns him at the stored stop after every restart and `move()` despawns with
+  `destroyObjectFromWorld(true)`. Scenario `traveling-merchant`: oracle finds him, bot travels, buys
+  through the real conversation + stock window, oracle forces a move and checks exactly one merchant,
+  a different stop, a different stock. City-centre coordinates are a guess at "open ground"; Chuck's
+  checklist asks him to confirm Ozlo is not inside a wall at each stop. Four lessons from getting it
+  green: (1) **`getTerrainHeight(pCreature, x, y)` takes a creature**, not a zone name — passing a
+  string returned 0 and the merchant spawned underground, where the conversation greeting still
+  worked but option picks got no reply. Added `getTerrainHeightAt(zoneName, x, y)` (DirectorManager,
+  C++). (2) **Screenplay tables are per Lua state**: `self.merchantOid` set by `start()` in the main
+  state was nil in the console state that ran `move()`, so nothing despawned. Anything a later call
+  needs goes into the quest-status store (`setQuestStatus`/`getQuestStatus`). (3) Quest-status keys
+  must not contain `:` if the lab is ever to touch them — `runLuaFunction` splits arguments on `:`
+  (keys are now `FbTravelingMerchant.stop/.visit/.oid`; oracle `questStatus:<key>[:<value>]`). (4) A
+  `destroyObjectFromWorld` object still resolves through `getSceneObject` for a while; the `npc` oracle
+  now skips objects whose `getZoneName()` is empty. (5) The lab's own `travel` oracle had the same
+  height bug as (1): `getTerrainHeight(pPlayer, …)` uses the character's *current* zone, so a
+  cross-planet teleport put the character at the wrong height and conversation option picks silently
+  failed (the greeting, a 2-D range check, still worked). Fixed with `getTerrainHeightAt(planet, …)`.
+  Stop audit (`merchant-stops.manual.sh`, places him at every stop and runs a two-screen
+  conversation): 9 of 10 candidate city centres reachable; Anchorhead's (102, -5360) was not and is
+  not in the table.
 - **2026-10-17 — Lab: server UI (SUI) windows.** The bot now reads `SuiCreatePageMessage`
   (0xD44B7259, opcount 2, zlib-compressed — the engine inflates it): int pageId, ascii root
   (`Script.listBox`, `Script.inputBox`…), int commandCount, then commands as (byte type, int wideCount,
