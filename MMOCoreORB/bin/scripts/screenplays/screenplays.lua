@@ -749,6 +749,8 @@ includeFile("tasks/tatooine/fb_pet_vet_conv_handler.lua")
 includeFile("tasks/tatooine/fb_pet_vet.lua")
 includeFile("tasks/tatooine/fb_smuggler_goods_conv_handler.lua")
 includeFile("tasks/tatooine/fb_smuggler_goods.lua")
+includeFile("tasks/tatooine/fb_schematic_broker_conv_handler.lua")   -- Phase 2.2
+includeFile("tasks/tatooine/fb_schematic_broker.lua")
 includeFile("tasks/tatooine/fb_droid_dispenser_conv_handler.lua")
 includeFile("tasks/tatooine/fb_droid_dispenser.lua")
 includeFile("tasks/tatooine/fb_pet_dealer_conv_handler.lua")
