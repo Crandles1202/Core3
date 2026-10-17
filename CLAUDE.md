@@ -154,7 +154,8 @@ the classifier stepping in. Claude is not allowed to edit it; Chuck does. Intend
 { "permissions": { "allow": [
   "Bash(git push origin *)", "Bash(git push -u origin *)", "Bash(git merge *)",
   "Bash(git submodule update *)", "Bash(git stash drop *)",
-  "Bash(tools/swg *)", "Bash(/home/chuck/workspace/Core3/tools/swg *)" ] } }
+  "Bash(tools/swg *)", "Bash(/home/chuck/workspace/Core3/tools/swg *)",
+  "Bash(/home/chuck/bin/build *)", "Bash(mysql swgemu *)" ] } }
 ```
 Settings are read at session start, so restart Claude Code after creating it.
 - Keep this list and `docs/dev-notes.md` current: every non-obvious lesson gets written down the same
@@ -180,7 +181,7 @@ _Updated: 2026-10-16 (session 1: test lab set up)_
 
 ### To-do
 
-- [ ] **Chuck:** create `.claude/settings.json` (see Permissions) and restart Claude Code.
+- [x] `.claude/settings.json` created by Chuck 2026-10-16 (allow-list in Permissions, plus `~/bin/build` and `mysql swgemu`).
 - [ ] **Chuck (or Claude once permitted):** `git merge --no-ff feature/test-lab` into `unstable`,
   `git submodule update --init --recursive`, push. Tag `chuck-stable-20261016` once play-tested.
 - [ ] **Phase 0.2 — DBSecret.** The custom secret is live (test accounts prove it). `Chuckertons` and
