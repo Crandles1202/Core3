@@ -880,6 +880,7 @@ includeFile("quest/tatooine/fb_combat_quartermaster.lua")
 includeFile("quest/tatooine/fb_pet_vet.lua")
 includeFile("quest/tatooine/fb_smuggler_goods.lua")
 includeFile("quest/tatooine/fb_schematic_broker.lua")   -- Phase 2.2
+includeFile("quest/tatooine/fb_parts_dealer.lua")   -- Phase 2.3
 includeFile("quest/tatooine/fb_droid_dispenser.lua")
 includeFile("quest/tatooine/fb_pet_dealer.lua")
 includeFile("quest/tatooine/fb_property_agent.lua")

@@ -125,6 +125,7 @@ tools/swg account create <user> <admin_level> [--reset]   # server's own hash re
 | 1.3 | Starter gear: CDEF pistol, shirt, pants, stimpack added to `commonStartingItems` | `managers/player_creation_manager.lua` |
 | 1.7 | Shuttleport away time 300 s → 60 s (`shuttleportAwayTime`) | `managers/planet/planet_manager.lua` |
 | 2.2 | Schematic broker "Dannik Vosa" at Mos Eisley starport (3535, -4813): 33 single-use loot schematics in three catalogues (decor, kitchen/cantina, workshop/tech incl. recyclers), 250–5000 cr cash, each labelled with and gated by its template's `requiredSkill`. Master-tier sets (Mandalorian, Geonosian, corvette) excluded, as are the 38 upstream stub templates with no draft. `FbSchematicBroker:purchase(pPlayer, cat, item)` is public for the lab | `fb_schematic_broker*.lua` (screenplay, conv handler, conv template, mobile) |
+| 2.3 | Parts dealer "Tamsin Rook" at Mos Eisley starport (3535, -4818): 46 crafting sub-components (weapon parts, armor segments, chemistry parts) generated through `createLoot` with the `component_loot` item names, standard rolled at level 30, advanced at level 60 for 3× the price | `fb_parts_dealer*.lua` |
 | 2.5 | Bazaar limits config-driven with new defaults: 100 listings per character (was 25), one-year bazaar and vendor listing times (were 7 / 30 days); price caps unchanged. Keys `Core3.Auction.MaxSales`, `.CommodityExpireSeconds`, `.VendorExpireSeconds`, `.MaxBazaarPrice` in `config-local.lua` override | `AuctionManagerImplementation.cpp` (helpers at top) |
 | 1.10 | No-grind entertainer: a 10 s tick without a flourish pays one flourish's XP (`flourishXpMod`; `baseXp` is 0 in the datatable, so stock pays nothing), and a solo performer counts as 25 watchers (`fbSoloAudienceMod = 0.5`). Healing XP still needs patrons | `EntertainingSessionImplementation.cpp` (`awardEntertainerExperience`) |
 | 1.11 | Group XP ×1.25 was already in (`groupExpMultiplier`); the loot half is not done | `player_manager.lua` |
@@ -190,112 +191,24 @@ Settings are read at session start, so restart Claude Code after creating it.
 
 ## Current status
 
-_Updated: 2026-10-17 (session 2: Phase 1 quick wins 1.9, 1.5, 1.4, 1.10 shipped)_
+_Updated: 2026-10-17 (session 2: 1.9, 1.5, 1.4, 1.10, 2.5, 2.2, 2.3 shipped)_
 
 - `unstable` = `origin/unstable`, no local feature branches, stash empty. Each phase went through its own
-  `feature/phase1.N-*` branch, a `--no-ff` merge and a push; all four are **unplay-tested by Chuck** (he
+  `feature/phaseX.Y-*` branch, a `--no-ff` merge and a push; all seven are **unplay-tested by Chuck** (he
   tests tonight) — see the checklist in To-do.
 - Shipped today: 1.9 stimpacks heal mind (Lua template override), 1.5 inventory 100 (template + login
   hook + Lua setter), 1.4 mission level/direction hints (C++ `populateMissionList`), 1.10 no-grind
   entertainer XP (C++ `awardEntertainerExperience`), 2.5 config-driven bazaar limits (C++), 2.2 schematic
-  broker NPC (Lua). Roadmap left in Phase 1: 1.11 loot half. Phase 2 left: 2.3 component vendors,
-  2.4 loot kits, 2.9 traveling merchant, 2.10 vendor auto-skim (needs bot auction packets to verify).
+  broker NPC (Lua), 2.3 parts dealer NPC (Lua, loot-generated components). Roadmap left in Phase 1:
+  1.11 loot half. Phase 2 left: 2.4 loot kits, 2.9 traveling merchant, 2.10 vendor auto-skim (needs bot
+  auction packets to verify).
 - Binaries: `bin/core3` and `bin/core3client` built 2026-10-17 from this tree (`swg build`).
-- Lab now: 258 unit, 200 Lua checks, bot, 6 scenarios (`stimpack-heals`, `npc-conversation`,
-  `inventory-100`, `mission-hints`, `entertainer-xp`, `schematic-broker`). Oracle additions today:
-  `inventoryLimit`, `setInventoryLimit`, `loginHook`, `spawnObjectNear`, `destroyObject`, `missions`,
-  `xp`, `cash`, `buySchematic` (by indexes or item name), `hasSchematic`. Bot additions:
-  `--missions <terminalOid>`, `--command-nowait`. Known gap: the client does not decode every
+- Lab now: 258 unit, 214 Lua checks, bot, 7 scenarios (`stimpack-heals`, `npc-conversation`,
+  `inventory-100`, `mission-hints`, `entertainer-xp`, `schematic-broker`, `parts-dealer`). Oracle
+  additions today: `inventoryLimit`, `setInventoryLimit`, `loginHook`, `spawnObjectNear`, `destroyObject`,
+  `missions`, `xp`, `cash`, `buySchematic` / `buyPart` (by indexes or item name), `hasSchematic`. Bot
+  additions: `--missions <terminalOid>`, `--command-nowait`. Known gap: the client does not decode every
   StringId system-message shape (e.g. `@loot_schematic:not_enough_skill` arrived as an empty line).
-- Snapshots: `baseline` (2026-10-16, post-upstream-merge, before Phase 2 and any bot characters) and
-  `post-phase2` (2026-10-16, `unstable` @ `fa635eaa38`, after the Phase 2 merge).
-
-## Shipped Final Boss content (what tests should protect)
-
-| Phase | Change | Where |
-|---|---|---|
-| 0.5 | `custom-features.lua` git-ignored | `.gitignore` |
-| 1.3 | Starter gear: CDEF pistol, shirt, pants, stimpack added to `commonStartingItems` | `managers/player_creation_manager.lua` |
-| 1.7 | Shuttleport away time 300 s → 60 s (`shuttleportAwayTime`) | `managers/planet/planet_manager.lua` |
-| 2.2 | Schematic broker "Dannik Vosa" at Mos Eisley starport (3535, -4813): 33 single-use loot schematics in three catalogues (decor, kitchen/cantina, workshop/tech incl. recyclers), 250–5000 cr cash, each labelled with and gated by its template's `requiredSkill`. Master-tier sets (Mandalorian, Geonosian, corvette) excluded, as are the 38 upstream stub templates with no draft. `FbSchematicBroker:purchase(pPlayer, cat, item)` is public for the lab | `fb_schematic_broker*.lua` (screenplay, conv handler, conv template, mobile) |
-| 2.5 | Bazaar limits config-driven with new defaults: 100 listings per character (was 25), one-year bazaar and vendor listing times (were 7 / 30 days); price caps unchanged. Keys `Core3.Auction.MaxSales`, `.CommodityExpireSeconds`, `.VendorExpireSeconds`, `.MaxBazaarPrice` in `config-local.lua` override | `AuctionManagerImplementation.cpp` (helpers at top) |
-| 1.10 | No-grind entertainer: a 10 s tick without a flourish pays one flourish's XP (`flourishXpMod`; `baseXp` is 0 in the datatable, so stock pays nothing), and a solo performer counts as 25 watchers (`fbSoloAudienceMod = 0.5`). Healing XP still needs patrons | `EntertainingSessionImplementation.cpp` (`awardEntertainerExperience`) |
-| 1.11 | Group XP ×1.25 was already in (`groupExpMultiplier`); the loot half is not done | `player_manager.lua` |
-| 1.4 | Mission terminals show level + direction: creator name becomes `Name [Lvl 23 - 1.4km NE]` when a list is randomized (`fbApplyMissionHint` in `populateMissionList`); `core3client --missions <terminalOid>`; Lua mission getters | `MissionManagerImplementation.cpp`, `LuaMissionObject.cpp`, `client/actions/MissionListAction.cpp` |
-| 1.5 | Character inventory 80 → 100 items: template re-registered (new characters) + `FBLogin` raises persisted limits on login (existing characters); Lua `SceneObject:setContainerVolumeLimit` added. Client's "/80" counter is cosmetic | `custom_scripts/object/tangible/inventory/fb_inventory_100.lua`, `custom_scripts/screenplays/fb_player_login.lua`, `LuaSceneObject.cpp` |
-| 1.9 | Player stimpacks (starter, crafted A–E, ranged/area, quest) heal mind too: `attributes = {0, 3, 6}` re-registered from `custom_scripts` | `custom_scripts/object/tangible/medicine/fb_stimpack_mind.lua` |
-| — | Blue frog "Combat Test Character" menu; Jedi trials no longer teleport to Yavin; FRS test build uses Defender Master | `terminal_character_builder.lua`, `jedi_trials.lua`, `PlayerManagerImplementation.cpp` |
-| 2.6 | FB-21 medical droid network (buffs, wound clear, travel) | `fb_mos_eisley_medical_droid*.lua` |
-| 2.7 | FB-72 armory droid (Mos Eisley starport + 2 weapon shops) | `fb_armory_droid*.lua` |
-| — | QoL: 100k cash/bank start, global XP ×2, group XP ×1.25, pet/vehicle call 5 s, 20 housing lots, resource stack 10M, admin `flag = 2` | `player_creation_manager.lua`, `player_manager.lua`, `*ControlDeviceImplementation.cpp`, `PlayerObject.idl`, `ResourceContainer.idl`, `staff/levels/admin.lua` |
-| 2.1 | Vex Renn stim/medical dealer (Mos Eisley) | `fb_stim_dealer*.lua` |
-| lab | FB mobiles given `mobType`/`chanceHit`/`damageMin`/`baseHAM` so `LuaMobileTemplatesTest` passes; `core3client` create-character race fixed (`ZonePacketHandler.cpp`) | `mobile/quest/tatooine/fb_*.lua`, `src/client/zone/` |
-
-Non-combat NPC templates still need positive `chanceHit`, `damageMin/Max`, `baseHAM/HAMmax` and a `mobType`
-(`MOB_NPC` / `MOB_DROID`) or the unit tests fail — copy from an existing FB mobile.
-
-**Changing an upstream object template:** don't edit the upstream file (merge conflicts). Add a file under
-`custom_scripts/object/…`, include it from `custom_scripts/object/serverobjects.lua` (loaded after every
-upstream template), modify the existing global table and call `ObjectTemplates:addTemplate(tbl, iff)` again;
-the later registration replaces the earlier one. Pattern: `fb_stimpack_mind.lua`. Restart to load.
-`~/custom-features.lua` (`FBFeatures.*` flags) is a scaffold nothing reads yet; shipped features are
-unconditional.
-
-**Per-login fix-ups** (anything every existing character must be migrated to) go in `FBLogin.onLogin`
-(`custom_scripts/screenplays/fb_player_login.lua`), which wraps upstream `PlayerTriggers:playerLoggedIn`.
-Persisted object fields (`containerVolumeLimit`, …) are only read from the template at creation.
-
-## Gotchas (read before writing Lua or tests) — detail in [docs/dev-notes.md](docs/dev-notes.md)
-
-- `SceneObject(p)` / `CreatureObject(p)` / … return one **shared wrapper per class**, re-pointed on every
-  call. Never keep `local o = SceneObject(p)` across another `SceneObject(...)` call; wrap inline.
-  Breaking this throws a C++ exception that `pcall` can't catch and dirties the console Lua stack.
-- There are many Lua states. Screenplay Lua can't see manager globals (`shuttleportAwayTime`,
-  `commonStartingItems`), mobile/conversation templates, or `FBFeatures`. Sandbox-`loadfile` the file
-  to inspect it (pattern in `fb_lab_tests.lua`).
-- `reloadscreenplays` re-runs `screenplays.lua` into the existing state: functions update, `start()` does
-  not re-run, nothing re-spawns. Mobile/conversation/manager Lua needs a restart.
-- Non-combat mobiles still need `mobType`, `chanceHit`, `damageMin/Max`, `baseHAM/HAMmax` > 0 or the
-  unit tests fail.
-- Non-admin accounts create one character per hour; failed attempts reset the timer. The name filter
-  runs first, so a declined name does not count.
-- Allow-list rules match the whole command: run `git merge`, `git push`, `tools/swg …` as a single
-  command per Bash call, never inside `a && b`. The classifier still refuses some things (remote
-  URL changes, remote branch deletes, `git checkout -- <conf file>`); hand those to Chuck.
-- `git ls-files -v | grep ^S` shows skip-worktree files. `resource_manager_spawns.lua` is written by the
-  server and must stay that way; nothing else should carry the flag.
-
-## Permissions (Chuck-owned)
-
-`.claude/settings.json` (committed) is the allow-list that lets Claude push/merge/manage accounts without
-the classifier stepping in. Claude is not allowed to edit it; Chuck does. Intended content:
-
-```json
-{ "permissions": { "allow": [
-  "Bash(git push origin *)", "Bash(git push -u origin *)", "Bash(git merge *)",
-  "Bash(git submodule update *)", "Bash(git stash drop *)",
-  "Bash(tools/swg *)", "Bash(/home/chuck/workspace/Core3/tools/swg *)",
-  "Bash(/home/chuck/bin/build *)", "Bash(mysql swgemu *)" ] } }
-```
-Settings are read at session start, so restart Claude Code after creating it.
-- Keep this list and `docs/dev-notes.md` current: every non-obvious lesson gets written down the same
-  session it is learned (Chuck's standing request).
-
-## Current status
-
-_Updated: 2026-10-17 (session 2: Phase 1 quick wins 1.9, 1.5, 1.4, 1.10 shipped)_
-
-- `unstable` = `origin/unstable`, no local feature branches, stash empty. Each phase went through its own
-  `feature/phase1.N-*` branch, a `--no-ff` merge and a push; all four are **unplay-tested by Chuck** (he
-  tests tonight) — see the checklist in To-do.
-- Shipped today: 1.9 stimpacks heal mind (Lua template override), 1.5 inventory 100 (template + login
-  hook + Lua setter), 1.4 mission level/direction hints (C++ `populateMissionList`), 1.10 no-grind
-  entertainer XP (C++ `awardEntertainerExperience`). Roadmap Phase 1 remaining: 1.11 loot half only.
-- Binaries: `bin/core3` and `bin/core3client` built 2026-10-17 from this tree (`swg build`).
-- Lab now: 258 unit, 181 Lua checks, bot, 5 scenarios (`stimpack-heals`, `npc-conversation`,
-  `inventory-100`, `mission-hints`, `entertainer-xp`). Oracle additions: `inventoryLimit`,
-  `setInventoryLimit`, `loginHook`, `spawnObjectNear`, `destroyObject`, `missions`, `xp`.
-  Bot additions: `--missions <terminalOid>`, `--command-nowait`.
 - Snapshots: `baseline` (702 MB, pre-Phase 2) and `post-phase2` (700 MB, `unstable` @ `fa635eaa38`,
   before today's Phase 1 work).
 - Accounts: `claude-admin` (id 4, level 15), `claude-player` (id 5, level 0), `Chuckertons` (id 2, level 15)
@@ -315,7 +228,8 @@ _Updated: 2026-10-17 (session 2: Phase 1 quick wins 1.9, 1.5, 1.4, 1.10 shipped)
   it — mind listed and healed; (1.5) drop a 90th item into the inventory — server allows it, counter may
   read "90/80"; (1.4) open a mission terminal — creator column reads `Name [Lvl N - 1.4km NE]`, check the
   direction against the waypoint; (1.10) dance alone without flourishing — XP message every 10 s; (2.2) talk to Dannik Vosa at the
-  starport, buy a schematic you have the skill for, use the datapad; (2.5) list 26+ items on a bazaar.
+  starport, buy a schematic you have the skill for, use the datapad; (2.3) buy a part from
+  Tamsin Rook next to him and examine its stats; (2.5) list 26+ items on a bazaar.
   Then `swg snap save phase1-quickwins` and tag `chuck-stable-20261017`.
 - [ ] **Chuck: starter stimpack is unusable by non-medics** (`stimpack_sm_s1` needs `healing_ability >= 5`,
   a fresh character has 0 — found by the stimpack scenario). Decide: own starter template with

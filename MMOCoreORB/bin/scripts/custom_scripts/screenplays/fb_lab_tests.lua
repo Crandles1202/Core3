@@ -408,6 +408,22 @@ function FbLabTests.checkSchematicBroker()
 	check("schematic_broker.purchase_is_public", type(FbSchematicBroker.purchase) == "function")
 end
 
+-- Phase 2.3: every parts-dealer row names a component_loot item that exists (standard and advanced).
+function FbLabTests.checkPartsDealer()
+	if FbPartsDealer == nil then check("parts_dealer.loaded", false); return end
+	local total, missing = 0, {}
+	for _, cat in ipairs(FbPartsDealer.categories) do
+		for _, item in ipairs(cat.items) do
+			total = total + 1
+			local f = io.open("scripts/loot/items/component_loot/" .. item.loot .. ".lua", "r")
+			if f == nil then missing[#missing + 1] = item.loot else f:close() end
+		end
+	end
+	check("parts_dealer.catalogue_size", total >= 40, total .. " parts")
+	check("parts_dealer.every_loot_item_exists", #missing == 0, table.concat(missing, ", "))
+	check("parts_dealer.purchase_is_public", type(FbPartsDealer.purchase) == "function")
+end
+
 -- ---------------------------------------------------------------- entry points
 
 -- runLuaFunction passes the FbLabTests table as the first argument, then the ':'-separated args.
@@ -427,6 +443,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkInventory()
 		FbLabTests.checkBazaar()
 		FbLabTests.checkSchematicBroker()
+		FbLabTests.checkPartsDealer()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)
@@ -780,6 +797,27 @@ function FbLabTests:hasSchematic(charName, draftPath)
 	local has = PlayerObject(pGhost):hasSchematic(draftPath) and 1 or 0
 	print(string.format("INFO schematic char=%s draft=%s has=%d", charName, draftPath, has))
 	return tostring(has)
+end
+
+-- buyPart:<char>:<item name>  or  buyPart:<char>:<catIdx>:<itemIdx> → FbPartsDealer:purchase()
+function FbLabTests:buyPart(charName, catIdx, itemIdx)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	if FbPartsDealer == nil then print("ERROR FbPartsDealer not loaded"); return "none" end
+	local c, i = tonumber(catIdx), tonumber(itemIdx)
+	if c == nil then
+		for ci, cat in ipairs(FbPartsDealer.categories) do
+			for ii, item in ipairs(cat.items) do
+				if item.name == catIdx then c, i = ci, ii end
+			end
+		end
+		if c == nil then print("ERROR no part named '" .. tostring(catIdx) .. "'"); return "bad_item" end
+	end
+	local item = FbPartsDealer.categories[c].items[i]
+	local result = FbPartsDealer:purchase(pPlayer, c, i)
+	print(string.format("INFO buyPart cat=%d item=%d name=%s loot=%s level=%d price=%d result=%s",
+		c, i, item and item.name or "?", item and item.loot or "?", item and item.level or 0, item and item.price or 0, tostring(result)))
+	return tostring(result)
 end
 
 function FbLabTests:isOnline(charName)
