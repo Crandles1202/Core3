@@ -606,6 +606,54 @@ function FbLabTests:inventoryLimit(charName)
 	return tostring(limit)
 end
 
+-- spawnObjectNear:<char>:<template>:<dx>:<dy> → spawn a scene object (e.g. a mission terminal) next
+-- to the character, at their height; prints oid. Clean up with destroyObject:<oid>.
+function FbLabTests:spawnObjectNear(charName, template, dx, dy)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "none" end
+	local zone = SceneObject(pPlayer):getZoneName()
+	local x = SceneObject(pPlayer):getWorldPositionX() + (tonumber(dx) or 0)
+	local y = SceneObject(pPlayer):getWorldPositionY() + (tonumber(dy) or 0)
+	local z = SceneObject(pPlayer):getWorldPositionZ()
+	local pObject = spawnSceneObject(zone, template, x, z, y, 0, 0)
+	if pObject == nil then print("ERROR spawnSceneObject failed for " .. tostring(template)); return "none" end
+	print(string.format("INFO spawned oid=%s template=%s zone=%s x=%d y=%d", tostring(SceneObject(pObject):getObjectID()), template, zone, x, y))
+	return tostring(SceneObject(pObject):getObjectID())
+end
+
+-- destroyObject:<oid> → remove a lab-spawned object from the world and the database
+function FbLabTests:destroyObject(oid)
+	local pObject = getSceneObject(tonumber(oid))
+	if pObject == nil then print("ERROR no object " .. tostring(oid)); return "none" end
+	SceneObject(pObject):destroyObjectFromWorld(true)
+	SceneObject(pObject):destroyObjectFromDatabase()
+	print("INFO destroyed oid=" .. tostring(oid))
+	return "ok"
+end
+
+-- missions:<char> → one line per mission in the character's mission bag (after a terminal list request)
+function FbLabTests:missions(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "none" end
+	local pBag = CreatureObject(pPlayer):getSlottedObject("mission_bag")
+	if pBag == nil then print("ERROR " .. charName .. " has no mission bag"); return "none" end
+	local n = SceneObject(pBag):getContainerObjectsSize()
+	local shown = 0
+	for i = 0, n - 1 do
+		local pMission = SceneObject(pBag):getContainerObject(i)
+		if pMission ~= nil and LuaMissionObject(pMission):getTypeCRC() ~= 0 then
+			shown = shown + 1
+			print(string.format("INFO mission i=%d type=%d lvl=%d reward=%d planet=%s start=%.0f,%.0f creator=%s",
+				i, LuaMissionObject(pMission):getTypeCRC(), LuaMissionObject(pMission):getDifficultyLevel(),
+				LuaMissionObject(pMission):getRewardCredits(), LuaMissionObject(pMission):getStartPlanet(),
+				LuaMissionObject(pMission):getStartPositionX(), LuaMissionObject(pMission):getStartPositionY(),
+				LuaMissionObject(pMission):getCreatorName()))
+		end
+	end
+	print(string.format("INFO missions char=%s bag=%d randomized=%d", charName, n, shown))
+	return tostring(shown)
+end
+
 -- setInventoryLimit:<char>:<n> → force the persisted limit (scenarios use it to simulate an old character)
 function FbLabTests:setInventoryLimit(charName, limit)
 	local pPlayer = loadedPlayer(charName)
