@@ -209,6 +209,12 @@ public:
 		return maintAmount;
 	}
 
+	// Final Boss Phase 2.10: credits skimmed from a sale go straight into maintenance
+	inline void addMaintenanceCredits(int value) {
+		if (value > 0)
+			maintAmount += value;
+	}
+
 	// Days this vendor has had nothing for sale, drives EMPTYWARNING and EMPTYDELETE
 	inline int getEmptyDays() {
 		return (time(0) - emptyTimer.getTime()) / 86400;

@@ -176,6 +176,15 @@ a flag is fine for those.
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-17 — Phase 2.10.** Vendor maintenance auto-skim, C++ in `doInstantBuy`: for a sale on a
+  player vendor (not `item->isOnBazaar()`), `skim = price * Core3.Vendor.SaleMaintenancePercent / 100`
+  (default 5) goes into `VendorDataComponent::addMaintenanceCredits` (new one-liner next to `getMaint`),
+  the seller banks the rest, logged as a `VENDORMAINTANENCE` transaction grouped with the sale. Bids on
+  auction-style listings (`doAuctionBid`) are not touched. **Not lab-verified:** placing a vendor needs
+  a structure the character owns plus two SUI windows (`/createvendor` → type list → name box), and the
+  bot cannot drive SUI yet. Bot SUI support (parse SuiCreatePageMessage 0xD44B7259, answer with
+  SuiEventNotification 0x092D3564) is the next lab upgrade worth doing — it would also let the NPC
+  vendor scenarios buy through the real UI instead of the public `purchase()` helpers.
 - **2026-10-17 — Lab: auction packets.** `core3client` gained `--sell <item> <vendor> <price>`
   (CreateImmediateAuctionMessage 0x1E9CE308: long item, long vendor, int price, int duration, unicode
   description, byte premium), `--buy <item> <price>` (BidAuctionMessage 0x91125453: long, int, int;
