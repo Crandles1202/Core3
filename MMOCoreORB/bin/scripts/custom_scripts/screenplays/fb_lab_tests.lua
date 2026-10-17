@@ -374,6 +374,16 @@ function FbLabTests.checkInventory()
 	-- the setContainerVolumeLimit binding itself is proven live by the inventory-100 scenario
 end
 
+-- Phase 2.5: the auction manager reads its limits from Core3.Auction.* (static check; the bot has no
+-- auction packets yet, so this only proves the wiring is in the source the binary was built from).
+function FbLabTests.checkBazaar()
+	local src = "../src/server/zone/managers/auction/AuctionManagerImplementation.cpp"
+	for _, key in ipairs({ "Core3.Auction.MaxSales", "Core3.Auction.CommodityExpireSeconds", "Core3.Auction.VendorExpireSeconds" }) do
+		check("bazaar.config_key_" .. key:match("([^.]+)$"), fileContains(src, '"' .. key .. '"'))
+	end
+	check("bazaar.no_raw_MAXSALES_left", not fileContains(src, ">= MAXSALES"))
+end
+
 -- ---------------------------------------------------------------- entry points
 
 -- runLuaFunction passes the FbLabTests table as the first argument, then the ':'-separated args.
@@ -391,6 +401,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkQol()
 		FbLabTests.checkStimMind()
 		FbLabTests.checkInventory()
+		FbLabTests.checkBazaar()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)

@@ -172,6 +172,13 @@ a flag is fine for those.
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-17 — Phase 2.5.** Bazaar listing count/time. The limits are `final static int` constants in
+  `AuctionManager.idl` (`MAXSALES` 25, `COMMODITYEXPIREPERIOD` 7 d, `VENDOREXPIREPERIOD` 30 d). Changing
+  the IDL regenerates code and recompiles everything that includes it, so instead the ~20 use sites in
+  `AuctionManagerImplementation.cpp` now call file-local helpers that read `Core3.Auction.*` from the
+  config (defaults 100 / 1 y / 1 y). `ConfigManager::getInt` does *not* register unknown keys, so
+  `dumpcfg` won't list them unless set in `config-local.lua`. Not lab-verified end to end: listing on
+  the bazaar needs auction packets the bot does not speak yet (see 2.10). Static check only.
 - **2026-10-17 — Phase 1.10.** No-grind entertainer. `EntertainingSessionImplementation::
   awardEntertainerExperience` runs every 10 s (`EntertainingSessionTask`); stock pays
   `(flourishXp + baseXp) × (1 + audience/50 + applause/100 + 0.05/grouped entertainer)` but only when
