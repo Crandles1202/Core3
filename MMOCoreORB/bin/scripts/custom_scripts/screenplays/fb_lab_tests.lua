@@ -384,6 +384,30 @@ function FbLabTests.checkBazaar()
 	check("bazaar.no_raw_MAXSALES_left", not fileContains(src, ">= MAXSALES"))
 end
 
+-- Phase 2.2: every catalogue entry of the schematic broker must point at a loot_schematic template
+-- that names a targetDraftSchematic (38 upstream files are stubs) and carry that file's requiredSkill.
+function FbLabTests.checkSchematicBroker()
+	if FbSchematicBroker == nil then check("schematic_broker.loaded", false); return end
+	local total, badDraft, badSkill = 0, {}, {}
+	for _, cat in ipairs(FbSchematicBroker.categories) do
+		for _, item in ipairs(cat.items) do
+			total = total + 1
+			local file = "scripts/" .. item.template:gsub("%.iff$", ".lua")
+			if not fileContains(file, "targetDraftSchematic") then badDraft[#badDraft + 1] = item.name end
+			local f = io.open(file, "r")
+			if f ~= nil then
+				local text = f:read("a"); f:close()
+				local required = text:match('requiredSkill%s*=%s*"([^"]*)"') or ""
+				if required ~= (item.skill or "") then badSkill[#badSkill + 1] = item.name .. "(" .. required .. ")" end
+			end
+		end
+	end
+	check("schematic_broker.catalogue_size", total >= 30, total .. " items")
+	check("schematic_broker.every_item_has_draft", #badDraft == 0, table.concat(badDraft, ", "))
+	check("schematic_broker.skills_match_templates", #badSkill == 0, table.concat(badSkill, ", "))
+	check("schematic_broker.purchase_is_public", type(FbSchematicBroker.purchase) == "function")
+end
+
 -- ---------------------------------------------------------------- entry points
 
 -- runLuaFunction passes the FbLabTests table as the first argument, then the ':'-separated args.
@@ -402,6 +426,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkStimMind()
 		FbLabTests.checkInventory()
 		FbLabTests.checkBazaar()
+		FbLabTests.checkSchematicBroker()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)
@@ -713,6 +738,48 @@ function FbLabTests:inventoryTemplateLimit()
 	if not ok then print("ERROR " .. tostring(rerr)); return "none" end
 	print("INFO inventory_template limit=" .. tostring(captured))
 	return tostring(captured)
+end
+
+-- cash:<char> → cash and bank credits
+function FbLabTests:cash(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "none" end
+	local cash = CreatureObject(pPlayer):getCashCredits()
+	print(string.format("INFO credits char=%s cash=%d bank=%d", charName, cash, CreatureObject(pPlayer):getBankCredits()))
+	return tostring(cash)
+end
+
+-- buySchematic:<char>:<catIdx>:<itemIdx>  or  buySchematic:<char>:<item name>
+-- → FbSchematicBroker:purchase() without the SUI window; the name form survives catalogue edits
+function FbLabTests:buySchematic(charName, catIdx, itemIdx)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	if FbSchematicBroker == nil then print("ERROR FbSchematicBroker not loaded"); return "none" end
+	local c, i = tonumber(catIdx), tonumber(itemIdx)
+	if c == nil then
+		for ci, cat in ipairs(FbSchematicBroker.categories) do
+			for ii, item in ipairs(cat.items) do
+				if item.name == catIdx then c, i = ci, ii end
+			end
+		end
+		if c == nil then print("ERROR no catalogue item named '" .. tostring(catIdx) .. "'"); return "bad_item" end
+	end
+	local item = FbSchematicBroker.categories[c].items[i]
+	local result = FbSchematicBroker:purchase(pPlayer, c, i)
+	print(string.format("INFO buySchematic cat=%d item=%d name=%s price=%d skill=%s result=%s",
+		c, i, item and item.name or "?", item and item.price or 0, item and item.skill or "", tostring(result)))
+	return tostring(result)
+end
+
+-- hasSchematic:<char>:<draft iff path> → 1/0
+function FbLabTests:hasSchematic(charName, draftPath)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "none" end
+	local pGhost = CreatureObject(pPlayer):getPlayerObject()
+	if pGhost == nil then print("ERROR no player object"); return "none" end
+	local has = PlayerObject(pGhost):hasSchematic(draftPath) and 1 or 0
+	print(string.format("INFO schematic char=%s draft=%s has=%d", charName, draftPath, has))
+	return tostring(has)
 end
 
 function FbLabTests:isOnline(charName)

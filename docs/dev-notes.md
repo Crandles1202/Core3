@@ -172,6 +172,23 @@ a flag is fine for those.
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-17 — Phase 2.2.** Schematic broker NPC, built on Chuck's vendor pattern
+  (`fb_smuggler_goods`: screenplay with a data table + SUI list boxes, conv template with a
+  `do_<thing>` screen the handler turns into a SUI, mobile template, three include lines). "Starter and
+  intermediate schematics" = the 85 `object/tangible/loot/loot_schematic/*` items minus the master-tier
+  sets; using one calls `PlayerObject::addRewardedSchematic(..., SchematicList::LOOT, useCount)` — no
+  profession needed (`LootSchematicMenuComponent`). Lab: the bot cannot drive SUI windows, so the
+  scenario buys through the public `FbSchematicBroker:purchase()` via the oracle (`buySchematic`), then
+  the bot *uses* the datapad with a real radial (id **50**, "Learn Schematic" — not ITEM_USE) and the
+  oracle confirms `hasSchematic`. New oracle helpers: `cash`, `buySchematic`, `hasSchematic`. The
+  content checks found the NPC by themselves (filesystem discovery), ~10 new checks.
+  Findings: (1) every loot schematic template has a `requiredSkill` enforced at learn time — the
+  cantina chair wants `crafting_artisan_master`, 17 of the first 50 picks wanted nothing — but those 17 are *stubs* (no `targetDraftSchematic`, 38 such files upstream) that would "learn" nothing, so they were dropped; 33 items remain. The
+  catalogue carries a `skill` field generated from the templates, the SUI labels it, and `purchase()`
+  refuses with `no_skill` instead of taking credits. (2) The client did not decode the
+  `@loot_schematic:not_enough_skill` reply (`ChatSystemMessage type=0 len=0`): a StringId message
+  shape the `handleChatSystemMessage` decoder does not handle yet. To-do; scenarios assert through
+  the oracle instead.
 - **2026-10-17 — Phase 2.5.** Bazaar listing count/time. The limits are `final static int` constants in
   `AuctionManager.idl` (`MAXSALES` 25, `COMMODITYEXPIREPERIOD` 7 d, `VENDOREXPIREPERIOD` 30 d). Changing
   the IDL regenerates code and recompiles everything that includes it, so instead the ~20 use sites in
