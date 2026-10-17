@@ -1024,7 +1024,10 @@ void EntertainingSessionImplementation::awardEntertainerExperience() {
 				flourishXp = 0;
 		}
 
-		if (flourishXp > 0 && (isDancing() || isPlayingMusic())) {
+		// Final Boss Phase 1.10 (no-grind entertainer): stock only awards XP on a tick where the
+		// player flourished; here every tick while performing pays the performance's base XP, and
+		// flourishes still add on top.
+		if (isDancing() || isPlayingMusic()) {
 			String xptype;
 
 			if (isDancing())
@@ -1056,10 +1059,20 @@ void EntertainingSessionImplementation::awardEntertainerExperience() {
 				}
 			}
 
-			int xpAmount = flourishXp + performance->getBaseXp();
+			// Final Boss Phase 1.10: baseXp is 0 for every performance in the datatable, so stock XP is
+			// flourishes only. A tick without a flourish pays as if the player had flourished once.
+			int fbPassiveXp = (flourishXp > 0) ? 0 : performance->getFlourishXpMod();
+			int xpAmount = flourishXp + performance->getBaseXp() + fbPassiveXp;
 
 			int audienceSize = Math::min(getBandAudienceSize(), 50);
 			float audienceMod = audienceSize / 50.f;
+
+			// Final Boss Phase 1.10: a solo performer is treated as having 25 watchers, so XP does
+			// not depend on other players being around.
+			const float fbSoloAudienceMod = 0.5f;
+			if (audienceMod < fbSoloAudienceMod)
+				audienceMod = fbSoloAudienceMod;
+
 			float applauseMod = applauseCount / 100.f;
 
 			float groupMod = groupBonusCount * 0.05;
@@ -1068,8 +1081,12 @@ void EntertainingSessionImplementation::awardEntertainerExperience() {
 
 			xpAmount = ceil(xpAmount * totalBonus);
 
+			int awarded = 0;
 			if (playerManager != nullptr)
-				playerManager->awardExperience(player, xptype, xpAmount, true);
+				awarded = playerManager->awardExperience(player, xptype, xpAmount, true);
+
+			player->debug() << "FB entertainer tick: " << xptype << " flourishXp=" << flourishXp << " passive=" << fbPassiveXp
+				<< " audience=" << audienceSize << " bonus=" << totalBonus << " xpAmount=" << xpAmount << " awarded=" << awarded;
 
 			oldFlourishXp = flourishXp;
 			flourishXp = 0;

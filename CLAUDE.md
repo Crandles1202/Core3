@@ -102,7 +102,9 @@ tools/swg account create <user> <admin_level> [--reset]   # server's own hash re
   `where`, `skillmod` (read) and `inflict`, `heal`, `wound`, `give`, `skill`, `travel` (set up), all callable
   as `runLuaFunction FbLabTests:<fn>:<args>` or `lab fn:args` inside a scenario.
 - **Gameplay scenarios** (`tools/scenarios/*.sh`, see `lib.sh`): the bot acts through real packets
-  (`--command <slash command>`, `--radial <oid> <id>`, `--converse <npcOid> --options 0,2`, `--wait n`),
+  (`--command <slash command>` [`--args`, `--command-nowait` for commands that send no queue ack such as
+  `startdance`], `--radial <oid> <id>`, `--converse <npcOid> --options 0,2`, `--missions <terminalOid>`,
+  `--wait n`),
   the oracle observes. Templates: `stimpack-heals.sh` (control round measures regen, then the command
   round; asserts per-pool heal beyond regen), `npc-conversation.sh`. Write one for every mechanic
   change; `swg test all` runs them.
@@ -122,6 +124,8 @@ tools/swg account create <user> <admin_level> [--reset]   # server's own hash re
 | 0.5 | `custom-features.lua` git-ignored | `.gitignore` |
 | 1.3 | Starter gear: CDEF pistol, shirt, pants, stimpack added to `commonStartingItems` | `managers/player_creation_manager.lua` |
 | 1.7 | Shuttleport away time 300 s → 60 s (`shuttleportAwayTime`) | `managers/planet/planet_manager.lua` |
+| 1.10 | No-grind entertainer: a 10 s tick without a flourish pays one flourish's XP (`flourishXpMod`; `baseXp` is 0 in the datatable, so stock pays nothing), and a solo performer counts as 25 watchers (`fbSoloAudienceMod = 0.5`). Healing XP still needs patrons | `EntertainingSessionImplementation.cpp` (`awardEntertainerExperience`) |
+| 1.11 | Group XP ×1.25 was already in (`groupExpMultiplier`); the loot half is not done | `player_manager.lua` |
 | 1.4 | Mission terminals show level + direction: creator name becomes `Name [Lvl 23 - 1.4km NE]` when a list is randomized (`fbApplyMissionHint` in `populateMissionList`); `core3client --missions <terminalOid>`; Lua mission getters | `MissionManagerImplementation.cpp`, `LuaMissionObject.cpp`, `client/actions/MissionListAction.cpp` |
 | 1.5 | Character inventory 80 → 100 items: template re-registered (new characters) + `FBLogin` raises persisted limits on login (existing characters); Lua `SceneObject:setContainerVolumeLimit` added. Client's "/80" counter is cosmetic | `custom_scripts/object/tangible/inventory/fb_inventory_100.lua`, `custom_scripts/screenplays/fb_player_login.lua`, `LuaSceneObject.cpp` |
 | 1.9 | Player stimpacks (starter, crafted A–E, ranged/area, quest) heal mind too: `attributes = {0, 3, 6}` re-registered from `custom_scripts` | `custom_scripts/object/tangible/medicine/fb_stimpack_mind.lua` |
@@ -184,23 +188,24 @@ Settings are read at session start, so restart Claude Code after creating it.
 
 ## Current status
 
-_Updated: 2026-10-17 (session 1 wrap-up: lab merged into unstable)_
+_Updated: 2026-10-17 (session 2: Phase 1 quick wins 1.9, 1.5, 1.4, 1.10 shipped)_
 
-- `unstable` @ `fa635eaa38` = `origin/unstable`: upstream sync (14 commits, engine3 `4cbf3933`), Phase 2
-  Mos Eisley NPCs (15 FB mobiles with valid combat stats), CLAUDE.md/docs, `tools/swg`, lab tests,
-  `core3client` actions. No feature branches exist locally; `origin/feature/qol-starter-gear` is merged
-  and awaits deletion by Chuck.
-- Binaries: `bin/core3` and `bin/core3client` built 2026-10-16 from this tree.
-- Snapshots: `baseline` (702 MB, pre-Phase 2) and `post-phase2` (700 MB, `unstable` @ `fa635eaa38`).
+- `unstable` = `origin/unstable`, no local feature branches, stash empty. Each phase went through its own
+  `feature/phase1.N-*` branch, a `--no-ff` merge and a push; all four are **unplay-tested by Chuck** (he
+  tests tonight) — see the checklist in To-do.
+- Shipped today: 1.9 stimpacks heal mind (Lua template override), 1.5 inventory 100 (template + login
+  hook + Lua setter), 1.4 mission level/direction hints (C++ `populateMissionList`), 1.10 no-grind
+  entertainer XP (C++ `awardEntertainerExperience`). Roadmap Phase 1 remaining: 1.11 loot half only.
+- Binaries: `bin/core3` and `bin/core3client` built 2026-10-17 from this tree (`swg build`).
+- Lab now: 258 unit, 181 Lua checks, bot, 5 scenarios (`stimpack-heals`, `npc-conversation`,
+  `inventory-100`, `mission-hints`, `entertainer-xp`). Oracle additions: `inventoryLimit`,
+  `setInventoryLimit`, `loginHook`, `spawnObjectNear`, `destroyObject`, `missions`, `xp`.
+  Bot additions: `--missions <terminalOid>`, `--command-nowait`.
+- Snapshots: `baseline` (702 MB, pre-Phase 2) and `post-phase2` (700 MB, `unstable` @ `fa635eaa38`,
+  before today's Phase 1 work).
 - Accounts: `claude-admin` (id 4, level 15), `claude-player` (id 5, level 0), `Chuckertons` (id 2, level 15)
   and `chuck` (id 3, level 0) all hashed with the custom `Core3.DBSecret` from `config-local.lua`;
   passwords in `~/.swg-lab/<user>.pass`. `config.lua` is back to the upstream default (no skip-worktree).
-- Phase 1.9 (stimpacks heal mind) shipped 2026-10-17 from `feature/phase1.9-stim-heals-mind`: Lua-only
-  template override, scenario `stimpack-heals` (9 checks), 4 new content checks. 177 Lua checks total.
-- Roadmap next: 1.4 (mission terminal level/direction), 1.5 (inventory `containerVolumeLimit` 80 → 100 in
-  `object/tangible/inventory/objects.lua`; the 20 lots half is done), 1.10 (entertainer XP without
-  audience), 1.11 (group bonus). 1.1, 1.2, 1.3, 1.6, 1.7, 1.8 were in before the lab.
-- Stash list empty; no stray backup files in `bin/conf`.
 
 ### To-do
 
@@ -211,6 +216,11 @@ _Updated: 2026-10-17 (session 1 wrap-up: lab merged into unstable)_
 - [x] Snapshot `post-phase2` taken.
 - [x] Remote cleanup (Chuck, 2026-10-17): `origin/feature/qol-starter-gear` deleted, origin URL now
   `https://github.com/Crandles1202/Core3.git`. Only `origin/unstable` remains on the fork.
+- [ ] **Chuck play-test checklist (2026-10-17 build):** (1.9) take mind damage, use a stimpack, examine
+  it — mind listed and healed; (1.5) drop a 90th item into the inventory — server allows it, counter may
+  read "90/80"; (1.4) open a mission terminal — creator column reads `Name [Lvl N - 1.4km NE]`, check the
+  direction against the waypoint; (1.10) dance alone without flourishing — XP message every 10 s.
+  Then `swg snap save phase1-quickwins` and tag `chuck-stable-20261017`.
 - [ ] **Chuck: starter stimpack is unusable by non-medics** (`stimpack_sm_s1` needs `healing_ability >= 5`,
   a fresh character has 0 — found by the stimpack scenario). Decide: own starter template with
   `medicineUse = 0`, a small `healing_ability` grant, or a different consumable. Ties into Phase 1.9.

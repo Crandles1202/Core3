@@ -172,6 +172,23 @@ a flag is fine for those.
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-17 — Phase 1.10.** No-grind entertainer. `EntertainingSessionImplementation::
+  awardEntertainerExperience` runs every 10 s (`EntertainingSessionTask`); stock pays
+  `(flourishXp + baseXp) × (1 + audience/50 + applause/100 + 0.05/grouped entertainer)` but only when
+  `flourishXp > 0`, i.e. the player flourished during that tick (max 1 counted per tick for dance, 2 for
+  music). First attempt (pay `baseXp` every tick) awarded nothing: a debug line showed `baseXp=0` for
+  the basic dance — the datatable's baseXp is 0 for performances, stock XP is flourishes only. Shipped
+  rule: a tick without a flourish pays `flourishXpMod` once (dance caps at 1 flourish/tick anyway, so
+  idle dancing = flourishing dancing; music caps at 2, so idle music = half rate), and the audience
+  modifier is floored at 0.5 (a solo performer = 25 watchers). Healing XP (`entertainer_healing`) still
+  needs patrons; nothing to heal solo. Performance values come from the TRE datatable
+  (`PerformanceManager::loadPerformances`), not Lua. Scenario `entertainer-xp`: grant
+  `social_entertainer_novice`, `--command startdance --args basic`, wait 25 s with no flourish, read
+  dance XP through the new oracle `xp:<char>:<type>`. Two bot lessons: (1) `startdance`/`stopdance`
+  (and other non-queued commands) never produce a `CommandQueueRemove`, so `--command` timed out —
+  added `--command-nowait` (send, sleep 0.5 s, success; the server's verdict is still visible as a
+  system message such as `@performance:dance_start_self`); (2) `ClientCore` skips every remaining
+  action after one fails, so a failed command silently shortened the session to ~10 s.
 - **2026-10-17 — Phase 1.4.** Mission terminals show level + direction. Mission title/description are
   StringIds the client resolves from its own STFs, so no free text there; the one free-text field the
   client shows per mission is the creator name (`MissionObjectMessage3` unicode). A static helper in
