@@ -176,6 +176,24 @@ a flag is fine for those.
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-17 — Lab: server UI (SUI) windows.** The bot now reads `SuiCreatePageMessage`
+  (0xD44B7259, opcount 2, zlib-compressed — the engine inflates it): int pageId, ascii root
+  (`Script.listBox`, `Script.inputBox`…), int commandCount, then commands as (byte type, int wideCount,
+  unicode…, int narrowCount, ascii…). Type 3 = setProperty (wide value; narrow widget, property):
+  `bg.caption.lblTitle/Text` is the title, `Prompt.lblPrompt/Text` the prompt, `List.dataList.N/Text`
+  the rows. Type 5 = subscribeToEvent (narrow parent, one-byte event type, callback): OK = 0x09,
+  Cancel = 0x0A, and for Lua page boxes the *index of that command* is the `eventIndex` the reply must
+  carry (legacy C++ boxes: 0 / 1). Reply `SuiEventNotification` 0x092D3564: int pageId, int eventIndex,
+  int listSize1, int listSize2, unicode args (a list box wants the row index as text, an input box the
+  typed text). `--sui "<row text>" --sui-match "<title fragment>"` picks the newest unanswered window
+  whose root/title/prompt contains the fragment and the first row containing the text. Findings: (1)
+  lab characters are shadowed by the new-player helper droid, which opens a greeting list box *every
+  second*, so "answer the latest window" was wrong; the handler keeps an ordered list of all pages and
+  the action scans newest-first with the match filter. (2) My earlier "keep the first failure's exit
+  code" guard compared against 0, but `exit_result` starts at 1, so for a few commits a failed action
+  exited 0 — scenarios' `client_exit_0` checks were vacuous during that window; fixed (`< 100`).
+  Scenario `schematic-broker-ui` buys a Throw Pillow through conversation → catalogue window → item
+  window, the way a player does.
 - **2026-10-17 — Phase 2.10.** Vendor maintenance auto-skim, C++ in `doInstantBuy`: for a sale on a
   player vendor (not `item->isOnBazaar()`), `skim = price * Core3.Vendor.SaleMaintenancePercent / 100`
   (default 5) goes into `VendorDataComponent::addMaintenanceCredits` (new one-liner next to `getMaint`),
