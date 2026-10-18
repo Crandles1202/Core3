@@ -186,6 +186,16 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-17 — Phase 3.5.** Story ticker (`fb_story_ticker.lua`): a persistent weekly server
+  event cycles through a story table; `fire(idx)` posts the story's lines through
+  `FbGalaxyChatter.addNews` (7-day TTL), broadcasts one line with `broadcastToGalaxy(pCreature, text)`
+  (needs a creature as sender — the first story mob is used) and camps the story's mobs at a spot
+  outside town (terrain height via `getTerrainHeightAt`). Mobs are spawned with respawn 0 and an hourly
+  `createEvent` refill replaces the dead ones, because AiAgent respawn timers would resurrect a story
+  we have moved past and there is no Lua binding to clear them. Spawn records are `oid=template`
+  pairs in quest status so a restart (which drops `spawnMobile` NPCs) can respawn the current story in
+  `start()`. Scenario `story-ticker`: fire the next story with the bot online (mobs alive, news in the
+  pool, broadcast received), fire another (previous mobs gone via the new `objectAlive` oracle).
 - **2026-10-17 — Phase 3.6.** Galaxy chatter as a module (`fb_galaxy_chatter.lua`, included before
   `fb_ambient_life.lua`): `lines()` = 10 static news lines + live facts (merchant's current stop label
   via `FbTravelingMerchant:currentStop()`, Bestine election phase, each wrapped in `pcall`) + dated

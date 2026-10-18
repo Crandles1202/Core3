@@ -477,6 +477,20 @@ function FbLabTests.checkGalaxyChatter()
 	check("galaxy.ambient_uses_it", FbAmbientLife ~= nil and (FbAmbientLife.galaxyShare or 0) > 0)
 end
 
+-- Phase 3.5: the story ticker has a current story with its mobs alive and the weekly event scheduled.
+function FbLabTests.checkStoryTicker()
+	if FbStoryTicker == nil then check("story.loaded", false); return end
+	check("story.table", #FbStoryTicker.stories >= 3, #FbStoryTicker.stories .. " stories")
+	local idx = FbStoryTicker:current()
+	check("story.current_set", idx >= 1 and idx <= #FbStoryTicker.stories, "current=" .. idx)
+	local alive, total = FbStoryTicker:aliveSpawns()
+	check("story.mobs_spawned", total > 0 and alive == total, alive .. "/" .. total .. " alive")
+	check("story.weekly_event_scheduled", hasServerEvent(FbStoryTicker.eventName) == true)
+	for _, st in ipairs(FbStoryTicker.stories) do
+		check("story." .. st.key .. ".has_text", #st.news >= 1 and st.broadcast ~= nil and st.title ~= nil)
+	end
+end
+
 -- ---------------------------------------------------------------- entry points
 
 -- runLuaFunction passes the FbLabTests table as the first argument, then the ':'-separated args.
@@ -500,6 +514,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkTravelingMerchant()
 		FbLabTests.checkAmbientLife()
 		FbLabTests.checkGalaxyChatter()
+		FbLabTests.checkStoryTicker()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)
@@ -949,6 +964,34 @@ function FbLabTests:travelCell(charName, planet, x, z, y, cellID)
 	SceneObject(pPlayer):switchZone(planet, tonumber(x), tonumber(z), tonumber(y), tonumber(cellID))
 	print(string.format("INFO travelCell char=%s planet=%s x=%s z=%s y=%s cell=%s", charName, planet, x, z, y, cellID))
 	return "ok"
+end
+
+-- objectAlive:<oid> → 1 if the object resolves and is in a zone, else 0
+function FbLabTests:objectAlive(oid)
+	local p = getSceneObject(tonumber(oid))
+	local alive = (p ~= nil and SceneObject(p):getZoneName() ~= "") and 1 or 0
+	print(string.format("INFO object oid=%s alive=%d", tostring(oid), alive))
+	return tostring(alive)
+end
+
+-- story → the story ticker's current story, its live mobs and whether the weekly event is scheduled
+function FbLabTests:story()
+	if FbStoryTicker == nil then print("ERROR FbStoryTicker not loaded"); return "none" end
+	print("INFO story " .. FbStoryTicker:status())
+	for i, st in ipairs(FbStoryTicker.stories) do
+		local n = 0
+		for _, g in ipairs(st.mobs) do n = n + g.count end
+		print(string.format("INFO story_def idx=%d key=%s planet=%s x=%d y=%d mobs=%d", i, st.key, st.planet, st.x, st.y, n))
+	end
+	return tostring(FbStoryTicker:current())
+end
+
+-- storyFire:<idx> → run a story now (news, broadcast, mobs), as the weekly event would
+function FbLabTests:storyFire(idx)
+	if FbStoryTicker == nil then print("ERROR FbStoryTicker not loaded"); return "none" end
+	local status = FbStoryTicker:fire(tonumber(idx))
+	print("INFO story " .. tostring(status))
+	return tostring(status)
 end
 
 -- galaxyNews → every line the galaxy chatter can say right now (static + live + posted news)
