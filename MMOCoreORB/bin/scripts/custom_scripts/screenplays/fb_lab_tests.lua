@@ -545,6 +545,20 @@ function FbLabTests.checkWeatherEvents()
 	check("weather.tatooine_sandstorms_damaging", env ~= nil and env.tatooine ~= nil and env.tatooine.hasDamagingSandstorms == 1)
 end
 
+-- Phase 3.1: the invasion screenplay is loaded, its city points are on terrain, its schedule is armed.
+function FbLabTests.checkInvasions()
+	if FbInvasions == nil then check("invasions.loaded", false); return end
+	for city, cfg in pairs(FbInvasions.cities) do
+		for _, k in ipairs({ "staging", "plaza", "muster" }) do
+			check("invasions." .. city .. "." .. k .. "_on_terrain", getTerrainHeightAt(cfg.planet, cfg[k][1], cfg[k][2]) ~= 0)
+		end
+		check("invasions." .. city .. ".sides_differ", cfg.attacker ~= cfg.defender)
+		local st = FbInvasions:status(city)
+		check("invasions." .. city .. ".status_readable", st:find("phase=", 1, true) ~= nil, st)
+	end
+	check("invasions.schedule_armed", hasServerEvent(FbInvasions.eventName))
+end
+
 -- ---------------------------------------------------------------- entry points
 
 -- runLuaFunction passes the FbLabTests table as the first argument, then the ':'-separated args.
@@ -573,6 +587,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkHoloNet()
 		FbLabTests.checkConvoys()
 		FbLabTests.checkWeatherEvents()
+		FbLabTests.checkInvasions()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)
@@ -1022,6 +1037,75 @@ function FbLabTests:travelCell(charName, planet, x, z, y, cellID)
 	SceneObject(pPlayer):switchZone(planet, tonumber(x), tonumber(z), tonumber(y), tonumber(cellID))
 	print(string.format("INFO travelCell char=%s planet=%s x=%s z=%s y=%s cell=%s", charName, planet, x, z, y, cellID))
 	return "ok"
+end
+
+-- objectPos:<oid> → one INFO line with an object's zone, world position, combat flag and HAM
+function FbLabTests:objectPos(oid)
+	local p = getSceneObject(tonumber(oid))
+	if p == nil then print("ERROR no object " .. tostring(oid)); return "none" end
+	local extra = ""
+	if SceneObject(p):isCreatureObject() then
+		extra = string.format(" combat=%s dead=%s ham=%d/%d", tostring(CreatureObject(p):isInCombat()), tostring(CreatureObject(p):isDead()), CreatureObject(p):getHAM(0), CreatureObject(p):getMaxHAM(0))
+	end
+	print(string.format("INFO objectPos oid=%s zone=%s x=%.1f y=%.1f z=%.1f cell=%d%s", tostring(oid), SceneObject(p):getZoneName(),
+		SceneObject(p):getWorldPositionX(), SceneObject(p):getWorldPositionY(), SceneObject(p):getWorldPositionZ(), SceneObject(p):getParentID(), extra))
+	return "ok"
+end
+
+-- teleportObject:<oid>:<planet>:<x>:<y> → move any scene object (NPC, prop) to terrain height there
+function FbLabTests:teleportObject(oid, planet, x, y)
+	local p = getSceneObject(tonumber(oid))
+	if p == nil then print("ERROR no object " .. tostring(oid)); return "none" end
+	x, y = tonumber(x), tonumber(y)
+	local z = getTerrainHeightAt(planet, x, y)
+	SceneObject(p):switchZone(planet, x, z, y, 0)
+	if SceneObject(p):isAiAgent() then AiAgent(p):setHomeLocation(x, z, y, nil) end   -- or it leashes straight back
+	print(string.format("INFO teleportObject oid=%s planet=%s x=%.0f y=%.0f z=%.1f", tostring(oid), planet, x, y, z))
+	return "ok"
+end
+
+-- invasion[:<city>] → the invasion's status line
+function FbLabTests:invasion(city)
+	if FbInvasions == nil then print("ERROR FbInvasions not loaded"); return "none" end
+	print("INFO invasion " .. FbInvasions:status(city or "bestine"))
+	return "ok"
+end
+
+-- invasionBegin[:<city>] → construction phase now (what the 6 h schedule does)
+function FbLabTests:invasionBegin(city)
+	if FbInvasions == nil then print("ERROR FbInvasions not loaded"); return "none" end
+	print("INFO invasion " .. tostring(FbInvasions:begin(city or "bestine")))
+	return "ok"
+end
+
+-- invasionAssault[:<city>] → combat phase now
+function FbLabTests:invasionAssault(city)
+	if FbInvasions == nil then print("ERROR FbInvasions not loaded"); return "none" end
+	print("INFO invasion " .. tostring(FbInvasions:assault(city or "bestine")))
+	return "ok"
+end
+
+-- invasionResolve[:<city>[:force]] → decide the battle now; prints outcome=
+function FbLabTests:invasionResolve(city, force)
+	if FbInvasions == nil then print("ERROR FbInvasions not loaded"); return "none" end
+	local out = FbInvasions:resolve(city or "bestine", force)
+	print("INFO invasionResolve outcome=" .. tostring(out))
+	return tostring(out)
+end
+
+-- invasionEngage[:<city>] → pair idle attackers near the plaza with defenders now; prints pairs=
+function FbLabTests:invasionEngage(city)
+	if FbInvasions == nil then print("ERROR FbInvasions not loaded"); return "none" end
+	local n = FbInvasions:engage(city or "bestine")
+	print("INFO invasionEngage pairs=" .. tostring(n))
+	return tostring(n)
+end
+
+-- invasionSide:<city>:<attackers|defenders> → the living oids of one side, comma-separated
+function FbLabTests:invasionSide(city, side)
+	local oids = getQuestStatus("FbInvasions." .. (city or "bestine") .. "." .. (side or "attackers")) or ""
+	print("INFO invasionSide side=" .. tostring(side) .. " oids=" .. oids)
+	return oids
 end
 
 -- weather[:<zone>] → the zone's base weather (0 clear .. 4 extreme storm)

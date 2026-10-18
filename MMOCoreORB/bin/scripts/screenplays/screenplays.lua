@@ -763,6 +763,7 @@ includeFile("tasks/tatooine/fb_holonet_relay_conv_handler.lua")   -- Phase 3.10
 includeFile("tasks/tatooine/fb_holonet.lua")
 includeFile("tasks/tatooine/fb_convoys.lua")   -- Phase 3.11
 includeFile("tasks/tatooine/fb_weather_events.lua")   -- Phase 3.9
+includeFile("tasks/tatooine/fb_invasions.lua")   -- Phase 3.1
 includeFile("tasks/tatooine/fb_droid_dispenser_conv_handler.lua")
 includeFile("tasks/tatooine/fb_droid_dispenser.lua")
 includeFile("tasks/tatooine/fb_pet_dealer_conv_handler.lua")

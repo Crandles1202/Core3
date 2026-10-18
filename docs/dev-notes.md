@@ -186,6 +186,20 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-17 — Phase 3.1.** Bestine invasions (`fb_invasions.lua`): construction → combat → resolve
+  with a persistent server event, two squads (`setFollowObject` followers), `DAMAGERECEIVED` observers
+  on both sides to remember which side each player fought for, rewards via faction standing + cash,
+  a per-city `FbTerritory.<city>` Imperial % in quest status. **Lesson: an AiAgent leashes back to
+  its home location** (`AiAgent::FOLLOWING` → `leash()` when out of `MAX_OOS_RANGE` of home without
+  line of sight; `PATHING_HOME` otherwise), so NPCs sent or teleported far from where they spawned walk
+  straight back — which looked like "opposing-faction NPCs do not fight each other". They do
+  (`isAggressive`: `targetIsAgent → true`) once in awareness range: with `AiAgent:setHomeLocation(x, z, y, nil)`
+  set to the plaza, seven Rebels and six stormtroopers were all fighting within 25 s. Any screenplay
+  that moves an NPC more than ~100 m must move its home too (the convoy and patrols get away with
+  shorter legs). `setDefender`/`addDefender` (Lua-bound) still pair off stragglers. Lab:
+  `teleportObject:<oid>:<planet>:<x>:<y>` (any scene object, `switchZone`, re-homes agents),
+  `objectPos:<oid>`, `invasion*` oracles. Scenario `invasion-bestine`. Rebel troopers (level 15) were
+  wiped by stormtroopers (25) in 30 s; the column is commandos now.
 - **2026-10-17 — Phase 3.9.** Weather plumbing: each zone's `PlanetManager` owns a `WeatherManager`
   that rolls a base weather 0–4 (`createNewWeatherPattern`, stability-weighted, storms last
   `duration/(weather+1)`) plus a `WeatherMap` of local variation; `sendWeatherTo(player)` runs from

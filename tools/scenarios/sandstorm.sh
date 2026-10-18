@@ -17,8 +17,8 @@ sleep 4
 
 # --- the storm rolls in ------------------------------------------------------------------------------
 check_eq "weather_forced_extreme" "$(lab_kv "weatherSet:tatooine:4" base)" "4"
-DID=$(lab_kv "stormTick" did)
-check_eq "tick_started_event" "$DID" "storm"
+DID=$(lab_kv "stormTick" did)   # "steady" when the screenplay's own minute tick got there first
+check "tick_started_event" "$( [ "$DID" = "storm" ] || [ "$DID" = "steady" ] && echo 1 || echo 0 )" "did=$DID"
 ST1=$(lab "storm" | grep '^INFO storm ' | head -1)
 check "event_active" "$(printf '%s' "$ST1" | grep -q 'active=1' && echo 1 || echo 0)" "$ST1"
 RAIDERS=$(printf '%s\n' "$ST1" | sed -n 's/.*raiders=\([0-9]*\)\/\([0-9]*\).*/\1\/\2/p')
