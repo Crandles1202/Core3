@@ -491,6 +491,17 @@ function FbLabTests.checkStoryTicker()
 	end
 end
 
+-- Phase 3.2: every faction patrol route has a live leader with its members, standing on its route.
+function FbLabTests.checkFactionPatrols()
+	if FbFactionPatrols == nil then check("patrols.loaded", false); return end
+	check("patrols.routes", #FbFactionPatrols.routes >= 2, #FbFactionPatrols.routes .. " routes")
+	for ri, route in ipairs(FbFactionPatrols.routes) do
+		local st = FbFactionPatrols:status(ri)
+		check("patrols." .. route.key .. ".leader_alive", not st:find("leader=0 ", 1, true), st)
+		check("patrols." .. route.key .. ".members_alive", st:find("members=" .. #route.members .. "/" .. #route.members, 1, true) ~= nil, st)
+	end
+end
+
 -- ---------------------------------------------------------------- entry points
 
 -- runLuaFunction passes the FbLabTests table as the first argument, then the ':'-separated args.
@@ -515,6 +526,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkAmbientLife()
 		FbLabTests.checkGalaxyChatter()
 		FbLabTests.checkStoryTicker()
+		FbLabTests.checkFactionPatrols()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)
@@ -964,6 +976,25 @@ function FbLabTests:travelCell(charName, planet, x, z, y, cellID)
 	SceneObject(pPlayer):switchZone(planet, tonumber(x), tonumber(z), tonumber(y), tonumber(cellID))
 	print(string.format("INFO travelCell char=%s planet=%s x=%s z=%s y=%s cell=%s", charName, planet, x, z, y, cellID))
 	return "ok"
+end
+
+-- patrols → one INFO line per faction patrol route (leader oid/position, members alive, point)
+function FbLabTests:patrols()
+	if FbFactionPatrols == nil then print("ERROR FbFactionPatrols not loaded"); return "none" end
+	for ri, route in ipairs(FbFactionPatrols.routes) do
+		local pt = route.points[1]
+		print("INFO patrol " .. FbFactionPatrols:status(ri) .. string.format(" planet=%s start=%d,%d points=%d", route.planet, pt[1], pt[3], #route.points))
+	end
+	return tostring(#FbFactionPatrols.routes)
+end
+
+-- patrolStep:<route> → send the squad to its next point now; prints the status afterwards
+function FbLabTests:patrolStep(ri)
+	if FbFactionPatrols == nil then print("ERROR FbFactionPatrols not loaded"); return "none" end
+	local result = FbFactionPatrols:step(tonumber(ri) or 1)
+	print("INFO patrolStep result=" .. tostring(result))
+	print("INFO patrol " .. FbFactionPatrols:status(tonumber(ri) or 1))
+	return tostring(result)
 end
 
 -- objectAlive:<oid> → 1 if the object resolves and is in a zone, else 0
