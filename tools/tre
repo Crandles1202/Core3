@@ -10,6 +10,7 @@ tre — build, inspect and install the Final Boss client/server data archive (fi
   tre roundtrip FILE.tre                    unpack a stock tre, repack in memory, compare (self-test)
   tre install [--client DIR]                copy the built tre into the server's TrePath and, when a
                                             client folder is known, into it + patch swgemu_live.cfg
+  tre patchcfg FILE                         the swgemu_live.cfg step of install --client on its own
   tre status                                built vs installed hashes, config listing, client dir
   tre crc STRING                            the SWG CRC-32 of a string (same as String::hashCode)
 
@@ -304,8 +305,11 @@ def patch_live_cfg(cfg_path):
     if not os.path.exists(bak):
         with open(bak, "wb") as fh:
             fh.write(raw)
-    with open(cfg_path, "wb") as fh:
-        fh.write(nl.join(l.rstrip("\r") for l in out).encode("utf-8"))
+    data = nl.join(l.rstrip("\r").encode("utf-8") for l in out)
+    tmp = cfg_path + ".finalboss.tmp"
+    with open(tmp, "wb") as fh:
+        fh.write(data)
+    os.replace(tmp, cfg_path)
     return "swgemu_live.cfg: maxSearchPriority %d -> %d, searchTree_00_%d=%s (backup %s)" % (
         n, n + 1, n, TRE_NAME, os.path.basename(bak))
 
@@ -448,6 +452,12 @@ def cmd_install(a):
     return 0
 
 
+def cmd_patchcfg(a):
+    """Patch one swgemu_live.cfg (the install --client step on its own, e.g. for a second client folder)."""
+    print(patch_live_cfg(a.file))
+    return 0
+
+
 def cmd_status(a):
     built = sha256_file(a.out)[:12] if os.path.exists(a.out) else None
     print("built:     %s %s" % (a.out, built or "(missing)"))
@@ -461,10 +471,18 @@ def cmd_status(a):
         cdest = os.path.join(cdir, TRE_NAME)
         cinst = sha256_file(cdest)[:12] if os.path.exists(cdest) else None
         print("client:    %s %s%s" % (cdest, cinst or "(missing)", "" if cinst == built else "  <- differs from built"))
+        cfg = os.path.join(cdir, "swgemu_live.cfg")
+        try:
+            with open(cfg, "rb") as fh:
+                ccfg = TRE_NAME.encode() in fh.read()
+        except OSError:
+            ccfg = None
+        print("client cfg: %s %s" % (cfg, {True: "lists " + TRE_NAME, False: "does NOT list " + TRE_NAME + "  <- tre install --client", None: "(missing)"}[ccfg]))
     else:
+        ccfg = None
         print("client:    unknown (tre install --client DIR)")
     if a.json:
-        print(json.dumps({"built": built, "server": inst, "client_dir": cdir}))
+        print(json.dumps({"built": built, "server": inst, "client_dir": cdir, "client_cfg_ok": ccfg}))
     return 0
 
 
@@ -483,6 +501,7 @@ def main(argv):
     p = sub.add_parser("verify"); p.add_argument("file"); p.set_defaults(fn=cmd_verify)
     p = sub.add_parser("roundtrip"); p.add_argument("file"); p.set_defaults(fn=cmd_roundtrip)
     p = sub.add_parser("install"); p.add_argument("--out", default=DEFAULT_OUT); p.add_argument("--tre-dir"); p.add_argument("--client"); p.set_defaults(fn=cmd_install)
+    p = sub.add_parser("patchcfg"); p.add_argument("file"); p.set_defaults(fn=cmd_patchcfg)
     p = sub.add_parser("status"); p.add_argument("--out", default=DEFAULT_OUT); p.add_argument("--json", action="store_true"); p.set_defaults(fn=cmd_status)
     p = sub.add_parser("crc"); p.add_argument("string"); p.set_defaults(fn=cmd_crc)
     a = ap.parse_args(argv)

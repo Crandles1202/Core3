@@ -655,8 +655,8 @@ cmd_account() {
 cmd_tre() {
 	[ -x "$TRE" ] || die "$TRE missing"
 	case "${1:-}" in
-		build|install|status|list|extract|strings|verify|roundtrip|crc) exec "$TRE" "$@" ;;
-		*) die "usage: swg tre build|install [--client DIR]|status|list|extract|strings|verify|roundtrip|crc" ;;
+		build|install|patchcfg|status|list|extract|strings|verify|roundtrip|crc) exec "$TRE" "$@" ;;
+		*) die "usage: swg tre build|install [--client DIR]|patchcfg FILE|status|list|extract|strings|verify|roundtrip|crc" ;;
 	esac
 }
 
