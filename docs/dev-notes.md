@@ -186,6 +186,17 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-17 — Phase 3.11 (ambush mode).** Convoys (`fb_convoys.lua`) reuse the patrol walk (leader
+  `setNextPosition` legs + `DESTINATIONREACHED`, followers `setFollowObject`). Combat hooks: a
+  `DAMAGERECEIVED` observer on every guard (callback `(pVictim, pAttacker, damage)`) records player
+  attackers in quest status and arms a one-shot reinforcement spawn; an `OBJECTDESTRUCTION` observer
+  (callback gets only the victim) checks whether any guard is still alive and, if not, schedules
+  `defeat()` a second later (so the last death finishes first). Defeat spawns
+  `object/tangible/container/loot/loot_crate.iff` with `createLoot` rolls, pays each attacker through
+  `PlayerObject:increaseFactionStanding("rebel", n)` / `decreaseFactionStanding("imperial", n)` and
+  `CreatureObject:addCashCredits`, posts a galaxy news line and broadcasts. Lab: `killNpc:<char>:<oid>`
+  deals a lethal `inflictDamage` *from the character* so observers credit them; `factionStanding`,
+  `containerItems`, `convoy`, `convoySpawn`. Scenario `convoy-ambush` runs the whole ambush.
 - **2026-10-17 — Phase 3.10.** HoloNet relays (`fb_holonet.lua` + relay mobile/conv). A segment is
   assembled at read time from the live systems — story ticker title and mobs ("this week's wanted"),
   a galaxy chatter line, the merchant's stop — framed by sting / propaganda / outro, and read one line

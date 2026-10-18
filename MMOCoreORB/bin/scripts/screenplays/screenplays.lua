@@ -761,6 +761,7 @@ includeFile("tasks/tatooine/fb_story_ticker.lua")   -- Phase 3.5 (uses FbGalaxyC
 includeFile("tasks/tatooine/fb_faction_patrols.lua")   -- Phase 3.2
 includeFile("tasks/tatooine/fb_holonet_relay_conv_handler.lua")   -- Phase 3.10
 includeFile("tasks/tatooine/fb_holonet.lua")
+includeFile("tasks/tatooine/fb_convoys.lua")   -- Phase 3.11
 includeFile("tasks/tatooine/fb_droid_dispenser_conv_handler.lua")
 includeFile("tasks/tatooine/fb_droid_dispenser.lua")
 includeFile("tasks/tatooine/fb_pet_dealer_conv_handler.lua")
