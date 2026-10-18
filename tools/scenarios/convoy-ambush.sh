@@ -5,6 +5,7 @@
 # standing down, the reward credits arrive, and the galaxy news carries the story.
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
+lab "territorySet:mos_eisley:65" >/dev/null   # Phase 3.4: a destroyed convoy costs the Empire 10 points here
 ST=$(lab "convoySpawn" | grep '^INFO convoy ' | head -1)
 check "convoy_spawned" "$(printf '%s' "$ST" | grep -q 'active=1' && echo 1 || echo 0)" "$ST"
 GUARDS=$(printf '%s\n' "$ST" | sed -n 's/.*guards=\([0-9]*\)\/\([0-9]*\).*/\1\/\2/p')
@@ -42,6 +43,7 @@ check "imperial_standing_down" "$( [ "${IMP1:-0}" -lt "${IMP0:-0}" ] && echo 1 |
 CASH1=$(lab_kv "cash:$CHAR" cash)
 check_eq "reward_credits_paid" "$(( CASH1 - CASH0 ))" "750" "cash $CASH0 -> $CASH1"
 check "news_posted" "$(lab "galaxyNews" | grep -q 'convoy was destroyed' && echo 1 || echo 0)"
+check "territory_lost_ten" "$(lab "territory" | grep -q 'mos_eisley=55(' && echo 1 || echo 0)" "$(lab "territory" | grep '^INFO territory')"
 wait "$BOT_PID"
 check "character_told" "$(grep -aq 'convoy is destroyed' "$BOTLOG" && echo 1 || echo 0)"
 

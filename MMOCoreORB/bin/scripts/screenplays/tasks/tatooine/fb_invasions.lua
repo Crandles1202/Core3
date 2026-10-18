@@ -117,6 +117,7 @@ end
 function FbInvasions:territory(city)
 	city = cityOf(city)
 	if city == nil then return -1 end
+	if FbTerritory ~= nil then return FbTerritory.control(city) end
 	return tonumber(getQuestStatus("FbTerritory." .. city)) or 50
 end
 
@@ -308,9 +309,14 @@ function FbInvasions:resolve(city, force)
 		if p ~= nil and SceneObject(p):isPlayerCreature() then reward(p, cfg.defender, cfg.attacker, (not attackersWon) and self.rewardCredits or 0, self.rewardStanding) end
 	end
 
-	local control = self:territory(city)
-	if outcome == "fell" then control = control - self.territoryShift elseif outcome == "held" then control = control + self.territoryShift end
-	setQuestStatus("FbTerritory." .. city, tostring(math.max(0, math.min(100, control))))
+	if outcome ~= "withdrew" then
+		local delta = (outcome == "fell") and -self.territoryShift or self.territoryShift
+		if FbTerritory ~= nil then
+			FbTerritory.shift(city, delta, "invasion " .. outcome)
+		else
+			setQuestStatus("FbTerritory." .. city, tostring(math.max(0, math.min(100, self:territory(city) + delta))))
+		end
+	end
 
 	local pAny = nil
 	for _, k in ipairs({ "defenders", "attackers" }) do

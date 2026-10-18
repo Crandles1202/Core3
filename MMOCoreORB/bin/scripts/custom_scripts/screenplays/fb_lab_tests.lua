@@ -498,7 +498,8 @@ function FbLabTests.checkFactionPatrols()
 	for ri, route in ipairs(FbFactionPatrols.routes) do
 		local st = FbFactionPatrols:status(ri)
 		check("patrols." .. route.key .. ".leader_alive", not st:find("leader=0 ", 1, true), st)
-		check("patrols." .. route.key .. ".members_alive", st:find("members=" .. #route.members .. "/" .. #route.members, 1, true) ~= nil, st)
+		local living, total = st:match("members=(%d+)/(%d+)")
+		check("patrols." .. route.key .. ".members_alive", living ~= nil and living == total and tonumber(total) >= 1, st)
 	end
 end
 
@@ -559,6 +560,36 @@ function FbLabTests.checkInvasions()
 	check("invasions.schedule_armed", hasServerEvent(FbInvasions.eventName))
 end
 
+-- Phase 3.4: the territory map is loaded, every region is readable, thresholds are sane and the
+-- readers (patrol squads, HoloNet propaganda, chatter) agree with it.
+function FbLabTests.checkTerritory()
+	if FbTerritory == nil then check("territory.loaded", false); return end
+	check("territory.thresholds", FbTerritory.rebelAt < FbTerritory.imperialAt)
+	for _, region in ipairs(FbTerritory.order) do
+		local pct = FbTerritory.control(region)
+		check("territory." .. region .. ".readable", pct >= 0 and pct <= 100, tostring(pct))
+	end
+	check("territory.unknown_region_is_minus_one", FbTerritory.control("no_such_region") == -1)
+	check("territory.faction_at", FbTerritory.factionAt(100) == "imperial" and FbTerritory.factionAt(0) == "rebel" and FbTerritory.factionAt(50) == "contested")
+	if FbFactionPatrols ~= nil then
+		for _, route in ipairs(FbFactionPatrols.routes) do
+			check("territory.patrol_" .. route.key .. "_has_region", route.region ~= nil and FbTerritory.regions[route.region] ~= nil)
+			local squad = FbTerritory.squadFor(route)
+			local holder = FbTerritory.faction(route.region)
+			local expected = #route.members + (holder == route.faction and 1 or (holder ~= "contested" and -1 or 0))
+			check("territory.patrol_" .. route.key .. "_squad_size", #squad == math.max(1, expected), #squad .. " vs " .. expected)
+		end
+	end
+	if FbHoloNet ~= nil then
+		for li, loc in ipairs(FbHoloNet.locations) do
+			check("territory.holonet_" .. loc.key .. "_has_region", loc.region ~= nil and FbTerritory.regions[loc.region] ~= nil)
+		end
+		local hasReport = false
+		for _, l in ipairs(FbHoloNet:segment(1)) do if l:find("Sector report:", 1, true) then hasReport = true end end
+		check("territory.holonet_sector_report", hasReport)
+	end
+end
+
 -- ---------------------------------------------------------------- entry points
 
 -- runLuaFunction passes the FbLabTests table as the first argument, then the ':'-separated args.
@@ -588,6 +619,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkConvoys()
 		FbLabTests.checkWeatherEvents()
 		FbLabTests.checkInvasions()
+		FbLabTests.checkTerritory()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)
@@ -1039,6 +1071,29 @@ function FbLabTests:travelCell(charName, planet, x, z, y, cellID)
 	return "ok"
 end
 
+-- territory → one INFO line: every region's Imperial % and holder
+function FbLabTests:territory()
+	if FbTerritory == nil then print("ERROR FbTerritory not loaded"); return "none" end
+	print("INFO territory " .. FbTerritory.status())
+	return "ok"
+end
+
+-- territorySet:<region>:<pct> → set a region's Imperial % (no news); prints the holder
+function FbLabTests:territorySet(region, pct)
+	if FbTerritory == nil then print("ERROR FbTerritory not loaded"); return "none" end
+	local v = FbTerritory.set(region, pct)
+	print(string.format("INFO territorySet region=%s pct=%d faction=%s", tostring(region), v, FbTerritory.faction(region)))
+	return tostring(v)
+end
+
+-- territoryShift:<region>:<delta> → shift with the news/broadcast side effects; prints the new %
+function FbLabTests:territoryShift(region, delta)
+	if FbTerritory == nil then print("ERROR FbTerritory not loaded"); return "none" end
+	local v = FbTerritory.shift(region, tonumber(delta) or 0, "lab")
+	print(string.format("INFO territoryShift region=%s pct=%d faction=%s", tostring(region), v, FbTerritory.faction(region)))
+	return tostring(v)
+end
+
 -- objectPos:<oid> → one INFO line with an object's zone, world position, combat flag and HAM
 function FbLabTests:objectPos(oid)
 	local p = getSceneObject(tonumber(oid))
@@ -1224,6 +1279,13 @@ function FbLabTests:patrols()
 end
 
 -- patrolStep:<route> → send the squad to its next point now; prints the status afterwards
+-- patrolRespawn:<route> → replace a patrol squad now (what happens when one dies); prints its status
+function FbLabTests:patrolRespawn(ri)
+	if FbFactionPatrols == nil then print("ERROR FbFactionPatrols not loaded"); return "none" end
+	print("INFO patrolRespawn " .. tostring(FbFactionPatrols:respawn(tonumber(ri) or 1)))
+	return "ok"
+end
+
 function FbLabTests:patrolStep(ri)
 	if FbFactionPatrols == nil then print("ERROR FbFactionPatrols not loaded"); return "none" end
 	local result = FbFactionPatrols:step(tonumber(ri) or 1)

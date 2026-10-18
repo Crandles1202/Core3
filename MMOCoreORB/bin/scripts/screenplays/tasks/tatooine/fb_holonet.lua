@@ -17,9 +17,9 @@ FbHoloNet = ScreenPlay:new {
 }
 
 FbHoloNet.locations = {
-	{ key = "mos_eisley_starport", label = "Mos Eisley Starport", planet = "tatooine", x = 3540, y = -4816, dir = 1, cell = 0 },   -- end of the FB vendor row; (3512,-4790) had no line of sight for conversations
-	{ key = "mos_eisley_cantina",  label = "Mos Eisley Cantina",  planet = "tatooine", x = 10.5, z = -0.9, y = 8.5, dir = 3, cell = 1082877 },
-	{ key = "bestine_cantina",     label = "Bestine Cantina",     planet = "tatooine", x = 9.0,  z = 0.4,  y = -8.5, dir = 3, cell = 1528397 },
+	{ key = "mos_eisley_starport", label = "Mos Eisley Starport", region = "mos_eisley", planet = "tatooine", x = 3540, y = -4816, dir = 1, cell = 0 },   -- end of the FB vendor row; (3512,-4790) had no line of sight for conversations
+	{ key = "mos_eisley_cantina",  label = "Mos Eisley Cantina",  region = "mos_eisley", planet = "tatooine", x = 10.5, z = -0.9, y = 8.5, dir = 3, cell = 1082877 },
+	{ key = "bestine_cantina",     label = "Bestine Cantina",     region = "bestine", planet = "tatooine", x = 9.0,  z = 0.4,  y = -8.5, dir = 3, cell = 1528397 },
 }
 
 FbHoloNet.stings = {
@@ -31,6 +31,12 @@ FbHoloNet.propaganda = {
 	"A message from the Imperial Governor's office: order is prosperity. Report unlawful gatherings.",
 	"Travellers are reminded that unregistered weapons are subject to confiscation at starports.",
 	"The Empire thanks the citizens of Tatooine for another month of record moisture output.",
+}
+-- Phase 3.4: when the Rebellion holds the relay's region, the relay has been "liberated"
+FbHoloNet.rebelPropaganda = {
+	"A message from the Alliance: this relay is free. The Empire's lies stop here.",
+	"Citizens: the garrison answers to you now. Report Imperial sympathizers to the local cell.",
+	"The Alliance thanks the farmers of Tatooine for their quiet support. Water flows both ways.",
 }
 FbHoloNet.outros = {
 	"This has been HoloNet News. Next update in one standard hour.",
@@ -94,8 +100,9 @@ end
 
 -- ---- the programme ----------------------------------------------------------------------------
 
--- segment(): the lines of one broadcast, assembled from what the server knows right now.
-function FbHoloNet:segment()
+-- segment(li): the lines of one broadcast, assembled from what the server knows right now.
+function FbHoloNet:segment(li)
+	local loc = self.locations[tonumber(li) or 1] or self.locations[1]
 	local lines = { pick(self.stings) }
 
 	if FbStoryTicker ~= nil then
@@ -118,7 +125,16 @@ function FbHoloNet:segment()
 		if stop ~= nil then lines[#lines + 1] = "Commerce: the licensed traveling merchant is trading at " .. stop.label .. " this week." end
 	end
 
-	lines[#lines + 1] = pick(self.propaganda)
+	if FbTerritory ~= nil then
+		local parts = {}
+		for _, region in ipairs(FbTerritory.order) do
+			local f = FbTerritory.faction(region)
+			parts[#parts + 1] = FbTerritory.regions[region].label .. " " .. (f == "imperial" and "Imperial-held" or f == "rebel" and "Rebel-held" or "contested")
+		end
+		lines[#lines + 1] = "Sector report: " .. table.concat(parts, ", ") .. "."
+	end
+	local holder = (FbTerritory ~= nil and loc.region) and FbTerritory.faction(loc.region) or "imperial"
+	lines[#lines + 1] = pick(holder == "rebel" and self.rebelPropaganda or self.propaganda)
 	lines[#lines + 1] = pick(self.outros)
 	return lines
 end
@@ -128,7 +144,7 @@ function FbHoloNet:broadcast(li)
 	li = tonumber(li) or 1
 	local p = self:relay(li)
 	if p == nil then return 0 end
-	local lines = self:segment()
+	local lines = self:segment(li)
 	for i, line in ipairs(lines) do
 		if i == 1 then
 			spatialChat(p, line)

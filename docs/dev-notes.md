@@ -186,6 +186,13 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-17 — Phase 3.4.** `fb_territory.lua` is a plain module (no `ScreenPlay:new`, no `start()`),
+  included first among the living-galaxy files so the others can call it; every reader guards with
+  `if FbTerritory ~= nil` so the files still load alone. State is quest status with table defaults, so
+  a fresh server starts from the designed map and `territorySet` resets it. Patrol squad size comes
+  from `FbTerritory.squadFor(route)` at respawn only (live squads keep their size until they die).
+  Scenario `territory` drives both crossings and checks patrols, HoloNet voice, chatter and the
+  client's broadcast; `convoy-ambush` now also asserts the −10.
 - **2026-10-17 — Phase 3.1.** Bestine invasions (`fb_invasions.lua`): construction → combat → resolve
   with a persistent server event, two squads (`setFollowObject` followers), `DAMAGERECEIVED` observers
   on both sides to remember which side each player fought for, rewards via faction standing + cash,

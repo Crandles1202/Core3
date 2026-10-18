@@ -58,6 +58,16 @@ function FbGalaxyChatter.liveLines()
 		end
 	end)
 	pcall(function()
+		if FbTerritory ~= nil then
+			for _, region in ipairs(FbTerritory.order) do
+				local f, label = FbTerritory.faction(region), FbTerritory.regions[region].label
+				if f == "rebel" then out[#out + 1] = "The Rebels run " .. label .. " these days. Stormtroopers don't leave the garrison after dark."
+				elseif f == "contested" then out[#out + 1] = label .. "'s anyone's. Saw Imperials and Rebels drinking at opposite ends of the same bar."
+				end
+			end
+		end
+	end)
+	pcall(function()
 		if BestineElection ~= nil and type(BestineElection.getCurrentPhase) == "function" then
 			local phase = BestineElection:getCurrentPhase()
 			if phase == 1 then
