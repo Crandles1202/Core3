@@ -17,26 +17,54 @@ FbLabTests.spawns = FbLabTests.spawns or {}   -- creature template name -> list 
 
 -- ---------------------------------------------------------------- spawn tracking
 
-if not FbLabTests._spawnMobileWrapped then
+-- Which Final Boss file asked for a spawn (nil for stock callers). debug.getinfo level 3 = the caller of
+-- the wrapper's caller: wrapper -> screenplay function -> ...; level 2 is the wrapper itself.
+local function fbSpawnSource()
+	if debug == nil or debug.getinfo == nil then return nil end
+	for level = 2, 6 do
+		local info = debug.getinfo(level, "S")
+		if info == nil then return nil end
+		local src = tostring(info.short_src or info.source or "")
+		local name = src:match("([%w_]+)%.lua$")
+		if name ~= nil and name:sub(1, 3) == "fb_" and name ~= "fb_lab_tests" then return name end
+	end
+	return nil
+end
+
+if not FbLabTests._spawnMobileWrapped2 then
 	local origSpawnMobile = spawnMobile
 
 	-- Same signature as the C binding: (zoneName, template, respawn, x, z, y, heading, cellID).
-	-- Everything is forwarded untouched; we only take note of fb_* spawns.
+	-- Everything is forwarded untouched; we take note of every spawn an fb_* file makes (own fb_*
+	-- templates and stock ones such as the ambient patrons), with where it was put, so the placement
+	-- audit (FbLabTests:placement) and goto/findNpc can find them later.
 	spawnMobile = function(...)
 		local pMobile = origSpawnMobile(...)
-		local zoneName, template, _, _, _, _, _, cellID = ...
+		local zoneName, template, _, x, z, y, heading, cellID = ...
+		local src = fbSpawnSource()
 
-		if pMobile ~= nil and type(template) == "string" and template:sub(1, 3) == "fb_" then
+		if pMobile ~= nil and type(template) == "string" and (template:sub(1, 3) == "fb_" or src ~= nil) then
+			local oid = SceneObject(pMobile):getObjectID()
 			local list = FbLabTests.spawns[template] or {}
-			list[#list + 1] = { oid = SceneObject(pMobile):getObjectID(), zone = zoneName, cell = cellID or 0 }
+			-- an older wrapper may still sit under this one (reloadscreenplays keeps it): no duplicates
+			local last = list[#list]
+			if last ~= nil and last.oid == oid then
+				last.x, last.y, last.z, last.src = x, y, z, src
+			else
+				list[#list + 1] = { oid = oid, zone = zoneName, cell = cellID or 0, x = x, y = y, z = z, template = template, src = src }
+			end
 			FbLabTests.spawns[template] = list
 		end
 
 		return pMobile
 	end
 
-	FbLabTests._spawnMobileWrapped = true
+	FbLabTests._spawnMobileWrapped2 = true
 end
+
+-- Spawns these files make walk by design (patrol legs, convoys, columns, raiding parties, story camps
+-- respawn on the move): the placement audit skips their drift check.
+FbLabTests.walkerSources = { fb_faction_patrols = true, fb_convoys = true, fb_invasions = true, fb_weather_events = true }
 
 -- ---------------------------------------------------------------- reporting
 
@@ -274,7 +302,11 @@ function FbLabTests.checkNpc(npc)
 	end
 
 	-- live spawns recorded by the spawnMobile wrapper
-	local spawns = FbLabTests.spawns[npc.template] or {}
+	-- lab probes (spawnNpcAt) are not the screenplay's spawns
+	local spawns = {}
+	for _, s in ipairs(FbLabTests.spawns[npc.template] or {}) do
+		if s.src ~= "lab" then spawns[#spawns + 1] = s end
+	end
 	if #spawns == 0 then
 		check(p .. "spawned", false, "no spawnMobile calls recorded for this template (no screenplay spawns it, or fb_lab_tests.lua loaded after start())")
 		return
@@ -643,6 +675,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkInvasions()
 		FbLabTests.checkTerritory()
 		FbLabTests.checkTreStrings()
+		FbLabTests.checkPlacement()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)
@@ -881,6 +914,12 @@ function FbLabTests:destroyObject(oid)
 	if pObject == nil then print("ERROR no object " .. tostring(oid)); return "none" end
 	SceneObject(pObject):destroyObjectFromWorld(true)
 	SceneObject(pObject):destroyObjectFromDatabase()
+	-- forget it in the spawn registry too, so the spawned/placement checks never count a removed probe
+	for template, list in pairs(FbLabTests.spawns) do
+		for i = #list, 1, -1 do
+			if list[i].oid == tonumber(oid) then table.remove(list, i) end
+		end
+	end
 	print("INFO destroyed oid=" .. tostring(oid))
 	return "ok"
 end
@@ -1435,4 +1474,237 @@ function FbLabTests:listSpawns()
 	end
 	print("INFO " .. n .. " fb_* spawns recorded")
 	return tostring(n)
+end
+
+-- ---------------------------------------------------------------- NPC placement (find, goto, audit)
+
+-- Every recorded spawn that is still in the world, optionally filtered by oid, template, source file or
+-- displayed-name substring (case-insensitive). Each entry: oid, pObj, template, src, zone, cell, x, y, z
+-- (where it was spawned), name.
+-- Spawns made from other Lua states (seat churn and relay respawns run on worker threads, whose
+-- FbLabTests.spawns table the console never sees) are reached through the modules' own quest-status
+-- backed lookups instead. Add a provider here when a module respawns things after start().
+local function providedSpawns()
+	local out = {}
+	if FbAmbientLife ~= nil and FbAmbientLife.locations ~= nil then
+		for li, loc in ipairs(FbAmbientLife.locations) do
+			for si, seat in ipairs(loc.seats) do
+				local pMobile = FbAmbientLife:seatMobile(li, si)
+				if pMobile ~= nil then
+					out[#out + 1] = { oid = SceneObject(pMobile):getObjectID(), zone = loc.planet, cell = seat.cell or 0, x = seat.x, y = seat.y, z = seat.z,
+						template = "seat:" .. loc.key .. ":" .. si, src = "fb_ambient_life" }
+				end
+			end
+		end
+	end
+	if FbHoloNet ~= nil and FbHoloNet.locations ~= nil then
+		for li, loc in ipairs(FbHoloNet.locations) do
+			local pRelay = FbHoloNet:relay(li)
+			if pRelay ~= nil then
+				out[#out + 1] = { oid = SceneObject(pRelay):getObjectID(), zone = loc.planet, cell = loc.cell or 0, x = loc.x, y = loc.y, z = loc.z,
+					template = FbHoloNet.mobile or "fb_holonet_relay", src = "fb_holonet" }
+			end
+		end
+	end
+	return out
+end
+
+function FbLabTests.liveSpawns(filter)
+	local out = {}
+	local f = filter ~= nil and tostring(filter):lower() or nil
+	local seen = {}
+	local all = {}
+	for template, list in pairs(FbLabTests.spawns) do
+		for _, s in ipairs(list) do all[#all + 1] = s; s.template = s.template or template end
+	end
+	for _, s in ipairs(providedSpawns()) do all[#all + 1] = s end
+	for _, s in ipairs(all) do
+		local template = s.template
+		if not seen[s.oid] then
+			seen[s.oid] = true
+			local pObj = getSceneObject(s.oid)
+			if pObj ~= nil and SceneObject(pObj):getZoneName() ~= "" and not (SceneObject(pObj):isCreatureObject() and CreatureObject(pObj):isDead()) then
+				local name = SceneObject(pObj):getDisplayedName()
+				local hit = f == nil or tostring(s.oid) == f or template:lower():find(f, 1, true) ~= nil
+					or (s.src ~= nil and s.src:lower():find(f, 1, true) ~= nil) or name:lower():find(f, 1, true) ~= nil
+				if hit then
+					out[#out + 1] = { oid = s.oid, pObj = pObj, template = template, src = s.src, zone = s.zone, cell = s.cell or 0,
+						x = s.x, y = s.y, z = s.z, name = name }
+				end
+			end
+		end
+	end
+	-- an oid nobody recorded (a stock NPC, a probe from another state): audit it anyway
+	if #out == 0 and f ~= nil and tonumber(f) ~= nil then
+		local pObj = getSceneObject(tonumber(f))
+		if pObj ~= nil and SceneObject(pObj):getZoneName() ~= "" then
+			out[1] = { oid = tonumber(f), pObj = pObj, template = SceneObject(pObj):getObjectName(), src = nil, zone = SceneObject(pObj):getZoneName(),
+				cell = SceneObject(pObj):getParentID(), x = SceneObject(pObj):getWorldPositionX(), y = SceneObject(pObj):getWorldPositionY(),
+				z = SceneObject(pObj):getWorldPositionZ(), name = SceneObject(pObj):getDisplayedName() }
+		end
+	end
+	table.sort(out, function(a, b) return a.oid < b.oid end)
+	return out
+end
+
+local function spawnLine(e)
+	local pObj = e.pObj
+	local wx, wy, wz = SceneObject(pObj):getWorldPositionX(), SceneObject(pObj):getWorldPositionY(), SceneObject(pObj):getWorldPositionZ()
+	local drift = (e.x ~= nil and e.cell == 0) and math.sqrt((wx - e.x) ^ 2 + (wy - e.y) ^ 2) or 0
+	return string.format("oid=%d name=%s template=%s src=%s zone=%s x=%.1f y=%.1f z=%.1f cell=%d drift=%.1f",
+		e.oid, (e.name:gsub(" ", "_")), e.template, tostring(e.src), SceneObject(pObj):getZoneName(), wx, wy, wz, SceneObject(pObj):getParentID(), drift), wx, wy, wz
+end
+
+-- findNpc[:<filter>] → one line per live Final Boss spawn (name, template, source file, position)
+function FbLabTests:findNpc(filter)
+	local list = FbLabTests.liveSpawns(filter)
+	for _, e in ipairs(list) do print("INFO npc " .. (spawnLine(e))) end
+	if #list == 0 then print("ERROR no live spawn matches " .. tostring(filter)) end
+	return tostring(#list)
+end
+
+-- gotoNpc:<char>:<filter> → put the character 2 m in front of the first matching NPC (same cell), facing it
+function FbLabTests:gotoNpc(charName, filter)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local e = FbLabTests.liveSpawns(filter)[1]
+	if e == nil then print("ERROR no live spawn matches " .. tostring(filter)); return "none" end
+	local pNpc = e.pObj
+	-- 2 m along the NPC's facing, in its own (cell-local) coordinates
+	local a = SceneObject(pNpc):getDirectionAngle()
+	local lx, ly, lz = SceneObject(pNpc):getPositionX(), SceneObject(pNpc):getPositionY(), SceneObject(pNpc):getPositionZ()
+	local tx, ty = lx + 2 * math.sin(a), ly + 2 * math.cos(a)
+	local cell = SceneObject(pNpc):getParentID()
+	local zone = SceneObject(pNpc):getZoneName()
+	SceneObject(pPlayer):switchZone(zone, tx, lz, ty, cell)
+	SceneObject(pPlayer):faceObject(pNpc, true)
+	print(string.format("INFO gotoNpc char=%s %s", charName, (spawnLine(e))))
+	return "ok"
+end
+
+-- waypointTo:<char>:<filter> → a datapad waypoint on the first matching NPC (world coordinates)
+function FbLabTests:waypointTo(charName, filter)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local e = FbLabTests.liveSpawns(filter)[1]
+	if e == nil then print("ERROR no live spawn matches " .. tostring(filter)); return "none" end
+	local pGhost = CreatureObject(pPlayer):getPlayerObject()
+	if pGhost == nil then print("ERROR no player object"); return "none" end
+	local line, wx, wy, wz = spawnLine(e)
+	local wp = PlayerObject(pGhost):addWaypoint(SceneObject(e.pObj):getZoneName(), "Lab: " .. e.name, e.template .. " (" .. tostring(e.src) .. ")", wx, wz, wy, 2, true, true, 0)
+	print(string.format("INFO waypointTo char=%s waypoint=%s %s", charName, tostring(wp), line))
+	return "ok"
+end
+
+-- Line of sight from the NPC to a probe placed <dist> m away in <n> compass directions (same cell).
+-- Returns the number of clear directions and the pattern ("N.E.S.W." style, '.' = blocked).
+FbLabTests.probeTemplate = "object/tangible/furniture/all/frn_all_tiki_torch_s1.iff"
+local function losAround(pNpc, dist, n)
+	if not SceneObject(pNpc):isAiAgent() then return nil end
+	local zone = SceneObject(pNpc):getZoneName()
+	local cell = SceneObject(pNpc):getParentID()
+	local lx, ly, lz = SceneObject(pNpc):getPositionX(), SceneObject(pNpc):getPositionY(), SceneObject(pNpc):getPositionZ()
+	local clear, pattern = 0, ""
+	for i = 0, n - 1 do
+		local a = i * (2 * math.pi / n)
+		local px, py = lx + dist * math.sin(a), ly + dist * math.cos(a)
+		local pz = lz
+		if cell == 0 then pz = getTerrainHeightAt(zone, px, py) end
+		local pProbe = spawnSceneObject(zone, FbLabTests.probeTemplate, px, pz, py, cell, 0)
+		local ok = false
+		if pProbe ~= nil then
+			ok = AiAgent(pNpc):checkLineOfSight(pProbe)
+			SceneObject(pProbe):destroyObjectFromWorld(true)
+			SceneObject(pProbe):destroyObjectFromDatabase()
+		end
+		if ok then clear = clear + 1 end
+		pattern = pattern .. (ok and "o" or ".")
+	end
+	return clear, pattern
+end
+
+-- One NPC's placement facts: los (clear directions of 8 at 3 m), floor (outdoor: height above the
+-- terrain), drift (outdoor: metres from where it was spawned, unless its file is a walker).
+-- verdict: ok | warn | fail. A wall-embedded NPC gets 0–1 clear directions; a corner gets 3–4.
+function FbLabTests.placementOf(e)
+	local pNpc = e.pObj
+	local line, wx, wy, wz = spawnLine(e)
+	local facts = { verdict = "ok", reasons = {} }
+	local clear, pattern = losAround(pNpc, 3, 8)
+	facts.los, facts.pattern = clear, pattern
+	if clear ~= nil then
+		if clear <= 1 then facts.verdict = "fail"; facts.reasons[#facts.reasons + 1] = "boxed in (" .. pattern .. ")"
+		elseif clear <= 3 then facts.verdict = "warn"; facts.reasons[#facts.reasons + 1] = "mostly obstructed (" .. pattern .. ")" end
+	end
+	if SceneObject(pNpc):getParentID() == 0 then
+		local floor = wz - getTerrainHeightAt(SceneObject(pNpc):getZoneName(), wx, wy)
+		facts.floor = floor
+		if math.abs(floor) > 3 then
+			facts.verdict = "fail"
+			facts.reasons[#facts.reasons + 1] = string.format("%.1f m off the terrain", floor)
+		elseif math.abs(floor) > 1.5 then
+			facts.verdict = (facts.verdict == "fail") and "fail" or "warn"
+			facts.reasons[#facts.reasons + 1] = string.format("%.1f m off the terrain", floor)
+		end
+		local drift = tonumber(line:match("drift=([%d%.]+)")) or 0
+		if drift > 3 and not FbLabTests.walkerSources[e.src or ""] then
+			facts.verdict = (facts.verdict == "fail") and "fail" or "warn"
+			facts.reasons[#facts.reasons + 1] = string.format("wandered %.0f m from its spot", drift)
+		end
+	end
+	facts.line = line
+	return facts
+end
+
+-- placement[:<filter>] → audit every live Final Boss spawn (or the matching ones); returns the number
+-- of fail verdicts. INFO lines carry the facts, WARN/FAIL lines the problems.
+function FbLabTests:placement(filter)
+	local list = FbLabTests.liveSpawns(filter)
+	local fails, warns = 0, 0
+	for _, e in ipairs(list) do
+		local f = FbLabTests.placementOf(e)
+		print(string.format("INFO placement %s los=%s/8 pattern=%s floor=%s verdict=%s why=%s", f.line, tostring(f.los), tostring(f.pattern),
+			f.floor and string.format("%.1f", f.floor) or "-", f.verdict, (table.concat(f.reasons, ";"):gsub(" ", "_"))))
+		if f.verdict == "fail" then fails = fails + 1; print("FAIL placement " .. e.name .. " (" .. e.oid .. "): " .. table.concat(f.reasons, "; "))
+		elseif f.verdict == "warn" then warns = warns + 1; print("WARN placement " .. e.name .. " (" .. e.oid .. "): " .. table.concat(f.reasons, "; ")) end
+	end
+	print(string.format("INFO placement summary spawns=%d fail=%d warn=%d", #list, fails, warns))
+	return tostring(fails)
+end
+
+-- spawnNpcAt:<template>:<planet>:<x>:<y>[:<cell>[:<z>]] → a mobile for placement experiments (recorded
+-- like any FB spawn; remove with destroyObject)
+function FbLabTests:spawnNpcAt(template, planet, x, y, cell, z)
+	x, y, cell = tonumber(x), tonumber(y), tonumber(cell) or 0
+	z = tonumber(z) or getTerrainHeightAt(planet, x, y)
+	local pMobile = spawnMobile(planet, template, 0, x, z, y, 0, cell)
+	if pMobile == nil then print("ERROR spawnMobile failed for " .. tostring(template)); return "none" end
+	AiAgent(pMobile):addObjectFlag(AI_STATIC)
+	local oid = SceneObject(pMobile):getObjectID()
+	-- stock templates spawned from the console carry no fb_ source: record them by hand
+	local list = FbLabTests.spawns[template] or {}
+	if list[#list] == nil or list[#list].oid ~= oid then
+		list[#list + 1] = { oid = oid, zone = planet, cell = cell, x = x, y = y, z = z, template = template, src = "lab" }
+		FbLabTests.spawns[template] = list
+	end
+	print(string.format("INFO spawnNpcAt oid=%d template=%s planet=%s x=%.1f y=%.1f z=%.1f cell=%d", oid, template, planet, x, y, z, cell))
+	return tostring(oid)
+end
+
+-- Lab check: no placed Final Boss NPC is boxed into geometry, floating, or has wandered off (one
+-- check per spawn; walkers only get the line-of-sight part).
+function FbLabTests.checkPlacement()
+	local list = FbLabTests.liveSpawns(nil)
+	check("placement.spawns_recorded", #list > 0, #list .. " live spawns")
+	for _, e in ipairs(list) do
+		local f = FbLabTests.placementOf(e)
+		local label = "placement." .. (e.src or e.template) .. "." .. e.name:gsub("[^%w]", "_") .. "." .. e.oid
+		if f.verdict == "fail" then
+			check(label, false, table.concat(f.reasons, "; ") .. " @ " .. f.line)
+		elseif f.verdict == "warn" then
+			print("WARN " .. label .. " — " .. table.concat(f.reasons, "; ") .. " @ " .. f.line)
+		else
+			check(label, true)
+		end
+	end
 end

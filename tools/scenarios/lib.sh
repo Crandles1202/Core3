@@ -52,7 +52,15 @@ finish() {
 
 # lab <fn[:args]> [timeout]  → prints the INFO/ERROR lines the Lua helper produced
 lab() {
-	"$SWG" cmd "runLuaFunction FbLabTests:$1" --timeout "${2:-8}" | grep -aE '^(INFO|ERROR) ' | grep -av '^INFO FbLabTests start'
+	# the console runs commands on the main thread; during a delta save or a busy world the output can
+	# arrive after the capture window closes — in that case ask once more
+	local raw try
+	for try in 1 2; do
+		raw=$("$SWG" cmd "runLuaFunction FbLabTests:$1" --timeout "${2:-8}")
+		grep -aq 'runLuaFunction FbLabTests:[A-Za-z]*: result=' <<<"$raw" && break   # the function ran to the end
+		sleep 2
+	done
+	printf '%s\n' "$raw" | grep -aE '^(INFO|ERROR) ' | grep -av '^INFO FbLabTests start' || true
 }
 
 # lab_kv <fn[:args]> <key>  → value of key=… from the helper's INFO line

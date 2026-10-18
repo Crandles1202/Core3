@@ -60,7 +60,7 @@ local TRAVEL_DESTINATIONS = {
 	-- Narmle: INSIDE the medcenter (matches spawn entry)
 	travel_narmle             = { planet = "rori",      x = 29.20, z = 0.26, y = 0.07, cellID = 4635420 },
 	-- Restuss: INSIDE the medcenter (matches spawn entry)
-	travel_restuss            = { planet = "rori",      x = 29.41, z = 0.26, y = 0.01, cellID = 4635789 },
+	travel_restuss            = { planet = "rori",      x = 29.41, z = 0.26, y = 0.01, cellID = 4635728 },
 
 	-- Outer rim
 	-- Dantooine Mining Outpost: INSIDE (matches spawn entry)
