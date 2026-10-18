@@ -128,6 +128,7 @@ tools/swg account create <user> <admin_level> [--reset]   # server's own hash re
 | 1.7 | Shuttleport away time 300 s → 60 s (`shuttleportAwayTime`) | `managers/planet/planet_manager.lua` |
 | 2.2 | Schematic broker "Dannik Vosa" at Mos Eisley starport (3535, -4813): 33 single-use loot schematics in three catalogues (decor, kitchen/cantina, workshop/tech incl. recyclers), 250–5000 cr cash, each labelled with and gated by its template's `requiredSkill`. Master-tier sets (Mandalorian, Geonosian, corvette) excluded, as are the 38 upstream stub templates with no draft. `FbSchematicBroker:purchase(pPlayer, cat, item)` is public for the lab | `fb_schematic_broker*.lua` (screenplay, conv handler, conv template, mobile) |
 | 2.3 | Parts dealer "Tamsin Rook" at Mos Eisley starport (3535, -4818): 46 crafting sub-components (weapon parts, armor segments, chemistry parts) generated through `createLoot` with the `component_loot` item names, standard rolled at level 30, advanced at level 60 for 3× the price | `fb_parts_dealer*.lua` |
+| 3.5 | Story event ticker: once a week (persistent event `FbStoryTick`) one of three stories fires — Tusken raiders east of Mos Eisley, pirates outside Anchorhead, Imperial crackdown around Bestine. Each posts its news into the galaxy chatter (one-week TTL), broadcasts one line to everyone online, and camps 4–5 killable mobs at its spot, refilled hourly for the week. `FbStoryTicker:fire(idx)` public | `fb_story_ticker.lua` |
 | 3.6 | Galaxy chatter: a shared pool the ambient patrons draw 35% of their spoken lines from — 10 static galaxy news lines, live facts (where the traveling merchant is, Bestine election phase) and dated news posted via `FbGalaxyChatter.addNews(key, line, ttl)` (quest-status backed, expires). The 3.5 story ticker plugs in there | `fb_galaxy_chatter.lua` |
 | 3.7 / 3.8 | Ambient life in three cantinas, each with its own voice: Mos Eisley (wretched hive, 5 patrons), Bestine (Imperial-leaning, tense, 4), Coronet (pilot-heavy, gambling, 4), plus three travellers waiting outside the Mos Eisley starport (outdoor seats, terrain height). Patrons mutter, gesture, notice newcomers and change seats every 5–10 min — only while a player is within 20 m. Stock Core3 already seats the silent crowd; this is the behaviour layer. Data-driven `FbAmbientLife.locations`; `tick`/`churn`/`status` public. Theed pending (its cantina cell is not in the stock city file) | `fb_ambient_life.lua` |
 | 2.9 | Traveling merchant "Ozlo Vantrek": one NPC that moves between 9 audited city stops every 3 h (persistent server event `FbMerchantMove`, state in quest status), selling 8 of a 34-item cosmetic pool (paintings, jewellery, hats, goggles) that rotates per visit. `FbTravelingMerchant:move()` / `:status()` are public for the lab | `fb_traveling_merchant*.lua` |
@@ -209,15 +210,15 @@ _Updated: 2026-10-17 (session 2: 1.9, 1.5, 1.4, 1.10, 2.5, 2.2, 2.3 shipped)_
   hook + Lua setter), 1.4 mission level/direction hints (C++ `populateMissionList`), 1.10 no-grind
   entertainer XP (C++ `awardEntertainerExperience`), 2.5 config-driven bazaar limits (C++), 2.2 schematic
   broker NPC (Lua), 2.3 parts dealer NPC (Lua, loot-generated components). Phase 1 complete (1.11 loot half
-  shipped unverified). Phase 2 left: 2.4 loot kits (scoping question open). Phase 3 started: 3.6 galaxy chatter, 3.7/3.8 ambient life (three cantinas + starport travellers). 2.10 shipped unverified (needs an owned
+  shipped unverified). Phase 2 left: 2.4 loot kits (scoping question open). Phase 3 so far: 3.5 story ticker, 3.6 galaxy chatter, 3.7/3.8 ambient life (three cantinas + starport travellers). 2.10 shipped unverified (needs an owned
   structure to place a vendor; the bot has no SUI driving yet).
 - Binaries: `bin/core3` and `bin/core3client` built 2026-10-17 from this tree (`swg build`).
-- Lab now: 258 unit, 249 Lua checks, bot, 12 scenarios (+2 manual audits) (`stimpack-heals`, `npc-conversation`,
+- Lab now: 258 unit, 257 Lua checks, bot, 13 scenarios (+2 manual audits) (`stimpack-heals`, `npc-conversation`,
   `inventory-100`, `mission-hints`, `entertainer-xp`, `schematic-broker`, `schematic-broker-ui` (real SUI path),
-  `parts-dealer`, `bazaar-listings`, `traveling-merchant`, `ambient-cantina`, `galaxy-chatter`; manual: `merchant-stops`, `ambient-locations`). Oracle
+  `parts-dealer`, `bazaar-listings`, `traveling-merchant`, `ambient-cantina`, `galaxy-chatter`, `story-ticker`; manual: `merchant-stops`, `ambient-locations`). Oracle
   additions today: `inventoryLimit`, `setInventoryLimit`, `loginHook`, `spawnObjectNear`, `destroyObject`,
   `missions`, `xp`, `cash`, `buySchematic` / `buyPart` / `buyMerchant` (by item name), `hasSchematic`, `merchant`,
-  `merchantMove[:stop]`, `merchantStops`, `questStatus`, `travelCell`, `ambient`, `ambientTick`, `ambientChurn`, `ambientLocations`, `galaxyNews`, `galaxyAddNews`. The
+  `merchantMove[:stop]`, `merchantStops`, `questStatus`, `travelCell`, `ambient`, `ambientTick`, `ambientChurn`, `ambientLocations`, `galaxyNews`, `galaxyAddNews`, `story`, `storyFire`, `objectAlive`. The
   client now logs spatial chat (`SpatialChat from=<oid>: text`, last 50 kept in its var store). Bot
   additions: `--missions <terminalOid>`, `--command-nowait`, `--sell`/`--buy`/`--retrieve`, `--sui`, `--keep-going`, and an
   end-of-run `=> #N {...}` results dump that `bot_action_status`/`bot_action_count` read. Known gap: the client does not decode every
@@ -248,7 +249,8 @@ _Updated: 2026-10-17 (session 2: 1.9, 1.5, 1.4, 1.10, 2.5, 2.2, 2.3 shipped)_
   audited all nine stops as reachable, but not as pretty); (3.7) sit in the Mos Eisley cantina for a minute —
   patrons mutter and gesture, one notices you, and over 5–10 min a face at a table changes; same in the
   Bestine and Coronet cantinas with their own lines; (3.6) listen for a minute — some lines are galaxy
-  news, one of them names the city Ozlo is in right now.
+  news, one of them names the city Ozlo is in right now; (3.5) `swg cmd "runLuaFunction FbLabTests:story"` says which
+  story is live and where its mobs camp — go fight them, and note the broadcast line at login.
   Then `swg snap save phase1-quickwins` and tag `chuck-stable-20261017`.
 - [ ] Lab characters are followed by the new-player helper droid (R2-H4), which opens a SUI greeting every
   second (visible in every bot log). Harmless for the scenarios now that `--sui` scans all windows, but

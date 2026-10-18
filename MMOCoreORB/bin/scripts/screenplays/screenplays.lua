@@ -757,6 +757,7 @@ includeFile("tasks/tatooine/fb_traveling_merchant_conv_handler.lua")   -- Phase 
 includeFile("tasks/tatooine/fb_traveling_merchant.lua")
 includeFile("tasks/tatooine/fb_galaxy_chatter.lua")   -- Phase 3.6 (before ambient life, which uses it)
 includeFile("tasks/tatooine/fb_ambient_life.lua")   -- Phase 3.7
+includeFile("tasks/tatooine/fb_story_ticker.lua")   -- Phase 3.5 (uses FbGalaxyChatter)
 includeFile("tasks/tatooine/fb_droid_dispenser_conv_handler.lua")
 includeFile("tasks/tatooine/fb_droid_dispenser.lua")
 includeFile("tasks/tatooine/fb_pet_dealer_conv_handler.lua")

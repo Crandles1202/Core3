@@ -30,8 +30,8 @@ R2=$(lab "ambientTick:$LOC" | sed -n 's/^INFO ambientTick result=//p')
 R3=$(lab "ambientTick:$LOC" | sed -n 's/^INFO ambientTick result=//p')
 say "INFO beats: [$R1] [$R2] [$R3]"
 check "beats_not_quiet_with_player_near" "$( [ "$R1" != quiet ] && [ "$R2" != quiet ] && [ "$R3" != quiet ] && echo 1 || echo 0 )"
-check "first_beat_notices_newcomer_or_talks" "$( printf '%s' "$R1" | grep -qE '^(newcomer|chat|emote):' && echo 1 || echo 0 )" "$R1"
-SPOKEN=$(printf '%s\n%s\n%s\n' "$R1" "$R2" "$R3" | sed -n 's/^\(newcomer\|chat\)://p' | head -1)
+check "first_beat_notices_newcomer_or_talks" "$( printf '%s' "$R1" | grep -qE '^(newcomer|chat|galaxy|emote):' && echo 1 || echo 0 )" "$R1"
+SPOKEN=$(printf '%s\n%s\n%s\n' "$R1" "$R2" "$R3" | sed -n 's/^\(newcomer\|chat\|galaxy\)://p' | head -1)
 
 # --- a seat changes hands -----------------------------------------------------------------------
 OLD=$(lab "ambient:$LOC" | grep '^INFO ambient seat=1 ' | sed -n 's/.*oid=\([0-9]*\).*/\1/p')
