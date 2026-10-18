@@ -128,6 +128,7 @@ tools/swg account create <user> <admin_level> [--reset]   # server's own hash re
 | 1.7 | Shuttleport away time 300 s → 60 s (`shuttleportAwayTime`) | `managers/planet/planet_manager.lua` |
 | 2.2 | Schematic broker "Dannik Vosa" at Mos Eisley starport (3535, -4813): 33 single-use loot schematics in three catalogues (decor, kitchen/cantina, workshop/tech incl. recyclers), 250–5000 cr cash, each labelled with and gated by its template's `requiredSkill`. Master-tier sets (Mandalorian, Geonosian, corvette) excluded, as are the 38 upstream stub templates with no draft. `FbSchematicBroker:purchase(pPlayer, cat, item)` is public for the lab | `fb_schematic_broker*.lua` (screenplay, conv handler, conv template, mobile) |
 | 2.3 | Parts dealer "Tamsin Rook" at Mos Eisley starport (3535, -4818): 46 crafting sub-components (weapon parts, armor segments, chemistry parts) generated through `createLoot` with the `component_loot` item names, standard rolled at level 30, advanced at level 60 for 3× the price | `fb_parts_dealer*.lua` |
+| 3.4 | Faction territory map: Mos Eisley (default 65 % Imperial), Bestine (80) and Anchorhead (35) each carry an Imperial % in quest status `FbTerritory.<region>`; ≥60 Imperial-held, ≤40 Rebel-held, contested between. Shifted by invasions (±10) and convoys (destroyed −10, arrived +5). Read by patrols (the holder's squad +1 man, the other −1), HoloNet (sector report line; Rebel propaganda where the Rebellion holds the relay) and cantina chatter (live lines). Threshold crossings post news and broadcast. Vendor faction / mission types not wired | `fb_territory.lua` + hooks in patrols/holonet/chatter/convoys/invasions |
 | 3.1 | GCW invasions (Bestine first; cities are data): every 6 h (persistent event `FbInvasionTick`) a Rebel column (commando + 6) musters in the desert east of Bestine while the garrison (squad leader + 5) forms up at the plaza — galaxy warning + news; after 10 min the attackers are re-homed at the plaza (or they leash back) and advance; opposing-faction NPCs fight on sight, stragglers are paired off (`setDefender`/`addDefender`); all attackers dead → held, all defenders dead → fell, 20 min → withdrew. Players who hit either side get +50/−50 standing, winners 1000 cr; the city's `FbTerritory.bestine` Imperial % shifts ±10 (seed of 3.4). Keren/Dearic wait for Phase 5 planets | `fb_invasions.lua` |
 | 3.9 | Weather as world events (Tatooine): extreme sandstorms now blind and hurt the unsheltered (upstream mechanic switched on in `weather_manager.lua`, `sandstormDamage = 25`, one point less per covering piece worn), and a heavy or extreme storm is an event: galaxy warning, news line, three Tusken raiding parties (leader + 3) walk in on Mos Eisley's east, north-east and south-east outskirts and withdraw when the sky clears. Lua `getZoneWeather(zone)` / `setZoneWeather(zone, 0-4)` (keeps the automatic pattern, unlike `/weather`). Covers the weather half of 3.3; vehicle slow-down not done | `fb_weather_events.lua`, `WeatherManager.idl/Implementation.cpp` (`forceWeather`), `DirectorManager.cpp` |
 | 3.11 | Convoys, ambush mode: every 30–60 min an Imperial supply convoy (squad leader, 3 stormtroopers, cargo droid) walks from the starport to the garrison end of Mos Eisley. First hit summons 2 reinforcements after 60 s; killing every guard drops a loot crate (2× junk, 1× crafting component), pays 750 cr and +50 Rebel / −50 Imperial standing to everyone who hit it, posts news and broadcasts; untouched, it arrives and the news says so. Escort mode is the follow-up | `fb_convoys.lua` |
@@ -212,7 +213,7 @@ Settings are read at session start, so restart Claude Code after creating it.
 
 ## Current status
 
-_Updated: 2026-10-17 (session 2: 1.9, 1.5, 1.4, 1.10, 2.5, 2.2, 2.3 shipped)_
+_Updated: 2026-10-17 late (session 2: Phase 1 done, Phase 2 bar 2.4, Phase 3 bar 3.12 and the time-of-day half of 3.3)_
 
 - `unstable` = `origin/unstable`, no local feature branches, stash empty. Each phase went through its own
   `feature/phaseX.Y-*` branch, a `--no-ff` merge and a push; all seven are **unplay-tested by Chuck** (he
@@ -221,15 +222,18 @@ _Updated: 2026-10-17 (session 2: 1.9, 1.5, 1.4, 1.10, 2.5, 2.2, 2.3 shipped)_
   hook + Lua setter), 1.4 mission level/direction hints (C++ `populateMissionList`), 1.10 no-grind
   entertainer XP (C++ `awardEntertainerExperience`), 2.5 config-driven bazaar limits (C++), 2.2 schematic
   broker NPC (Lua), 2.3 parts dealer NPC (Lua, loot-generated components). Phase 1 complete (1.11 loot half
-  shipped unverified). Phase 2 left: 2.4 loot kits (scoping question open). Phase 3 so far: 3.2 faction patrols, 3.5 story ticker, 3.10 HoloNet relays, 3.11 convoys (ambush), 3.9 sandstorm events, 3.1 Bestine invasions, 3.6 galaxy chatter, 3.7/3.8 ambient life (three cantinas + starport travellers). 2.10 shipped unverified (needs an owned
-  structure to place a vendor; the bot has no SUI driving yet).
+  shipped unverified). Phase 2 left: 2.4 loot kits (scoping question open). Phase 3 so far: 3.2 faction patrols, 3.5 story ticker, 3.10 HoloNet relays, 3.11 convoys (ambush), 3.9 sandstorm events, 3.1 Bestine invasions, 3.4 territory map, 3.6 galaxy chatter, 3.7/3.8 ambient life (three cantinas + starport travellers). 2.10 shipped unverified (needs an owned
+  structure to place a vendor; the bot has no SUI driving yet). **Phase 3 left:** 3.12 podracing (large; no
+  podracer assets in the TRE, would be speeder NPCs + a bookie), the time-of-day half of 3.3 (the server has no
+  day length, only `Zone::getGalacticTime()`), 3.11 escort mode. **Phase 4 (Jedi/Sith) needs Chuck's design
+  calls first** (canonical vs custom masters, alignment rules, which professions trigger the Old Man).
 - Binaries: `bin/core3` and `bin/core3client` built 2026-10-17 from this tree (`swg build`).
-- Lab now: 258 unit, 303 Lua checks, bot, 18 scenarios (+2 manual audits) (`stimpack-heals`, `npc-conversation`,
+- Lab now: 258 unit, 317 Lua checks, bot, 19 scenarios (+2 manual audits) (`stimpack-heals`, `npc-conversation`,
   `inventory-100`, `mission-hints`, `entertainer-xp`, `schematic-broker`, `schematic-broker-ui` (real SUI path),
-  `parts-dealer`, `bazaar-listings`, `traveling-merchant`, `ambient-cantina`, `galaxy-chatter`, `story-ticker`, `faction-patrols`, `holonet`, `convoy-ambush`, `sandstorm`, `invasion-bestine`; manual: `merchant-stops`, `ambient-locations`). Oracle
+  `parts-dealer`, `bazaar-listings`, `traveling-merchant`, `ambient-cantina`, `galaxy-chatter`, `story-ticker`, `faction-patrols`, `holonet`, `convoy-ambush`, `sandstorm`, `invasion-bestine`, `territory`; manual: `merchant-stops`, `ambient-locations`). Oracle
   additions today: `inventoryLimit`, `setInventoryLimit`, `loginHook`, `spawnObjectNear`, `destroyObject`,
   `missions`, `xp`, `cash`, `buySchematic` / `buyPart` / `buyMerchant` (by item name), `hasSchematic`, `merchant`,
-  `merchantMove[:stop]`, `merchantStops`, `questStatus`, `travelCell`, `ambient`, `ambientTick`, `ambientChurn`, `ambientLocations`, `galaxyNews`, `galaxyAddNews`, `story`, `storyFire`, `objectAlive`, `patrols`, `patrolStep`, `holonet`, `holonetSegment`, `holonetBroadcast`, `convoy`, `convoySpawn`, `killNpc`, `factionStanding`, `containerItems`, `weather`, `weatherSet`, `storm`, `stormTick`, `invasion`, `invasionBegin`, `invasionAssault`, `invasionEngage`, `invasionResolve`, `invasionSide`, `teleportObject`, `objectPos`. The
+  `merchantMove[:stop]`, `merchantStops`, `questStatus`, `travelCell`, `ambient`, `ambientTick`, `ambientChurn`, `ambientLocations`, `galaxyNews`, `galaxyAddNews`, `story`, `storyFire`, `objectAlive`, `patrols`, `patrolStep`, `holonet`, `holonetSegment`, `holonetBroadcast`, `convoy`, `convoySpawn`, `killNpc`, `factionStanding`, `containerItems`, `weather`, `weatherSet`, `storm`, `stormTick`, `invasion`, `invasionBegin`, `invasionAssault`, `invasionEngage`, `invasionResolve`, `invasionSide`, `teleportObject`, `objectPos`, `territory`, `territorySet`, `territoryShift`, `patrolRespawn`. The
   client now logs spatial chat (`SpatialChat from=<oid>: text`, last 50 kept in its var store). Bot
   additions: `--missions <terminalOid>`, `--command-nowait`, `--sell`/`--buy`/`--retrieve`, `--sui`, `--keep-going`, and an
   end-of-run `=> #N {...}` results dump that `bot_action_status`/`bot_action_count` read. Known gap: the client does not decode every
@@ -271,7 +275,9 @@ _Updated: 2026-10-17 (session 2: 1.9, 1.5, 1.4, 1.10, 2.5, 2.2, 2.3 shipped)_
   damage unless indoors or wrapped up, and Tusken parties close in from the east; `weatherSet:tatooine:0` ends it.
   Tune `sandstormDamage` in `weather_manager.lua` if 25 feels wrong; (3.1) `swg cmd "runLuaFunction FbLabTests:invasionBegin"`
   then `invasionAssault` (or wait 10 min) and go to the Bestine plaza: Rebels and stormtroopers fight it out, join either
-  side, and check the result broadcast, your standing and `invasion` (territory %).
+  side, and check the result broadcast, your standing and `invasion` (territory %); (3.4) `swg cmd "runLuaFunction FbLabTests:territory"`
+  shows who holds what; hand Mos Eisley to the Rebels with `territoryShift:mos_eisley:-40` and watch the next patrol
+  respawn, the HoloNet relay's voice and the cantina gossip change.
   Then `swg snap save phase1-quickwins` and tag `chuck-stable-20261017`.
 - [ ] Lab characters are followed by the new-player helper droid (R2-H4), which opens a SUI greeting every
   second (visible in every bot log). Harmless for the scenarios now that `--sui` scans all windows, but

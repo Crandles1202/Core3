@@ -17,13 +17,13 @@ FbFactionPatrols = ScreenPlay:new {
 
 FbFactionPatrols.routes = {
 	{
-		key = "mos_eisley_imperial", planet = "tatooine", faction = "imperial",
+		key = "mos_eisley_imperial", planet = "tatooine", faction = "imperial", region = "mos_eisley",
 		leader = "stormtrooper_squad_leader", members = { "stormtrooper", "stormtrooper" },
 		-- the stock city patrol loop through Mos Eisley (cities/tatooine_mos_eisley.lua cll8_1): known walkable
 		points = { { 3318, 5, -4811 }, { 3359, 5, -4755 }, { 3403, 5, -4775 }, { 3430, 5, -4772 }, { 3470, 5, -4795 }, { 3377, 5, -4745 } },
 	},
 	{
-		key = "mos_eisley_rebel", planet = "tatooine", faction = "rebel",
+		key = "mos_eisley_rebel", planet = "tatooine", faction = "rebel", region = "mos_eisley",
 		leader = "rebel_commando", members = { "rebel_trooper", "rebel_trooper" },
 		-- open desert west of the city walls; height from the terrain
 		points = { { 3150, nil, -4750 }, { 3200, nil, -4650 }, { 3280, nil, -4680 }, { 3240, nil, -4790 } },
@@ -84,7 +84,9 @@ function FbFactionPatrols:respawn(ri)
 	createObserver(DESTINATIONREACHED, "FbFactionPatrols", "onLeaderArrived", pLeader)
 
 	local oids = {}
-	for i, template in ipairs(route.members) do
+	-- Phase 3.4: the faction holding the region fields a bigger squad, the other a smaller one
+	local members = (FbTerritory ~= nil) and FbTerritory.squadFor(route) or route.members
+	for i, template in ipairs(members) do
 		local pMember = spawnMobile(route.planet, template, 0, pt[1] + i * 2, z, pt[3] - i, getRandomNumber(0, 6), 0)
 		if pMember ~= nil then
 			AiAgent(pMember):setFollowObject(pLeader)
@@ -117,7 +119,7 @@ function FbFactionPatrols:status(ri)
 		pos = string.format("x=%.1f y=%.1f", SceneObject(pLeader):getWorldPositionX(), SceneObject(pLeader):getWorldPositionY())
 	end
 	return string.format("route=%d key=%s faction=%s leader=%s %s members=%d/%d point=%s combat=%s", ri, route.key, route.faction,
-		pLeader ~= nil and tostring(SceneObject(pLeader):getObjectID()) or "0", pos, members, #route.members,
+		pLeader ~= nil and tostring(SceneObject(pLeader):getObjectID()) or "0", pos, members, #self:memberOids(route),   -- squad size varies with territory (3.4)
 		getQuestStatus(key(route, "point")) or "0", pLeader ~= nil and tostring(CreatureObject(pLeader):isInCombat()) or "n/a")
 end
 

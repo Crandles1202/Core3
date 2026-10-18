@@ -237,6 +237,7 @@ function FbConvoys:defeat()
 	local pAny = alive(get("leader"))
 	if pAny ~= nil then broadcastToGalaxy(pAny, "Mos Eisley: an Imperial supply convoy has been destroyed near the starport.") end
 
+	if FbTerritory ~= nil then FbTerritory.shift("mos_eisley", -10, "convoy destroyed") end
 	set("active", "0"); set("outcome", "destroyed")
 	printf("FbConvoys: convoy destroyed, %d attackers rewarded\n", rewarded)
 	return self:status()
@@ -249,6 +250,7 @@ function FbConvoys:arrive()
 		FbGalaxyChatter.addNews("convoy_" .. tostring(os.time()), "An Imperial supply convoy reached the Mos Eisley garrison untouched. Business as usual.", 2 * 24 * 3600)
 	end
 	self:cleanup()
+	if FbTerritory ~= nil then FbTerritory.shift("mos_eisley", 5, "convoy arrived") end
 	set("outcome", "arrived")
 	printf("FbConvoys: convoy arrived\n")
 	return self:status()
