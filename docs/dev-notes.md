@@ -186,6 +186,16 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-17 — Phase 3.2.** Faction patrols (`fb_faction_patrols.lua`), built on the stock city
+  patrol loop: the leader gets `AiAgent:setNextPosition(x, z, y, cell)` for the next point, a
+  `DESTINATIONREACHED` observer schedules the next leg after a dwell, and a 3-minute safety `onStep`
+  covers a leader that never arrives; members `setFollowObject(leader)`. Squad oids and the current
+  point live in quest status (`FbFactionPatrols.<key>.leader/.members/.point`); a dead or missing
+  leader makes the next step respawn the whole squad. The Imperial route reuses the city file's
+  `cll8_1` points (known walkable); the Rebel route is open desert with `getTerrainHeightAt`. Stock
+  `stormtrooper*` / `rebel_*` templates are `ATTACKABLE` with a faction, so they engage declared
+  enemies only. Level-aware squads (roadmap) are a follow-up. Scenario `faction-patrols`: squad alive,
+  forced step with the character nearby (AI sleeps without players), leader moved ≥ 5 m in 20 s.
 - **2026-10-17 — Phase 3.5.** Story ticker (`fb_story_ticker.lua`): a persistent weekly server
   event cycles through a story table; `fire(idx)` posts the story's lines through
   `FbGalaxyChatter.addNews` (7-day TTL), broadcasts one line with `broadcastToGalaxy(pCreature, text)`
