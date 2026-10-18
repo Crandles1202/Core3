@@ -1559,7 +1559,7 @@ end
 function FbLabTests:findNpc(filter)
 	local list = FbLabTests.liveSpawns(filter)
 	for _, e in ipairs(list) do print("INFO npc " .. (spawnLine(e))) end
-	if #list == 0 then print("ERROR no live spawn matches " .. tostring(filter)) end
+	if #list == 0 then print("INFO findNpc none: no live spawn matches " .. tostring(filter)) end   -- a lookup miss is an answer, not an error
 	return tostring(#list)
 end
 
