@@ -222,14 +222,21 @@ Then update both `login.cfg` *and* the MySQL `galaxy` table (see the [galaxy add
 Custom names, titles and messages live in `finalboss.tre`, built from `tre-src/` in the repo. The server
 reads it from `/tre` (installed automatically by `tools/swg start`); the client needs the same file in its
 folder plus a `searchTree_00_N=finalboss.tre` line at the top of `swgemu_live.cfg`. One command does both,
-once it knows the folder (remembered in `~/.swg-lab/client-dir`):
+once it knows the folder (remembered in `~/.swg-lab/client-dir`; done 2026-10-18 for the live client):
 
 ```bash
-tools/swg tre install --client '/mnt/c/path/to/your/SWGEmu'
+tools/swg tre install --client '/mnt/c/EMU/swg - Copy/SWGEmu'
+tools/swg tre status      # built / server / client hashes and whether the client cfg lists the archive
+tools/swg tre patchcfg '/path/to/another/swgemu_live.cfg'   # cfg step alone, for a second client folder
 ```
 
-Rerun `tools/swg tre install` after every change to `tre-src/` (the server side happens on `swg start`).
+The patch keeps a one-time backup, `swgemu_live.cfg.finalboss.bak`, next to the cfg. Rerun
+`tools/swg tre install` after every change to `tre-src/` (the server side happens on `swg start`).
 Without the file the client shows raw ids such as `@fb_lab:probe_first` instead of text.
+
+Your client is the `C:\EMU\swg - Copy\SWGEmu` folder (login cfg points at 127.0.0.1, your `user.cfg`
+admin unlock lives there). `C:\SWGDev\SWG_Game\swg - Copy\SWGEmu` is an earlier copy of the same
+install that was never launched (still points at nova.swgemu.com); it can be deleted (2.8 GB).
 
 ### Launch the client
 

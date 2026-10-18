@@ -27,7 +27,7 @@ runs and tests. Host: WSL2 Debian 12.
 | ODB (object store, BerkeleyDB) | `bin/databases/` (~850 MB) |
 | MySQL | `127.0.0.1:3306`, db `swgemu`, user `swgemu`; `mysql swgemu` works via `~/.my.cnf` |
 | Logs | `bin/screenlog.0` (console of the current run), `bin/log/core3.log`, `bin/log/lua.log`, `bin/log/player.log` |
-| TRE client files | `/tre` (`TrePath`); `/tre/finalboss.tre` is ours, installed by `tools/swg tre install` from the build output `MMOCoreORB/bin/tre/finalboss.tre` (ignored) |
+| TRE client files | `/tre` (`TrePath`); `/tre/finalboss.tre` is ours, installed by `tools/swg tre install` from the build output `MMOCoreORB/bin/tre/finalboss.tre` (ignored). Chuck's game client: `/mnt/c/EMU/swg - Copy/SWGEmu` (remembered in `~/.swg-lab/client-dir`; `/mnt/c/SWGDev/SWG_Game/swg - Copy/SWGEmu` is a stale duplicate still pointing at nova.swgemu.com) |
 | Custom client/server data (strings, templates) | `tre-src/` → packed by `tools/tre` (stdlib Python; `build/list/extract/strings/verify/roundtrip/install/status/crc`). `string/en/fb_*.stf.txt` = `key = text` lines → `@fb_*:key` |
 | Wrapper scripts | `~/bin/build`, `~/bin/run` (both `source ~/.env`) |
 | Unit tests (gtest) | `MMOCoreORB/src/tests/*.cpp` |
@@ -48,7 +48,8 @@ runs and tests. Host: WSL2 Debian 12.
   tables in its ODB, so `swg start` adds the `reloadstrings` argument whenever the archive changed.
   The client needs the same file in its folder plus a `searchTree_00_N=finalboss.tre` line in
   `swgemu_live.cfg`: `swg tre install --client '<client folder>'` does both (folder remembered in
-  `~/.swg-lab/client-dir`). The first archive in `Core3.TreFiles` wins, so ours is listed first in
+  `~/.swg-lab/client-dir`, so a plain `swg tre install` keeps the client current too; `swg tre patchcfg FILE`
+  is the cfg step alone, `swg tre status` reports the client file + cfg state). The first archive in `Core3.TreFiles` wins, so ours is listed first in
   `config.lua` (and `Core3.TreManager.LatestTre` must name it or `ConfigManagerTest.TreFiles` fails).
 - Lua-only changes need no rebuild. `swg cmd reloadscreenplays` re-runs `screenplays.lua` into each thread's
   *existing* Lua state on next use (globals persist, functions are redefined, screenplay `start()` is **not**
@@ -103,7 +104,7 @@ tools/swg snap save|list <name> # mysqldump + copy of bin/databases (~700 MB) to
 tools/swg snap load <name> --yes  # restore (server stopped). Ask Chuck first.
 tools/swg account create <user> <admin_level> [--reset]   # server's own hash recipe; pw → ~/.swg-lab/
 tools/swg account prune <user> [--keep N]  # delete oldest Lab* chars of a claude-* account (10-char cap); test bot does it
-tools/swg tre build|install [--client DIR]|status|strings … # finalboss.tre from tre-src/ (see Build)
+tools/swg tre build|install [--client DIR]|patchcfg FILE|status|strings … # finalboss.tre from tre-src/ (see Build)
 ```
 
 - Lua content checks live in `bin/scripts/custom_scripts/screenplays/fb_lab_tests.lua` (wraps `spawnMobile`
@@ -241,9 +242,9 @@ _Updated: 2026-10-18 (session 3: Phase 4 design settled with Chuck, 4.0 TRE tool
   day length, only `Zone::getGalacticTime()`), 3.11 escort mode. **Phase 4 (Jedi/Sith): design decided 2026-10-18** — the decisions
   block at the top of the roadmap's Phase 4 section is the spec (attunement score with capped sources, Force-ghost
   clues, FRS rank trees as the ladder, Masters in the Yavin 4 enclaves, cosmetic colour crystals, fixer-paid
-  bounties). 4.0 custom TRE tooling shipped; next: 4a.1 attunement + Old Man on `feature/phase4a.1-*`.
+  bounties). 4.0 custom TRE tooling shipped and installed in Chuck's client (`/mnt/c/EMU/swg - Copy/SWGEmu`); next: 4a.1 attunement + Old Man on `feature/phase4a.1-*`.
 - Binaries: `bin/core3` and `bin/core3client` built 2026-10-17 from this tree (`swg build`).
-- Lab now: 261 unit, 321 Lua checks, bot, 20 scenarios (+2 manual audits) (`tre-strings`, `stimpack-heals`, `npc-conversation`,
+- Lab now: 261 unit, 322 Lua checks, bot, 20 scenarios (+2 manual audits) (`tre-strings`, `stimpack-heals`, `npc-conversation`,
   `inventory-100`, `mission-hints`, `entertainer-xp`, `schematic-broker`, `schematic-broker-ui` (real SUI path),
   `parts-dealer`, `bazaar-listings`, `traveling-merchant`, `ambient-cantina`, `galaxy-chatter`, `story-ticker`, `faction-patrols`, `holonet`, `convoy-ambush`, `sandstorm`, `invasion-bestine`, `territory`; manual: `merchant-stops`, `ambient-locations`). Oracle
   additions today: `inventoryLimit`, `setInventoryLimit`, `loginHook`, `spawnObjectNear`, `destroyObject`,
@@ -293,11 +294,11 @@ _Updated: 2026-10-18 (session 3: Phase 4 design settled with Chuck, 4.0 TRE tool
   side, and check the result broadcast, your standing and `invasion` (territory %); (3.4) `swg cmd "runLuaFunction FbLabTests:territory"`
   shows who holds what; hand Mos Eisley to the Rebels with `territoryShift:mos_eisley:-40` and watch the next patrol
   respawn, the HoloNet relay's voice and the cantina gossip change.
-  (4.0) tell Claude which Windows client folder you launch (`swg tre install --client '/mnt/c/.../SWGEmu'`
-  copies `finalboss.tre` there and patches `swgemu_live.cfg` once), start the client, then
+  (4.0) `finalboss.tre` is installed in your client (`/mnt/c/EMU/swg - Copy/SWGEmu`, cfg patched, backup
+  `swgemu_live.cfg.finalboss.bak`): start the client, log in, then
   `swg cmd "runLuaFunction FbLabTests:systemMessage:<YourChar>:fb_lab:probe_first"` — the chat shows
-  "Final Boss TRE probe: first" (without the archive the client shows the raw id). Candidates found:
-  `/mnt/c/EMU/swg - Copy/SWGEmu` and `/mnt/c/SWGDev/SWG_Game/swg - Copy/SWGEmu` (both 53 TREs).
+  "Final Boss TRE probe: first" (without the archive the client shows the raw id). The untouched duplicate
+  `/mnt/c/SWGDev/SWG_Game/swg - Copy/SWGEmu` (2.8 GB, still pointing at nova.swgemu.com) is yours to delete.
   Then `swg snap save phase1-quickwins` and tag `chuck-stable-20261017`.
 - [ ] Lab characters are followed by the new-player helper droid (R2-H4), which opens a SUI greeting every
   second (visible in every bot log). Harmless for the scenarios now that `--sui` scans all windows, but

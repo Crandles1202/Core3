@@ -205,8 +205,15 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   adds `reloadstrings` when its hash changed since the last start (`~/.swg-lab/last-tre.sha`);
   `swg test unit` builds + installs too. Chuck's client folders on Windows all have 53 stock TREs and
   a `swgemu_live.cfg` with `searchTree_NN_prio=` lines; `tre install --client DIR` copies the archive
-  there and inserts `searchTree_00_<max>=finalboss.tre` + bumps `maxSearchPriority` once (which folder
-  he actually launches is still his call). Tests: gtest `FbTreTest` (first in list, lab table parses
+  there and inserts `searchTree_00_<max>=finalboss.tre` + bumps `maxSearchPriority` once. Chuck's live
+  client is `/mnt/c/EMU/swg - Copy/SWGEmu` (login cfg → 127.0.0.1, `user.cfg` admin unlock, character
+  list); `/mnt/c/SWGDev/SWG_Game/swg - Copy/SWGEmu` is a never-launched earlier copy (nova.swgemu.com),
+  his to delete. The first real `--client` install hit a bug in the cfg patcher: `bytes.join` over `str`
+  lines raised *after* the cfg had been opened for writing, leaving a 0-byte `swgemu_live.cfg` (restored
+  from the `.finalboss.bak` it had just written). Lesson: build the whole payload first, write to a
+  `.tmp` and `os.replace` it, and never ship a file-rewriting path without a test — `tre patchcfg FILE`
+  now exists so the `tre-strings` scenario exercises the patch on a CRLF fixture (insert, bump, CRLF
+  kept, idempotent), and `tre status` reports whether the client cfg lists the archive. Tests: gtest `FbTreTest` (first in list, lab table parses
   with first/middle/last keys, stock `jedi_spam` still resolves), Lua `checkTreStrings` through
   `getStringId`, oracle `stringId:<file>:<key>`. Lesson: gtest `<<` cannot print engine3 `String`;
   use `.toCharArray()`. Two lab fixes found by the full cycle: (1) `claude-player` hit the galaxy's
