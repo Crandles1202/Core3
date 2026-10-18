@@ -345,6 +345,7 @@ includeFile("conversations/tasks/fb_smuggler_goods_conv.lua")
 includeFile("conversations/tasks/fb_schematic_broker_conv.lua")   -- Phase 2.2
 includeFile("conversations/tasks/fb_parts_dealer_conv.lua")   -- Phase 2.3
 includeFile("conversations/tasks/fb_traveling_merchant_conv.lua")   -- Phase 2.9
+includeFile("conversations/tasks/fb_holonet_relay_conv.lua")   -- Phase 3.10
 includeFile("conversations/tasks/fb_droid_dispenser_conv.lua")
 includeFile("conversations/tasks/fb_pet_dealer_conv.lua")
 includeFile("conversations/tasks/fb_property_agent_conv.lua")

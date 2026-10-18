@@ -186,6 +186,19 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-17 — Phase 3.10.** HoloNet relays (`fb_holonet.lua` + relay mobile/conv). A segment is
+  assembled at read time from the live systems — story ticker title and mobs ("this week's wanted"),
+  a galaxy chatter line, the merchant's stop — framed by sting / propaganda / outro, and read one line
+  every 3 s with `createEvent(delay, "FbHoloNet", "onLine", pRelay, line)` (the event carries the text
+  as its string argument). Broadcasts only while `getPlayersInRange(25)` is non-empty. Every `fb_*`
+  mobile needs a conversation template or the discovery-based content checks fail, so the relay got
+  a two-screen one whose "replay" option triggers a broadcast. Scenario `holonet`: relay up, segment
+  ≥ 5 lines with "Top story:", client receives every line as spatial chat from the relay, replay via
+  conversation. Lesson: `NpcConversationStartCommand` requires the player's *last validated position*
+  to be in the same cell as the NPC, within 5 m (2-D outdoors), **and** `CollisionManager::
+  checkLineOfSight`; it fails silently (no packet back). The relay's first spot (3512, -4790) was 3 m
+  from the character and still unreachable — geometry in between. Rule of thumb for new NPC spots:
+  stand next to an existing FB vendor row, and make the scenario converse before trusting the spot.
 - **2026-10-17 — Phase 3.2.** Faction patrols (`fb_faction_patrols.lua`), built on the stock city
   patrol loop: the leader gets `AiAgent:setNextPosition(x, z, y, cell)` for the next point, a
   `DESTINATIONREACHED` observer schedules the next leg after a dwell, and a 3-minute safety `onStep`

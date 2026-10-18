@@ -759,6 +759,8 @@ includeFile("tasks/tatooine/fb_galaxy_chatter.lua")   -- Phase 3.6 (before ambie
 includeFile("tasks/tatooine/fb_ambient_life.lua")   -- Phase 3.7
 includeFile("tasks/tatooine/fb_story_ticker.lua")   -- Phase 3.5 (uses FbGalaxyChatter)
 includeFile("tasks/tatooine/fb_faction_patrols.lua")   -- Phase 3.2
+includeFile("tasks/tatooine/fb_holonet_relay_conv_handler.lua")   -- Phase 3.10
+includeFile("tasks/tatooine/fb_holonet.lua")
 includeFile("tasks/tatooine/fb_droid_dispenser_conv_handler.lua")
 includeFile("tasks/tatooine/fb_droid_dispenser.lua")
 includeFile("tasks/tatooine/fb_pet_dealer_conv_handler.lua")
