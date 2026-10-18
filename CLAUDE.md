@@ -27,7 +27,8 @@ runs and tests. Host: WSL2 Debian 12.
 | ODB (object store, BerkeleyDB) | `bin/databases/` (~850 MB) |
 | MySQL | `127.0.0.1:3306`, db `swgemu`, user `swgemu`; `mysql swgemu` works via `~/.my.cnf` |
 | Logs | `bin/screenlog.0` (console of the current run), `bin/log/core3.log`, `bin/log/lua.log`, `bin/log/player.log` |
-| TRE client files | `/tre` (`TrePath`) |
+| TRE client files | `/tre` (`TrePath`); `/tre/finalboss.tre` is ours, installed by `tools/swg tre install` from the build output `MMOCoreORB/bin/tre/finalboss.tre` (ignored) |
+| Custom client/server data (strings, templates) | `tre-src/` → packed by `tools/tre` (stdlib Python; `build/list/extract/strings/verify/roundtrip/install/status/crc`). `string/en/fb_*.stf.txt` = `key = text` lines → `@fb_*:key` |
 | Wrapper scripts | `~/bin/build`, `~/bin/run` (both `source ~/.env`) |
 | Unit tests (gtest) | `MMOCoreORB/src/tests/*.cpp` |
 
@@ -42,6 +43,13 @@ runs and tests. Host: WSL2 Debian 12.
   after the OFF, and cmake keeps the last `-D`). The next plain `~/bin/build` switches it back OFF, but an
   already-built `bin/core3client` stays.
 - Incremental rebuild with a warm ccache is ~3.5 min wall clock; a changed `.idl` regenerates code; a small edit to a rarely included one (the `WeatherManager` getter) rebuilt in 16 s, a widely included one costs much more.
+- **Custom strings / client data** live in `tre-src/` and are packed into `finalboss.tre` (`swg tre build`).
+  `swg start` and `swg test unit` build + install it into `/tre` themselves; the server caches string
+  tables in its ODB, so `swg start` adds the `reloadstrings` argument whenever the archive changed.
+  The client needs the same file in its folder plus a `searchTree_00_N=finalboss.tre` line in
+  `swgemu_live.cfg`: `swg tre install --client '<client folder>'` does both (folder remembered in
+  `~/.swg-lab/client-dir`). The first archive in `Core3.TreFiles` wins, so ours is listed first in
+  `config.lua` (and `Core3.TreManager.LatestTre` must name it or `ConfigManagerTest.TreFiles` fails).
 - Lua-only changes need no rebuild. `swg cmd reloadscreenplays` re-runs `screenplays.lua` into each thread's
   *existing* Lua state on next use (globals persist, functions are redefined, screenplay `start()` is **not**
   re-run, so nothing re-spawns). Mobile/conversation/manager Lua lives in other Lua states and needs a restart.
@@ -94,6 +102,8 @@ tools/swg logs --lua            # bin/log/lua.log
 tools/swg snap save|list <name> # mysqldump + copy of bin/databases (~700 MB) to ~/swg-snapshots/<name>
 tools/swg snap load <name> --yes  # restore (server stopped). Ask Chuck first.
 tools/swg account create <user> <admin_level> [--reset]   # server's own hash recipe; pw → ~/.swg-lab/
+tools/swg account prune <user> [--keep N]  # delete oldest Lab* chars of a claude-* account (10-char cap); test bot does it
+tools/swg tre build|install [--client DIR]|status|strings … # finalboss.tre from tre-src/ (see Build)
 ```
 
 - Lua content checks live in `bin/scripts/custom_scripts/screenplays/fb_lab_tests.lua` (wraps `spawnMobile`
@@ -115,7 +125,8 @@ tools/swg account create <user> <admin_level> [--reset]   # server's own hash re
   salt = 32 hex chars (`AccountManager::createAccount`). `~/bin/run` resets an `admin` account that does
   not exist in this DB, so that line is a no-op.
 - Bot characters are named `Lab` + three consonant-vowel syllables (random letters trip the server's
-  name filter) on account `claude-player` and accumulate; delete them when they get in the way.
+  name filter) on account `claude-player` and accumulate; the galaxy caps an account at 10, so
+  `swg test bot` prunes the oldest (`swg account prune`) when it gets there.
 - Snapshots: `baseline` (2026-10-16, post-upstream-merge, before Phase 2 and any bot characters) and
   `post-phase2` (2026-10-16, `unstable` @ `fa635eaa38`, after the Phase 2 merge).
 
@@ -123,6 +134,7 @@ tools/swg account create <user> <admin_level> [--reset]   # server's own hash re
 
 | Phase | Change | Where |
 |---|---|---|
+| 4.0 | Custom data archive: `tools/tre` packs `tre-src/` (string tables as `key = text` text files, anything else verbatim) into `finalboss.tre`, byte-identical on repack of stock archives; listed first in `Core3.TreFiles` (+ `Core3.TreManager.LatestTre`), installed into `/tre` by `swg start`/`swg test unit`, which also pass `reloadstrings` when it changed; client side via `swg tre install --client DIR` (copies + patches `swgemu_live.cfg`). Probe table `string/en/fb_lab.stf` for the tests. Prerequisite for every Phase 4 custom name/title/journal entry | `tools/tre`, `tre-src/`, `config.lua`, `src/tests/FbTreTest.cpp`, scenario `tre-strings` |
 | 0.5 | `custom-features.lua` git-ignored | `.gitignore` |
 | 1.3 | Starter gear: CDEF pistol, shirt, pants, stimpack added to `commonStartingItems` | `managers/player_creation_manager.lua` |
 | 1.7 | Shuttleport away time 300 s → 60 s (`shuttleportAwayTime`) | `managers/planet/planet_manager.lua` |
@@ -192,6 +204,7 @@ Persisted object fields (`containerVolumeLimit`, …) are only read from the tem
 - Screenplay table fields set in `start()` are not visible from the console or server-event Lua states;
   persist cross-call state with `setQuestStatus`/`getQuestStatus` (keys without `:`). `getTerrainHeight`
   needs a creature; use `getTerrainHeightAt(zone, x, y)` when there is none.
+- gtest's `<<` cannot print an engine3 `String`; use `.toCharArray()` in assertion messages.
 - `git ls-files -v | grep ^S` shows skip-worktree files. `resource_manager_spawns.lua` is written by the
   server and must stay that way; nothing else should carry the flag.
 
@@ -213,7 +226,7 @@ Settings are read at session start, so restart Claude Code after creating it.
 
 ## Current status
 
-_Updated: 2026-10-17 late (session 2: Phase 1 done, Phase 2 bar 2.4, Phase 3 bar 3.12 and the time-of-day half of 3.3)_
+_Updated: 2026-10-18 (session 3: Phase 4 design settled with Chuck, 4.0 TRE tooling shipped; Phase 1 done, Phase 2 bar 2.4, Phase 3 bar 3.12 and the time-of-day half of 3.3)_
 
 - `unstable` = `origin/unstable`, no local feature branches, stash empty. Each phase went through its own
   `feature/phaseX.Y-*` branch, a `--no-ff` merge and a push; all seven are **unplay-tested by Chuck** (he
@@ -225,15 +238,17 @@ _Updated: 2026-10-17 late (session 2: Phase 1 done, Phase 2 bar 2.4, Phase 3 bar
   shipped unverified). Phase 2 left: 2.4 loot kits (scoping question open). Phase 3 so far: 3.2 faction patrols, 3.5 story ticker, 3.10 HoloNet relays, 3.11 convoys (ambush), 3.9 sandstorm events, 3.1 Bestine invasions, 3.4 territory map, 3.6 galaxy chatter, 3.7/3.8 ambient life (three cantinas + starport travellers). 2.10 shipped unverified (needs an owned
   structure to place a vendor; the bot has no SUI driving yet). **Phase 3 left:** 3.12 podracing (large; no
   podracer assets in the TRE, would be speeder NPCs + a bookie), the time-of-day half of 3.3 (the server has no
-  day length, only `Zone::getGalacticTime()`), 3.11 escort mode. **Phase 4 (Jedi/Sith) needs Chuck's design
-  calls first** (canonical vs custom masters, alignment rules, which professions trigger the Old Man).
+  day length, only `Zone::getGalacticTime()`), 3.11 escort mode. **Phase 4 (Jedi/Sith): design decided 2026-10-18** — the decisions
+  block at the top of the roadmap's Phase 4 section is the spec (attunement score with capped sources, Force-ghost
+  clues, FRS rank trees as the ladder, Masters in the Yavin 4 enclaves, cosmetic colour crystals, fixer-paid
+  bounties). 4.0 custom TRE tooling shipped; next: 4a.1 attunement + Old Man on `feature/phase4a.1-*`.
 - Binaries: `bin/core3` and `bin/core3client` built 2026-10-17 from this tree (`swg build`).
-- Lab now: 258 unit, 317 Lua checks, bot, 19 scenarios (+2 manual audits) (`stimpack-heals`, `npc-conversation`,
+- Lab now: 261 unit, 321 Lua checks, bot, 20 scenarios (+2 manual audits) (`tre-strings`, `stimpack-heals`, `npc-conversation`,
   `inventory-100`, `mission-hints`, `entertainer-xp`, `schematic-broker`, `schematic-broker-ui` (real SUI path),
   `parts-dealer`, `bazaar-listings`, `traveling-merchant`, `ambient-cantina`, `galaxy-chatter`, `story-ticker`, `faction-patrols`, `holonet`, `convoy-ambush`, `sandstorm`, `invasion-bestine`, `territory`; manual: `merchant-stops`, `ambient-locations`). Oracle
   additions today: `inventoryLimit`, `setInventoryLimit`, `loginHook`, `spawnObjectNear`, `destroyObject`,
   `missions`, `xp`, `cash`, `buySchematic` / `buyPart` / `buyMerchant` (by item name), `hasSchematic`, `merchant`,
-  `merchantMove[:stop]`, `merchantStops`, `questStatus`, `travelCell`, `ambient`, `ambientTick`, `ambientChurn`, `ambientLocations`, `galaxyNews`, `galaxyAddNews`, `story`, `storyFire`, `objectAlive`, `patrols`, `patrolStep`, `holonet`, `holonetSegment`, `holonetBroadcast`, `convoy`, `convoySpawn`, `killNpc`, `factionStanding`, `containerItems`, `weather`, `weatherSet`, `storm`, `stormTick`, `invasion`, `invasionBegin`, `invasionAssault`, `invasionEngage`, `invasionResolve`, `invasionSide`, `teleportObject`, `objectPos`, `territory`, `territorySet`, `territoryShift`, `patrolRespawn`. The
+  `merchantMove[:stop]`, `merchantStops`, `questStatus`, `travelCell`, `ambient`, `ambientTick`, `ambientChurn`, `ambientLocations`, `galaxyNews`, `galaxyAddNews`, `story`, `storyFire`, `objectAlive`, `patrols`, `patrolStep`, `holonet`, `holonetSegment`, `holonetBroadcast`, `convoy`, `convoySpawn`, `killNpc`, `factionStanding`, `containerItems`, `weather`, `weatherSet`, `storm`, `stormTick`, `invasion`, `invasionBegin`, `invasionAssault`, `invasionEngage`, `invasionResolve`, `invasionSide`, `teleportObject`, `objectPos`, `territory`, `territorySet`, `territoryShift`, `patrolRespawn`, `stringId`, `systemMessage`. The
   client now logs spatial chat (`SpatialChat from=<oid>: text`, last 50 kept in its var store). Bot
   additions: `--missions <terminalOid>`, `--command-nowait`, `--sell`/`--buy`/`--retrieve`, `--sui`, `--keep-going`, and an
   end-of-run `=> #N {...}` results dump that `bot_action_status`/`bot_action_count` read. Known gap: the client does not decode every
@@ -278,6 +293,11 @@ _Updated: 2026-10-17 late (session 2: Phase 1 done, Phase 2 bar 2.4, Phase 3 bar
   side, and check the result broadcast, your standing and `invasion` (territory %); (3.4) `swg cmd "runLuaFunction FbLabTests:territory"`
   shows who holds what; hand Mos Eisley to the Rebels with `territoryShift:mos_eisley:-40` and watch the next patrol
   respawn, the HoloNet relay's voice and the cantina gossip change.
+  (4.0) tell Claude which Windows client folder you launch (`swg tre install --client '/mnt/c/.../SWGEmu'`
+  copies `finalboss.tre` there and patches `swgemu_live.cfg` once), start the client, then
+  `swg cmd "runLuaFunction FbLabTests:systemMessage:<YourChar>:fb_lab:probe_first"` — the chat shows
+  "Final Boss TRE probe: first" (without the archive the client shows the raw id). Candidates found:
+  `/mnt/c/EMU/swg - Copy/SWGEmu` and `/mnt/c/SWGDev/SWG_Game/swg - Copy/SWGEmu` (both 53 TREs).
   Then `swg snap save phase1-quickwins` and tag `chuck-stable-20261017`.
 - [ ] Lab characters are followed by the new-player helper droid (R2-H4), which opens a SUI greeting every
   second (visible in every bot log). Harmless for the scenarios now that `--sui` scans all windows, but

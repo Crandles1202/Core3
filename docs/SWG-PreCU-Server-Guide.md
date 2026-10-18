@@ -217,6 +217,20 @@ hostname \-I    \# get current WSL2 IP
 
 Then update both `login.cfg` *and* the MySQL `galaxy` table (see the [galaxy address gotcha](#galaxy-address-is-in-mysql-not-config-localllua)).
 
+### Install the Final Boss data archive (finalboss.tre)
+
+Custom names, titles and messages live in `finalboss.tre`, built from `tre-src/` in the repo. The server
+reads it from `/tre` (installed automatically by `tools/swg start`); the client needs the same file in its
+folder plus a `searchTree_00_N=finalboss.tre` line at the top of `swgemu_live.cfg`. One command does both,
+once it knows the folder (remembered in `~/.swg-lab/client-dir`):
+
+```bash
+tools/swg tre install --client '/mnt/c/path/to/your/SWGEmu'
+```
+
+Rerun `tools/swg tre install` after every change to `tre-src/` (the server side happens on `swg start`).
+Without the file the client shows raw ids such as `@fb_lab:probe_first` instead of text.
+
 ### Launch the client
 
 Either through SWGEmu Launchpad (with your custom server selected), or by running `SwgClient_r.exe` directly. The direct launch skips the launcher news screen and is more reliable.

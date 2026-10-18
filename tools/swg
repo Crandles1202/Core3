@@ -14,9 +14,18 @@
 #   swg account create <user> <admin_level> [--reset]
 #                                    create a test account the way the server hashes passwords;
 #                                    the generated password is written to ~/.swg-lab/<user>.pass
+#   swg account prune <user> [--keep N]
+#                                    delete the oldest Lab* characters of a lab account (claude-*
+#                                    only) the way the login server does, keeping the N newest (4);
+#                                    test bot runs it when the account is at the 10-character cap
+#   swg tre build|install|status [--client DIR]
+#                                    tools/tre: pack tre-src/ into finalboss.tre and install it for the
+#                                    server (TrePath) and the client (DIR, remembered in ~/.swg-lab/).
+#                                    start/test unit do build+install themselves; start adds the
+#                                    server's "reloadstrings" argument when the archive changed.
 #
 # Tests
-#   unit   core3 runUnitTests (gtest). Server must be stopped.
+#   unit   core3 runUnitTests (gtest). Server must be stopped. Builds + installs finalboss.tre first.
 #   lua    runLuaFunction FbLabTests:runAll[:<char>] on the live server; prints PASS/FAIL lines.
 #          With <char> online, also checks that character's inventory for the starter gear.
 #   bot    core3client logs in as claude-player, creates a character, zones in, waits 30 s,
@@ -76,6 +85,23 @@ require_stopped() {
 	if has_session; then die "tmux session '$SESSION' still exists; attach with: tmux attach -t $SESSION"; fi
 }
 
+TRE="$REPO/tools/tre"
+TRE_SHA_FILE="$LABDIR/last-tre.sha"
+# Build tre-src/ into finalboss.tre and install it into the server's TrePath. Prints the tool's lines.
+# Returns 0 when the installed archive differs from the one the last `swg start` ran with.
+tre_prepare() {
+	[ -x "$TRE" ] || die "$TRE missing"
+	local out
+	out=$("$TRE" build 2>&1) || { printf '%s\n' "$out" >&2; die "tre build failed"; }
+	say "$(printf '%s\n' "$out" | head -1)"
+	out=$("$TRE" install 2>&1) || { printf '%s\n' "$out" >&2; die "tre install failed"; }
+	printf '%s\n' "$out" | grep -v '^up to date' | sed 's/^/  /'
+	local sha; sha=$("$TRE" status --json | tail -1 | sed -n 's/.*"server": "\([0-9a-f]*\)".*/\1/p')
+	[ -n "$sha" ] || return 1
+	[ "$(cat "$TRE_SHA_FILE" 2>/dev/null)" != "$sha" ]
+}
+tre_mark_seen() { mkdir -p "$LABDIR"; "$TRE" status --json | tail -1 | sed -n 's/.*"server": "\([0-9a-f]*\)".*/\1/p' > "$TRE_SHA_FILE"; }
+
 git_rev() { git -C "$REPO" describe --always --dirty --abbrev=10 2>/dev/null; }
 git_branch() { git -C "$REPO" rev-parse --abbrev-ref HEAD 2>/dev/null; }
 
@@ -133,12 +159,18 @@ cmd_start() {
 	: > "$LOG"
 	nightly_backup_if_due
 
+	local core3_args=""
+	if tre_prepare; then
+		core3_args="reloadstrings"
+		say "finalboss.tre changed since the last start: core3 will re-read every string table (reloadstrings)"
+	fi
+
 	local launch
 	if [ "$use_gdb" = 1 ]; then
 		[ -f "$GDB_SETTINGS" ] || die "gdb settings file $GDB_SETTINGS missing (use --no-gdb)"
-		launch="exec gdb --quiet --command=$GDB_SETTINGS ./core3"
+		launch="exec gdb --quiet --command=$GDB_SETTINGS --args ./core3 $core3_args"
 	else
-		launch="exec ./core3"
+		launch="exec ./core3 $core3_args"
 	fi
 
 	tmux new-session -d -s "$SESSION" -c "$BIN" -x 250 -y 50 || die "could not create tmux session"
@@ -150,6 +182,7 @@ cmd_start() {
 	local t0=$SECONDS
 	while (( SECONDS - t0 < START_TIMEOUT )); do
 		if grep -aq '^READY' "$LOG" 2>/dev/null; then
+			tre_mark_seen
 			say "READY after $((SECONDS - t0))s  (pid $(core3_pid), errors so far: $(count_errors))"
 			return 0
 		fi
@@ -291,6 +324,7 @@ cmd_logs() {
 test_unit() {
 	require_stopped
 	[ -x "$BIN/core3" ] || die "$BIN/core3 not found"
+	tre_prepare || true
 	say "== unit: core3 runUnitTests $*"
 	( cd "$BIN" && ./core3 runUnitTests "$@" 2>&1 | strip_tty | tee "$LABDIR/last-unit.log" | grep -aE '^\[==========\]|^\[  (PASSED|FAILED)  \]|^\[  SKIPPED \]|FAILED TEST|Failure|^\[ RUN      \].*' | grep -av '^\[ RUN' )
 	local rc=${PIPESTATUS[0]}
@@ -376,6 +410,13 @@ test_bot() {
 	local wait=${SWG_BOT_WAIT:-30}
 	local clog="$LABDIR/last-bot.log"
 	local err_before; err_before=$(count_errors)
+
+	# The galaxy allows 10 characters per account; lab characters accumulate, so make room first.
+	local total
+	total=$(mysql -N swgemu -e "SELECT COUNT(*) FROM characters c JOIN accounts a ON a.account_id = c.account_id WHERE a.username = '$user'" 2>/dev/null || echo 0)
+	if [ "${total:-0}" -ge 10 ]; then
+		account_prune "$user" 6 || warn "could not prune $user's characters"
+	fi
 
 	# PlayerCreationManager allows admin_level < 9 accounts one new character per hour. When the
 	# account created one recently, zone in as its newest Lab* character instead of failing.
@@ -549,6 +590,27 @@ cmd_snap() {
 
 # ---------------------------------------------------------------- accounts
 
+# account_prune <user> <keep>: move the oldest Lab* characters of a claude-* account into
+# deleted_characters and drop them from characters (the login server's DeleteCharacter SQL); the zone
+# server purges their objects on its own schedule. Characters must be offline.
+account_prune() {
+	local user=$1 keep=${2:-4}
+	[[ "$user" =~ ^claude-(player|admin)$ ]] || die "prune: only the lab accounts claude-player / claude-admin"
+	[[ "$keep" =~ ^[0-9]+$ ]] || die "prune: --keep needs a number"
+	local acct; acct=$(mysql -N swgemu -e "SELECT account_id FROM accounts WHERE username = '$user'") || die "prune: mysql failed"
+	[ -n "$acct" ] || die "prune: no account $user"
+	local oids; oids=$(mysql -N swgemu -e "SELECT character_oid FROM characters WHERE account_id = $acct AND firstname LIKE 'Lab%' ORDER BY character_oid DESC LIMIT 1000 OFFSET $keep")
+	local n=0 oid
+	for oid in $oids; do
+		if is_running && cmd_cmd "runLuaFunction FbLabTests:isOnline:$(mysql -N swgemu -e "SELECT firstname FROM characters WHERE character_oid = $oid")" --timeout 5 2>/dev/null | grep -aq '^INFO online'; then
+			warn "prune: $oid is online, skipped"; continue
+		fi
+		mysql swgemu -e "INSERT INTO deleted_characters SELECT *, 0 AS db_deleted FROM characters WHERE character_oid = $oid AND account_id = $acct; DELETE FROM characters WHERE character_oid = $oid AND account_id = $acct;" || die "prune: delete of $oid failed"
+		n=$((n + 1))
+	done
+	say "== prune: $user: $n Lab* character(s) deleted, $keep newest kept"
+}
+
 cmd_account() {
 	local op=${1:-}; shift || true
 	case "$op" in
@@ -578,11 +640,25 @@ cmd_account() {
 			mysql swgemu -e "SELECT account_id, username, admin_level, active, created FROM accounts WHERE username='$user'"
 			say "password written to $LABDIR/$user.pass (not in the repo)" ;;
 		list) mysql swgemu -e "SELECT account_id, username, admin_level, active, created FROM accounts" ;;
-		*) die "usage: swg account create <user> <admin_level> [--reset] | list" ;;
+		prune)
+			local user=${2:-} keep=4
+			[ "${3:-}" = "--keep" ] && keep=${4:-4}
+			[ -n "$user" ] || die "usage: swg account prune <user> [--keep N]"
+			account_prune "$user" "$keep"
+			;;
+		*) die "usage: swg account create <user> <admin_level> [--reset] | prune <user> [--keep N] | list" ;;
 	esac
 }
 
 # ---------------------------------------------------------------- main
+
+cmd_tre() {
+	[ -x "$TRE" ] || die "$TRE missing"
+	case "${1:-}" in
+		build|install|status|list|extract|strings|verify|roundtrip|crc) exec "$TRE" "$@" ;;
+		*) die "usage: swg tre build|install [--client DIR]|status|list|extract|strings|verify|roundtrip|crc" ;;
+	esac
+}
 
 usage() { sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//' | sed '1d'; }
 
@@ -597,6 +673,7 @@ case "${1:-}" in
 	build)   shift; cmd_build "$@" ;;
 	snap)    shift; cmd_snap "$@" ;;
 	account) shift; cmd_account "$@" ;;
+	tre)     shift; cmd_tre "$@" ;;
 	-h|--help|help|"") usage ;;
 	*) die "unknown command '$1' (swg --help)" ;;
 esac

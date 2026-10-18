@@ -186,6 +186,37 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-18 — Phase 4 design + 4.0 TRE tooling.** Chuck settled the Phase 4 design (recorded at the top
+  of the roadmap's Phase 4 section: Village optional, hidden attunement score with capped sources and
+  Force-ghost clues, FRS rank trees as the ladder with quest promotions, Masters in the Yavin 4
+  enclaves, colour crystals cosmetic, bounty never shrinks but a fixer sells it off). Prerequisite
+  shipped: `tools/tre`, a stdlib-only Python packer for `.tre` archives and `.stf` string tables, fed
+  from `tre-src/`, producing `MMOCoreORB/bin/tre/finalboss.tre` (ignored). Formats were taken from the
+  server's own readers (`src/tre3/TreeFile.cpp`, `templates/string/StringFile.cpp`) and confirmed
+  against the stock archives: record checksum = engine3 `String::hashCode` (CRC-32, poly 0x04C11DB7,
+  MSB-first) of the path, records sorted by that CRC, md5 over the stored (compressed) bytes, zlib
+  type 2; `tre roundtrip` repacks `patch_14_00.tre` byte-for-byte identical (a few SOE records carry
+  md5s that match nothing, the client evidently does not check them). Server precedence: the **first**
+  archive in `Core3.TreFiles` wins (`TreeDirectory` is a no-duplicate sorted vector), so
+  `finalboss.tre` is listed first in `config.lua` and `Core3.TreManager.LatestTre` names it (the
+  upstream `ConfigManagerTest.TreFiles` asserts the two agree). The server caches every `string/en`
+  table in the ODB `strings` database at first boot and only re-reads with the `reloadstrings`
+  argument (or `Core3.TreManager.ReloadStrings`); `swg start` now builds + installs the archive and
+  adds `reloadstrings` when its hash changed since the last start (`~/.swg-lab/last-tre.sha`);
+  `swg test unit` builds + installs too. Chuck's client folders on Windows all have 53 stock TREs and
+  a `swgemu_live.cfg` with `searchTree_NN_prio=` lines; `tre install --client DIR` copies the archive
+  there and inserts `searchTree_00_<max>=finalboss.tre` + bumps `maxSearchPriority` once (which folder
+  he actually launches is still his call). Tests: gtest `FbTreTest` (first in list, lab table parses
+  with first/middle/last keys, stock `jedi_spam` still resolves), Lua `checkTreStrings` through
+  `getStringId`, oracle `stringId:<file>:<key>`. Lesson: gtest `<<` cannot print engine3 `String`;
+  use `.toCharArray()`. Two lab fixes found by the full cycle: (1) `claude-player` hit the galaxy's
+  10-characters-per-account cap (bot characters accumulate), so `swg account prune <user> [--keep N]`
+  now moves the oldest `Lab*` characters into `deleted_characters` and drops them from `characters`
+  (the login server's own DeleteCharacter SQL; the zone server purges the objects later), and
+  `swg test bot` runs it at the cap; (2) the lab's `<npc>.spawned` check failed after the
+  traveling-merchant scenario moved Ozlo in the same server run (old spawn record gone). Rule now:
+  the newest spawn record of a template must be alive; older gone records are reported as INFO
+  `retired_spawns`.
 - **2026-10-17 — Phase 3.4.** `fb_territory.lua` is a plain module (no `ScreenPlay:new`, no `start()`),
   included first among the living-galaxy files so the others can call it; every reader guards with
   `if FbTerritory ~= nil` so the files still load alone. State is quest status with table defaults, so
