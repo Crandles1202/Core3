@@ -117,6 +117,19 @@ class WeatherManager extends ManagedService implements Logger {
 	public void setWeatherEnabled(boolean value) {
 		weatherEnabled = value;
 	}
+
+	/**
+	 * Final Boss: the planet-wide weather (CLEAR..EXTREMESTORM) the pattern is built on.
+	 */
+	public int getBaseWeather() {
+		return baseWeather;
+	}
+
+	/**
+	 * Final Boss: set the planet-wide weather without stopping the automatic pattern
+	 * (changeWeather() disables it). 0-4, anything else picks at random. Lua: setZoneWeather.
+	 */
+	public native void forceWeather(int newWeather);
 	
 	public native void printInfo(CreatureObject player);
 }

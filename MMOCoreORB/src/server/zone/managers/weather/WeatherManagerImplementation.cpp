@@ -327,6 +327,15 @@ void WeatherManagerImplementation::changeWeather(CreatureObject* player, int new
 	}
 }
 
+void WeatherManagerImplementation::forceWeather(int newWeather) {
+	Locker weatherManagerLocker(_this.getReferenceUnsafeStaticCast());
+
+	if (newWeather < 0 || newWeather > 4)
+		newWeather = System::random(4);
+
+	baseWeather = newWeather;
+}
+
 void WeatherManagerImplementation::printInfo(CreatureObject* player) {
 
 	if(currentMap == nullptr) {

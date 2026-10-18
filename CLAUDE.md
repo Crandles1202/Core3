@@ -41,7 +41,7 @@ runs and tests. Host: WSL2 Debian 12.
   To build the client: `CMAKE_ARGS=-DENABLE_BUILD_CLIENT=ON ~/bin/build` (caller's `CMAKE_ARGS` are appended
   after the OFF, and cmake keeps the last `-D`). The next plain `~/bin/build` switches it back OFF, but an
   already-built `bin/core3client` stays.
-- Incremental rebuild with a warm ccache is ~3.5 min wall clock; a changed `.idl` regenerates code and costs much more.
+- Incremental rebuild with a warm ccache is ~3.5 min wall clock; a changed `.idl` regenerates code; a small edit to a rarely included one (the `WeatherManager` getter) rebuilt in 16 s, a widely included one costs much more.
 - Lua-only changes need no rebuild. `swg cmd reloadscreenplays` re-runs `screenplays.lua` into each thread's
   *existing* Lua state on next use (globals persist, functions are redefined, screenplay `start()` is **not**
   re-run, so nothing re-spawns). Mobile/conversation/manager Lua lives in other Lua states and needs a restart.
@@ -128,6 +128,7 @@ tools/swg account create <user> <admin_level> [--reset]   # server's own hash re
 | 1.7 | Shuttleport away time 300 s → 60 s (`shuttleportAwayTime`) | `managers/planet/planet_manager.lua` |
 | 2.2 | Schematic broker "Dannik Vosa" at Mos Eisley starport (3535, -4813): 33 single-use loot schematics in three catalogues (decor, kitchen/cantina, workshop/tech incl. recyclers), 250–5000 cr cash, each labelled with and gated by its template's `requiredSkill`. Master-tier sets (Mandalorian, Geonosian, corvette) excluded, as are the 38 upstream stub templates with no draft. `FbSchematicBroker:purchase(pPlayer, cat, item)` is public for the lab | `fb_schematic_broker*.lua` (screenplay, conv handler, conv template, mobile) |
 | 2.3 | Parts dealer "Tamsin Rook" at Mos Eisley starport (3535, -4818): 46 crafting sub-components (weapon parts, armor segments, chemistry parts) generated through `createLoot` with the `component_loot` item names, standard rolled at level 30, advanced at level 60 for 3× the price | `fb_parts_dealer*.lua` |
+| 3.9 | Weather as world events (Tatooine): extreme sandstorms now blind and hurt the unsheltered (upstream mechanic switched on in `weather_manager.lua`, `sandstormDamage = 25`, one point less per covering piece worn), and a heavy or extreme storm is an event: galaxy warning, news line, three Tusken raiding parties (leader + 3) walk in on Mos Eisley's east, north-east and south-east outskirts and withdraw when the sky clears. Lua `getZoneWeather(zone)` / `setZoneWeather(zone, 0-4)` (keeps the automatic pattern, unlike `/weather`). Covers the weather half of 3.3; vehicle slow-down not done | `fb_weather_events.lua`, `WeatherManager.idl/Implementation.cpp` (`forceWeather`), `DirectorManager.cpp` |
 | 3.11 | Convoys, ambush mode: every 30–60 min an Imperial supply convoy (squad leader, 3 stormtroopers, cargo droid) walks from the starport to the garrison end of Mos Eisley. First hit summons 2 reinforcements after 60 s; killing every guard drops a loot crate (2× junk, 1× crafting component), pays 750 cr and +50 Rebel / −50 Imperial standing to everyone who hit it, posts news and broadcasts; untouched, it arrives and the news says so. Escort mode is the follow-up | `fb_convoys.lua` |
 | 3.10 | HoloNet relays "HN-7" (silver protocol droid) at the Mos Eisley starport, Mos Eisley cantina and Bestine cantina read a produced segment every 45–75 s while listeners are near: sting, top story (live ticker), this week's wanted (the story's mobs), a galaxy item, where the merchant trades, propaganda, outro. Conversation option replays it | `fb_holonet*.lua` |
 | 3.2 | Faction patrols: an Imperial squad (squad leader + 2 stormtroopers) walks the stock Mos Eisley patrol loop and a Rebel squad (commando + 2 troopers) the desert west of the walls; leader walks `setNextPosition` legs with a dwell at each point, members follow, dead squads are replaced. Stock faction rules apply (they fight declared enemies, ignore neutrals). Routes are data | `fb_faction_patrols.lua` |
@@ -180,6 +181,8 @@ Persisted object fields (`containerVolumeLimit`, …) are only read from the tem
 - Allow-list rules match the whole command: run `git merge`, `git push`, `tools/swg …` as a single
   command per Bash call, never inside `a && b`. The classifier still refuses some things (remote
   URL changes, remote branch deletes, `git checkout -- <conf file>`); hand those to Chuck.
+- The admin `/weather <n>` command stops the automatic weather pattern on that planet until `/weather enable`;
+  use the lab's `weatherSet` (Lua `setZoneWeather`) to force weather without stopping it.
 - Starting a conversation needs same cell, ≤ 5 m and line of sight to the NPC, and fails silently otherwise.
   Place new NPCs next to proven spots and have the scenario converse before trusting a position.
 - Screenplay table fields set in `start()` are not visible from the console or server-event Lua states;
@@ -215,15 +218,15 @@ _Updated: 2026-10-17 (session 2: 1.9, 1.5, 1.4, 1.10, 2.5, 2.2, 2.3 shipped)_
   hook + Lua setter), 1.4 mission level/direction hints (C++ `populateMissionList`), 1.10 no-grind
   entertainer XP (C++ `awardEntertainerExperience`), 2.5 config-driven bazaar limits (C++), 2.2 schematic
   broker NPC (Lua), 2.3 parts dealer NPC (Lua, loot-generated components). Phase 1 complete (1.11 loot half
-  shipped unverified). Phase 2 left: 2.4 loot kits (scoping question open). Phase 3 so far: 3.2 faction patrols, 3.5 story ticker, 3.10 HoloNet relays, 3.11 convoys (ambush), 3.6 galaxy chatter, 3.7/3.8 ambient life (three cantinas + starport travellers). 2.10 shipped unverified (needs an owned
+  shipped unverified). Phase 2 left: 2.4 loot kits (scoping question open). Phase 3 so far: 3.2 faction patrols, 3.5 story ticker, 3.10 HoloNet relays, 3.11 convoys (ambush), 3.9 sandstorm events, 3.6 galaxy chatter, 3.7/3.8 ambient life (three cantinas + starport travellers). 2.10 shipped unverified (needs an owned
   structure to place a vendor; the bot has no SUI driving yet).
 - Binaries: `bin/core3` and `bin/core3client` built 2026-10-17 from this tree (`swg build`).
-- Lab now: 258 unit, 287 Lua checks, bot, 16 scenarios (+2 manual audits) (`stimpack-heals`, `npc-conversation`,
+- Lab now: 258 unit, 296 Lua checks, bot, 17 scenarios (+2 manual audits) (`stimpack-heals`, `npc-conversation`,
   `inventory-100`, `mission-hints`, `entertainer-xp`, `schematic-broker`, `schematic-broker-ui` (real SUI path),
-  `parts-dealer`, `bazaar-listings`, `traveling-merchant`, `ambient-cantina`, `galaxy-chatter`, `story-ticker`, `faction-patrols`, `holonet`, `convoy-ambush`; manual: `merchant-stops`, `ambient-locations`). Oracle
+  `parts-dealer`, `bazaar-listings`, `traveling-merchant`, `ambient-cantina`, `galaxy-chatter`, `story-ticker`, `faction-patrols`, `holonet`, `convoy-ambush`, `sandstorm`; manual: `merchant-stops`, `ambient-locations`). Oracle
   additions today: `inventoryLimit`, `setInventoryLimit`, `loginHook`, `spawnObjectNear`, `destroyObject`,
   `missions`, `xp`, `cash`, `buySchematic` / `buyPart` / `buyMerchant` (by item name), `hasSchematic`, `merchant`,
-  `merchantMove[:stop]`, `merchantStops`, `questStatus`, `travelCell`, `ambient`, `ambientTick`, `ambientChurn`, `ambientLocations`, `galaxyNews`, `galaxyAddNews`, `story`, `storyFire`, `objectAlive`, `patrols`, `patrolStep`, `holonet`, `holonetSegment`, `holonetBroadcast`, `convoy`, `convoySpawn`, `killNpc`, `factionStanding`, `containerItems`. The
+  `merchantMove[:stop]`, `merchantStops`, `questStatus`, `travelCell`, `ambient`, `ambientTick`, `ambientChurn`, `ambientLocations`, `galaxyNews`, `galaxyAddNews`, `story`, `storyFire`, `objectAlive`, `patrols`, `patrolStep`, `holonet`, `holonetSegment`, `holonetBroadcast`, `convoy`, `convoySpawn`, `killNpc`, `factionStanding`, `containerItems`, `weather`, `weatherSet`, `storm`, `stormTick`. The
   client now logs spatial chat (`SpatialChat from=<oid>: text`, last 50 kept in its var store). Bot
   additions: `--missions <terminalOid>`, `--command-nowait`, `--sell`/`--buy`/`--retrieve`, `--sui`, `--keep-going`, and an
   end-of-run `=> #N {...}` results dump that `bot_action_status`/`bot_action_count` read. Known gap: the client does not decode every
@@ -260,7 +263,10 @@ _Updated: 2026-10-17 (session 2: 1.9, 1.5, 1.4, 1.10, 2.5, 2.2, 2.3 shipped)_
   players should get attacked by the enemy one; (3.10) stand by the silver protocol droid outside the
   starport for a minute and listen to the news; (3.11) `swg cmd "runLuaFunction FbLabTests:convoySpawn"` forms a
   convoy at the vendor row — ambush it with a declared Rebel (reinforcements after the first hit, crate
-  when the last guard drops) or watch it walk to the garrison.
+  when the last guard drops) or watch it walk to the garrison; (3.9) `swg cmd "runLuaFunction FbLabTests:weatherSet:tatooine:4"`
+  then stand outside Mos Eisley: within a minute the warning arrives, the sky goes dark, you take sandstorm
+  damage unless indoors or wrapped up, and Tusken parties close in from the east; `weatherSet:tatooine:0` ends it.
+  Tune `sandstormDamage` in `weather_manager.lua` if 25 feels wrong.
   Then `swg snap save phase1-quickwins` and tag `chuck-stable-20261017`.
 - [ ] Lab characters are followed by the new-player helper droid (R2-H4), which opens a SUI greeting every
   second (visible in every bot log). Harmless for the scenarios now that `--sui` scans all windows, but

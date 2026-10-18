@@ -66,8 +66,17 @@ void ZonePacketHandler::handleMessage(Message* pack) {
 			break;
 		CASE_OPCODE("UpdateCellPermissionMessage");
 			break;
-		CASE_OPCODE("ServerWeatherMessage");
+		CASE_OPCODE("ServerWeatherMessage"); { // 0 clear .. 4 extreme storm, then the wind vector
+			int weatherId = pack->parseInt();
+			float windX = pack->parseFloat();
+			float windMagnitude = pack->parseFloat();
+			float windY = pack->parseFloat();
+
+			info(true) << "Weather id=" << weatherId << " wind=" << windX << "," << windY << " mag=" << windMagnitude;
+			core->setVar("Weather/id", weatherId);
+			zone->signal(STRING_HASHCODE("Weather"));
 			break;
+		}
 		CASE_OPCODE("ChatOnGetFriendsList");
 			break;
 		CASE_OPCODE("ChatOnGetIgnoreList");

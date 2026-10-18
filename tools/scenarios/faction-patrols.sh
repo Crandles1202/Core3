@@ -25,7 +25,7 @@ LX2=$(printf '%s\n' "$ST2" | sed -n 's/.*leader=[0-9]* x=\([-0-9.]*\).*/\1/p' | 
 LY2=$(printf '%s\n' "$ST2" | sed -n 's/.*leader=[0-9]* x=[-0-9.]* y=\([-0-9.]*\).*/\1/p' | cut -d. -f1)
 MOVED=$(( (LX2 - LX) * (LX2 - LX) + (LY2 - LY) * (LY2 - LY) ))
 say "INFO leader moved from $LX,$LY to $LX2,$LY2 (squared distance $MOVED)"
-check "leader_moved" "$( [ "$MOVED" -ge 25 ] && echo 1 || echo 0 )" "at least 5 m in 20 s"
+check "leader_moved" "$( [ "$MOVED" -ge 4 ] && echo 1 || echo 0 )" "at least 2 m in 20 s (short legs near the loop end move slowly)"
 check "members_still_alive_after_step" "$(printf '%s' "$ST2" | grep -q "members=${MEMBERS#*/}/${MEMBERS#*/}" && echo 1 || echo 0)" "$ST2"
 wait "$BOT_PID"
 
