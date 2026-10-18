@@ -191,6 +191,8 @@ namespace server {
 		static int getGCWDiscount(lua_State* L);
 		static int getTerrainHeight(lua_State* L);
 		static int getTerrainHeightAt(lua_State* L);   // Final Boss: (zoneName, x, y) variant, no creature needed
+		static int getZoneWeather(lua_State* L);       // Final Boss: (zoneName) -> base weather 0..4, -1 if no manager
+		static int setZoneWeather(lua_State* L);       // Final Boss: (zoneName, weather) keeps the automatic pattern running
 		static int checkArgumentCount(lua_State*L, int args);
 		static int awardSkill(lua_State* L);
 		static int getCityRegionAt(lua_State* L);

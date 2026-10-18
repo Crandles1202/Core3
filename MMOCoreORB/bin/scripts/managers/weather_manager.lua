@@ -122,9 +122,9 @@ tatooine = {
 
 	weatherStability = 70, -- Range 0 - 100, Higher = Less weather changes, Overall better weather
 
-	hasDamagingSandstorms = 0,
+	hasDamagingSandstorms = 1, -- Final Boss Phase 3.9: extreme sandstorms blind and hurt the unsheltered
 
-	sandstormDamage = 70, -- 40 = Annoying, 100 = deadly
+	sandstormDamage = 25, -- 40 = Annoying, 100 = deadly (Final Boss: 25, every covering piece worn takes one off)
 }
 
 

@@ -527,6 +527,24 @@ function FbLabTests.checkConvoys()
 	check("convoys.status_readable", st:find("active=", 1, true) ~= nil, st)
 end
 
+-- Phase 3.9: weather is readable from Lua, the sandstorm event is loaded and consistent with the sky.
+function FbLabTests.checkWeatherEvents()
+	if FbWeatherEvents == nil then check("weather.loaded", false); return end
+	local w = getZoneWeather("tatooine")
+	check("weather.readable", w ~= nil and w >= 0 and w <= 4, "base=" .. tostring(w))
+	check("weather.no_manager_is_minus_one", getZoneWeather("no_such_zone") == -1)
+	check("weather.parties", #FbWeatherEvents.parties >= 3)
+	for _, party in ipairs(FbWeatherEvents.parties) do
+		check("weather.party_" .. party.key .. "_on_terrain", getTerrainHeightAt("tatooine", party.spawn[1], party.spawn[2]) ~= 0 and getTerrainHeightAt("tatooine", party.rally[1], party.rally[2]) ~= 0)
+	end
+	local st = FbWeatherEvents:status()
+	local active = st:find("active=1", 1, true) ~= nil
+	local between = w > FbWeatherEvents.clearAt and w < FbWeatherEvents.stormAt
+	check("weather.event_matches_sky", between or ((w >= FbWeatherEvents.stormAt) == active), st)
+	local env = loadIsolated("scripts/managers/weather_manager.lua")
+	check("weather.tatooine_sandstorms_damaging", env ~= nil and env.tatooine ~= nil and env.tatooine.hasDamagingSandstorms == 1)
+end
+
 -- ---------------------------------------------------------------- entry points
 
 -- runLuaFunction passes the FbLabTests table as the first argument, then the ':'-separated args.
@@ -554,6 +572,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkFactionPatrols()
 		FbLabTests.checkHoloNet()
 		FbLabTests.checkConvoys()
+		FbLabTests.checkWeatherEvents()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)
@@ -1003,6 +1022,36 @@ function FbLabTests:travelCell(charName, planet, x, z, y, cellID)
 	SceneObject(pPlayer):switchZone(planet, tonumber(x), tonumber(z), tonumber(y), tonumber(cellID))
 	print(string.format("INFO travelCell char=%s planet=%s x=%s z=%s y=%s cell=%s", charName, planet, x, z, y, cellID))
 	return "ok"
+end
+
+-- weather[:<zone>] → the zone's base weather (0 clear .. 4 extreme storm)
+function FbLabTests:weather(zone)
+	zone = zone or "tatooine"
+	local w = getZoneWeather(zone)
+	print(string.format("INFO weather zone=%s base=%d", zone, w))
+	return tostring(w)
+end
+
+-- weatherSet:<zone>:<0-4> → force the zone's base weather (the automatic pattern keeps running)
+function FbLabTests:weatherSet(zone, w)
+	local now = setZoneWeather(zone or "tatooine", tonumber(w) or 0)
+	print(string.format("INFO weatherSet zone=%s base=%d", zone or "tatooine", now))
+	return tostring(now)
+end
+
+-- storm → the sandstorm event's status line
+function FbLabTests:storm()
+	if FbWeatherEvents == nil then print("ERROR FbWeatherEvents not loaded"); return "none" end
+	print("INFO storm " .. FbWeatherEvents:status())
+	return "ok"
+end
+
+-- stormTick → evaluate the weather now instead of waiting for the minute tick; prints what it did
+function FbLabTests:stormTick()
+	if FbWeatherEvents == nil then print("ERROR FbWeatherEvents not loaded"); return "none" end
+	local did = FbWeatherEvents:tick()
+	print("INFO stormTick did=" .. tostring(did) .. " " .. FbWeatherEvents:status())
+	return did
 end
 
 -- convoy → the convoy event's status line

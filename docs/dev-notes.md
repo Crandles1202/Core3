@@ -186,6 +186,24 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-17 — Phase 3.9.** Weather plumbing: each zone's `PlanetManager` owns a `WeatherManager`
+  that rolls a base weather 0–4 (`createNewWeatherPattern`, stability-weighted, storms last
+  `duration/(weather+1)`) plus a `WeatherMap` of local variation; `sendWeatherTo(player)` runs from
+  `PlayerObjectImplementation::doRecovery` every 3 s, so a forced base weather reaches clients at once,
+  and with `hasDamagingSandstorms` an EXTREMESTORM blinds and damages the unsheltered (`sandstormDamage`
+  minus one per covering piece, config in `scripts/managers/weather_manager.lua`, read by the manager's
+  own Lua state). `changeWeather()` (the `/weather` command) *disables* the automatic pattern first;
+  added `forceWeather()` + Lua `getZoneWeather`/`setZoneWeather` that keep it running. First `.idl`
+  edit of the project (a getter and a native): `swg build` took 16 s with a warm ccache — only the weather
+  and director units recompiled, so a small `.idl` change is not the multi-minute hit feared. The lab's
+  `npc:<template>` finder only knows `fb_*` spawns (it reads the `spawnMobile` wrapper's records), so
+  scenarios assert stock-template spawns through the feature's own status line. The core3client now decodes
+  `ServerWeatherMessage` (`Weather id=N` log line, `Weather/id` var). `FbWeatherEvents` polls the sky
+  each minute; heavy/extreme → three Tusken parties spawn on the outskirts and walk toward the city
+  (`setNextPosition` + followers), warning + news; clear → withdraw. Scenario `sandstorm`.
+  Time-of-day (the other half of 3.3) has no server-side notion beyond `Zone::getGalacticTime()`
+  (seconds since zone start) — the client derives day/night from it, so a day-length constant would
+  have to be reverse-engineered first.
 - **2026-10-17 — Phase 3.11 (ambush mode).** Convoys (`fb_convoys.lua`) reuse the patrol walk (leader
   `setNextPosition` legs + `DESTINATIONREACHED`, followers `setFollowObject`). Combat hooks: a
   `DAMAGERECEIVED` observer on every guard (callback `(pVictim, pAttacker, damage)`) records player

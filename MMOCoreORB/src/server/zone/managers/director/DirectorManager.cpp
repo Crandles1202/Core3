@@ -36,6 +36,7 @@
 #include "server/zone/managers/creature/CreatureManager.h"
 #include "server/zone/managers/creature/PetManager.h"
 #include "server/zone/managers/planet/PlanetManager.h"
+#include "server/zone/managers/weather/WeatherManager.h"
 #include "server/zone/managers/player/PlayerManager.h"
 #include "server/zone/managers/player/creation/PlayerCreationManager.h"
 #include "server/zone/managers/reaction/ReactionManager.h"
@@ -517,6 +518,8 @@ void DirectorManager::initializeLuaEngine(Lua* luaEngine) {
 	luaEngine->registerFunction("getGCWDiscount", getGCWDiscount);
 	luaEngine->registerFunction("getTerrainHeight", getTerrainHeight);
 	luaEngine->registerFunction("getTerrainHeightAt", getTerrainHeightAt);
+	luaEngine->registerFunction("getZoneWeather", getZoneWeather);
+	luaEngine->registerFunction("setZoneWeather", setZoneWeather);
 	luaEngine->registerFunction("awardSkill", awardSkill);
 	luaEngine->registerFunction("getCityRegionAt", getCityRegionAt);
 	luaEngine->registerFunction("setDungeonTicketAttributes", setDungeonTicketAttributes);
@@ -4086,6 +4089,53 @@ int DirectorManager::getTerrainHeightAt(lua_State* L) {
 	}
 
 	lua_pushnumber(L, zone->getHeight(x, y));
+	return 1;
+}
+
+// Final Boss (Phase 3.9): planet-wide weather from Lua. getZoneWeather(zoneName) -> 0 clear .. 4 extreme
+// storm (-1 when the zone or its weather manager is missing); setZoneWeather(zoneName, weather) sets the
+// base weather while the automatic pattern keeps running (the next pattern change overrides it).
+static WeatherManager* fbWeatherManagerFor(const String& zoneName) {
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	Zone* zone = zoneServer != nullptr ? zoneServer->getZone(zoneName) : nullptr;
+
+	if (zone == nullptr || zone->getPlanetManager() == nullptr)
+		return nullptr;
+
+	return zone->getPlanetManager()->getWeatherManager();
+}
+
+int DirectorManager::getZoneWeather(lua_State* L) {
+	if (checkArgumentCount(L, 1) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::getZoneWeather";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	String zoneName = lua_tostring(L, -1);
+	WeatherManager* weatherManager = fbWeatherManagerFor(zoneName);
+
+	lua_pushinteger(L, weatherManager != nullptr ? weatherManager->getBaseWeather() : -1);
+	return 1;
+}
+
+int DirectorManager::setZoneWeather(lua_State* L) {
+	if (checkArgumentCount(L, 2) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::setZoneWeather";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	int weather = lua_tointeger(L, -1);
+	String zoneName = lua_tostring(L, -2);
+	WeatherManager* weatherManager = fbWeatherManagerFor(zoneName);
+
+	if (weatherManager != nullptr)
+		weatherManager->forceWeather(weather);
+
+	lua_pushinteger(L, weatherManager != nullptr ? weatherManager->getBaseWeather() : -1);
 	return 1;
 }
 
