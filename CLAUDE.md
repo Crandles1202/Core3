@@ -65,6 +65,10 @@ runs and tests. Host: WSL2 Debian 12.
 - Boot takes ~45 s; ready when the console prints `[Core] initialized` followed by `READY`.
 - Console commands (`help` lists them): `shutdown`, `save`, `info`, `chars`, `reloadscreenplays`,
   `reloadmanager`, `loglevel`, `broadcast`, `runLuaFunction module:function[:arg...]`, `dumpcfg`.
+- Chuck's client connects to `127.0.0.1` over UDP, which needs WSL **mirrored** networking
+  (`C:\Users\rac35\.wslconfig`: `networkingMode=mirrored`; re-enabled 2026-10-18, nat copy kept as
+  `.wslconfig.nat.bak`). Under nat the client hangs at "Connecting to the Login Server" while the lab bot,
+  inside WSL, still works. Changing it needs `wsl --shutdown` from Windows: stop the server first.
 - Known baseline log noise (filtered by `swg logs --errors`): `[TemplateManager] ERROR - unknown appearance
   type SPRT` (upstream: the server's appearance loader has no sprite reader; fires when a character with
   randomized missions in their bag logs in), and `[MantisDatabase0] ERROR - 1045: Access denied for user 'swgemu'` (and the
@@ -294,11 +298,9 @@ _Updated: 2026-10-18 (session 3: Phase 4 design settled with Chuck, 4.0 TRE tool
   side, and check the result broadcast, your standing and `invasion` (territory %); (3.4) `swg cmd "runLuaFunction FbLabTests:territory"`
   shows who holds what; hand Mos Eisley to the Rebels with `territoryShift:mos_eisley:-40` and watch the next patrol
   respawn, the HoloNet relay's voice and the cantina gossip change.
-  (4.0) `finalboss.tre` is installed in your client (`/mnt/c/EMU/swg - Copy/SWGEmu`, cfg patched, backup
-  `swgemu_live.cfg.finalboss.bak`): start the client, log in, then
-  `swg cmd "runLuaFunction FbLabTests:systemMessage:<YourChar>:fb_lab:probe_first"` — the chat shows
-  "Final Boss TRE probe: first" (without the archive the client shows the raw id). The untouched duplicate
-  `/mnt/c/SWGDev/SWG_Game/swg - Copy/SWGEmu` (2.8 GB, still pointing at nova.swgemu.com) is yours to delete.
+  (4.0) **verified 2026-10-18**: Chuck's client rendered `@fb_lab:probe_first` as "Final Boss TRE probe: first"
+  (`swg cmd "runLuaFunction FbLabTests:systemMessage:<YourChar>:fb_lab:probe_first"` is the probe). The untouched
+  duplicate `/mnt/c/SWGDev/SWG_Game/swg - Copy/SWGEmu` (2.8 GB, still pointing at nova.swgemu.com) is his to delete.
   Then `swg snap save phase1-quickwins` and tag `chuck-stable-20261017`.
 - [ ] Lab characters are followed by the new-player helper droid (R2-H4), which opens a SUI greeting every
   second (visible in every bot log). Harmless for the scenarios now that `--sui` scans all windows, but

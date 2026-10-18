@@ -197,7 +197,10 @@ loginServerPort0=44453
 
 ⚠️ **The IP `172.19.53.128` is your current WSL2 IP and will change on Windows reboot.** Two long-term fixes:
 
-**Recommended: enable mirrored networking** so `127.0.0.1` actually works.
+**Recommended: enable mirrored networking** so `127.0.0.1` actually works. (Done 2026-10-18: the file had
+been switched back to `networkingMode=nat` in June and the client hung at "Connecting to the Login Server";
+the nat version is kept as `.wslconfig.nat.bak`. A plain `wsl` terminal and `tools/swg start` after
+`wsl --shutdown` is all it takes; the server's `galaxy` table stays at `127.0.0.1`.)
 
 Create `C:\Users\rac35\.wslconfig` with:
 
@@ -240,7 +243,10 @@ install that was never launched (still points at nova.swgemu.com); it can be del
 
 ### Launch the client
 
-Either through SWGEmu Launchpad (with your custom server selected), or by running `SwgClient_r.exe` directly. The direct launch skips the launcher news screen and is more reliable.
+1. Server up: `cd ~/workspace/Core3 && tools/swg status` (or `tools/swg start`, READY after ~50 s).
+2. Run `SWGEmu.exe` from `C:\EMU\swg - Copy\SWGEmu` directly (skip the Launchpad shortcut; it belongs to
+   a different install). Log in as `Chuckertons` (password: `cat ~/.swg-lab/Chuckertons.pass`), galaxy `Core3`.
+3. Stuck at "Connecting to the Login Server"? WSL is back in NAT mode — see [WSL2 UDP forwarding](#wsl2-udp-forwarding-to-localhost-is-brokenflaky).
 
 ---
 

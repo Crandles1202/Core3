@@ -213,7 +213,13 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   from the `.finalboss.bak` it had just written). Lesson: build the whole payload first, write to a
   `.tmp` and `os.replace` it, and never ship a file-rewriting path without a test — `tre patchcfg FILE`
   now exists so the `tre-strings` scenario exercises the patch on a CRLF fixture (insert, bump, CRLF
-  kept, idempotent), and `tre status` reports whether the client cfg lists the archive. Tests: gtest `FbTreTest` (first in list, lab table parses
+  kept, idempotent), and `tre status` reports whether the client cfg lists the archive. First real client
+  login since May: hung at "Connecting to the Login Server" because `.wslconfig` had gone back to
+  `networkingMode=nat` (2026-06-15) and WSL2 NAT does not forward UDP from Windows `127.0.0.1` into the VM
+  (the lab bot, running inside WSL, never notices). Diagnostic: `ss -ulnp` shows core3 on 44453 and
+  the log has no login line for the account. Fix: `networkingMode=mirrored` + `wsl --shutdown` (server
+  stopped cleanly first). After that Chuck logged in as Banta and the client rendered
+  `@fb_lab:probe_first` as text — 4.0 verified end to end. Tests: gtest `FbTreTest` (first in list, lab table parses
   with first/middle/last keys, stock `jedi_spam` still resolves), Lua `checkTreStrings` through
   `getStringId`, oracle `stringId:<file>:<key>`. Lesson: gtest `<<` cannot print engine3 `String`;
   use `.toCharArray()`. Two lab fixes found by the full cycle: (1) `claude-player` hit the galaxy's
