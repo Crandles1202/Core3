@@ -517,6 +517,16 @@ function FbLabTests.checkHoloNet()
 	check("holonet.segment_has_top_story", hasStory)
 end
 
+-- Phase 3.11: the convoy screenplay is loaded with a walkable route and loot plan, and is idle or consistent.
+function FbLabTests.checkConvoys()
+	if FbConvoys == nil then check("convoys.loaded", false); return end
+	check("convoys.route", #FbConvoys.route >= 4, #FbConvoys.route .. " points")
+	check("convoys.crate_template", templateExists(FbConvoys.crateTemplate), FbConvoys.crateTemplate)
+	check("convoys.loot_plan", #FbConvoys.crateLoot >= 1)
+	local st = FbConvoys:status()
+	check("convoys.status_readable", st:find("active=", 1, true) ~= nil, st)
+end
+
 -- ---------------------------------------------------------------- entry points
 
 -- runLuaFunction passes the FbLabTests table as the first argument, then the ':'-separated args.
@@ -543,6 +553,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkStoryTicker()
 		FbLabTests.checkFactionPatrols()
 		FbLabTests.checkHoloNet()
+		FbLabTests.checkConvoys()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)
@@ -992,6 +1003,56 @@ function FbLabTests:travelCell(charName, planet, x, z, y, cellID)
 	SceneObject(pPlayer):switchZone(planet, tonumber(x), tonumber(z), tonumber(y), tonumber(cellID))
 	print(string.format("INFO travelCell char=%s planet=%s x=%s z=%s y=%s cell=%s", charName, planet, x, z, y, cellID))
 	return "ok"
+end
+
+-- convoy → the convoy event's status line
+function FbLabTests:convoy()
+	if FbConvoys == nil then print("ERROR FbConvoys not loaded"); return "none" end
+	print("INFO convoy " .. FbConvoys:status())
+	return "ok"
+end
+
+-- convoySpawn → form a convoy now (what the 30-60 min schedule does)
+function FbLabTests:convoySpawn()
+	if FbConvoys == nil then print("ERROR FbConvoys not loaded"); return "none" end
+	print("INFO convoy " .. tostring(FbConvoys:spawn()))
+	return "ok"
+end
+
+-- killNpc:<char>:<oid> → the character deals a lethal blow to an NPC (observers see the character as attacker)
+function FbLabTests:killNpc(charName, oid)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pNpc = getSceneObject(tonumber(oid))
+	if pNpc == nil or not SceneObject(pNpc):isCreatureObject() then print("ERROR no creature " .. tostring(oid)); return "none" end
+	CreatureObject(pNpc):inflictDamage(pPlayer, 0, 1000000, 1)
+	local dead = CreatureObject(pNpc):isDead() and 1 or 0
+	print(string.format("INFO killNpc oid=%s dead=%d", tostring(oid), dead))
+	return tostring(dead)
+end
+
+-- factionStanding:<char>:<faction> → the character's standing with rebel / imperial
+function FbLabTests:factionStanding(charName, faction)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "none" end
+	local pGhost = CreatureObject(pPlayer):getPlayerObject()
+	if pGhost == nil then print("ERROR no player object"); return "none" end
+	local v = PlayerObject(pGhost):getFactionStanding(faction)
+	print(string.format("INFO faction char=%s faction=%s standing=%.0f", charName, faction, v))
+	return tostring(math.floor(v))
+end
+
+-- containerItems:<oid> → one INFO line per item inside a container object (e.g. a loot crate)
+function FbLabTests:containerItems(oid)
+	local pBox = getSceneObject(tonumber(oid))
+	if pBox == nil then print("ERROR no object " .. tostring(oid)); return "none" end
+	local n = SceneObject(pBox):getContainerObjectsSize()
+	for i = 0, n - 1 do
+		local pItem = SceneObject(pBox):getContainerObject(i)
+		if pItem ~= nil then print(string.format("INFO container_item i=%d oid=%d path=%s", i, SceneObject(pItem):getObjectID(), SceneObject(pItem):getTemplateObjectPath())) end
+	end
+	print(string.format("INFO container oid=%s count=%.0f", tostring(oid), n))
+	return string.format("%.0f", n)
 end
 
 -- holonet → one INFO line per HoloNet relay (oid, cell, players near)
