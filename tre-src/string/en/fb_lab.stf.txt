@@ -1,0 +1,5 @@
+# Probe strings for the lab. The unit test FbTreTest and the Lua check `checkTreStrings` read these
+# back through the server; the bot sees them as system messages. Keep the three probe_* keys as they are.
+probe_first = Final Boss TRE probe: first
+probe_middle = Final Boss TRE probe: middle, with a\nline break and a %TT token
+probe_last = Final Boss TRE probe: last

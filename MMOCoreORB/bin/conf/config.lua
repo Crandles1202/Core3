@@ -149,6 +149,7 @@ Core3 = {
 	------TRE config------
 	TrePath = "/home/swgemu/Desktop/SWGEmu",
 	TreFiles = {
+		"finalboss.tre", -- Final Boss strings/templates, built by tools/tre from tre-src/ (first = wins)
 		"default_patch.tre",
 		"patch_sku1_14_00.tre",
 		"patch_14_00.tre",
@@ -201,6 +202,7 @@ Core3 = {
 		"data_music_00.tre",
 		"bottom.tre"
 	},
+	TreManager = { LatestTre = "finalboss.tre" }, -- highest-priority archive (ConfigManagerTest.TreFiles checks it is TreFiles[1])
 
 	------Status Server Config------
 	StatusPort = 44455,

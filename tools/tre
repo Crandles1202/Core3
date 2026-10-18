@@ -1,0 +1,493 @@
+#!/usr/bin/env python3
+"""
+tre — build, inspect and install the Final Boss client/server data archive (finalboss.tre).
+
+  tre build   [--src DIR] [--out FILE]      pack tre-src/ into MMOCoreORB/bin/tre/finalboss.tre
+  tre list    FILE.tre [SUBSTR]             list records (path, size, compression, crc)
+  tre extract FILE.tre PATH [--out FILE]    write one record to a file (or stdout; .stf is decoded)
+  tre strings FILE.stf | FILE.tre PATH      dump a string table as "key = text" lines
+  tre verify  FILE.tre                      re-read a tre and check crc / md5 / sort order
+  tre roundtrip FILE.tre                    unpack a stock tre, repack in memory, compare (self-test)
+  tre install [--client DIR]                copy the built tre into the server's TrePath and, when a
+                                            client folder is known, into it + patch swgemu_live.cfg
+  tre status                                built vs installed hashes, config listing, client dir
+  tre crc STRING                            the SWG CRC-32 of a string (same as String::hashCode)
+
+Source layout (tre-src/): paths mirror the archive.  string/<lang>/<name>.stf.txt files are compiled
+into .stf string tables ("key = text" per line, "#" comments, "\\n" for a newline); everything else is
+packed as-is.  The built file is deterministic: the same sources give byte-identical output.
+
+Formats (confirmed against the stock patch_*.tre files and MMOCoreORB/src/tre3, templates/string):
+  TRE  'EERT' '5000' | records | tocOffset | fileBlock{compType,compSize} | nameBlock{compType,
+       compSize,uncompSize} ... data ... fileBlock (24-byte records, sorted by name CRC) nameBlock
+       (NUL-terminated names) md5[16]*records (md5 of the stored, i.e. compressed, bytes).
+       Record: crc(name) uncompSize offset compType(0 raw|2 zlib) compSize nameOffset.
+  STF  0x0000ABCD, byte 1, int nextId, int count, count*(id, 0xFFFFFFFF, len, utf16le text),
+       count*(id, len, ascii key).  Ids start at 1.
+Only python3's standard library is used.
+"""
+import argparse
+import hashlib
+import json
+import os
+import re
+import struct
+import sys
+import zlib
+
+REPO = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+DEFAULT_SRC = os.path.join(REPO, "tre-src")
+DEFAULT_OUT = os.path.join(REPO, "MMOCoreORB", "bin", "tre", "finalboss.tre")
+CONFIG_LOCAL = os.path.join(REPO, "MMOCoreORB", "bin", "conf", "config-local.lua")
+CONFIG_MAIN = os.path.join(REPO, "MMOCoreORB", "bin", "conf", "config.lua")
+LABDIR = os.environ.get("SWG_LABDIR", os.path.join(os.path.expanduser("~"), ".swg-lab"))
+CLIENT_DIR_FILE = os.path.join(LABDIR, "client-dir")
+TRE_NAME = "finalboss.tre"
+
+# ------------------------------------------------------------------ SWG CRC (String::hashCode)
+
+_CRC_TABLE = []
+for _i in range(256):
+    _c = _i << 24
+    for _ in range(8):
+        _c = ((_c << 1) ^ 0x04C11DB7) & 0xFFFFFFFF if _c & 0x80000000 else (_c << 1) & 0xFFFFFFFF
+    _CRC_TABLE.append(_c)
+
+
+def swg_crc(s):
+    """CRC-32 (polynomial 0x04C11DB7, MSB-first, init/xorout 0xFFFFFFFF) as engine3 String::hashCode."""
+    crc = 0xFFFFFFFF
+    for b in s.encode("utf-8"):
+        crc = (_CRC_TABLE[((crc >> 24) ^ b) & 0xFF] ^ ((crc << 8) & 0xFFFFFFFF)) & 0xFFFFFFFF
+    return (~crc) & 0xFFFFFFFF
+
+
+# ------------------------------------------------------------------ STF string tables
+
+def stf_decode(data):
+    """Return a list of (key, text) from an .stf blob, in id order."""
+    if len(data) < 13:
+        raise ValueError("stf too short")
+    magic, _unknown, _next_id, count = struct.unpack_from("<IBII", data, 0)
+    if magic != 0xABCD:
+        raise ValueError("bad stf magic 0x%08x" % magic)
+    o = 13
+    texts = {}
+    for _ in range(count):
+        num, _key, ln = struct.unpack_from("<III", data, o)
+        o += 12
+        texts[num] = data[o:o + ln * 2].decode("utf-16-le")
+        o += ln * 2
+    keys = {}
+    for _ in range(count):
+        num, ln = struct.unpack_from("<II", data, o)
+        o += 8
+        keys[num] = data[o:o + ln].decode("ascii")
+        o += ln
+    return [(keys[n], texts.get(n, "")) for n in sorted(keys)]
+
+
+def stf_encode(pairs):
+    """Build an .stf blob from [(key, text)], ids 1..n in the given order."""
+    out = bytearray(struct.pack("<IBII", 0xABCD, 1, len(pairs) + 1, len(pairs)))
+    for i, (_, text) in enumerate(pairs, 1):
+        enc = text.encode("utf-16-le")
+        out += struct.pack("<III", i, 0xFFFFFFFF, len(enc) // 2) + enc
+    for i, (key, _) in enumerate(pairs, 1):
+        enc = key.encode("ascii")
+        out += struct.pack("<II", i, len(enc)) + enc
+    return bytes(out)
+
+
+def stf_parse_text(text, where="<text>"):
+    """Parse the "key = text" source format."""
+    pairs, seen = [], set()
+    for n, line in enumerate(text.splitlines(), 1):
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        if "=" not in s:
+            raise ValueError("%s:%d: expected 'key = text'" % (where, n))
+        key, _, val = s.partition("=")
+        key = key.strip()
+        if not re.fullmatch(r"[A-Za-z0-9_.\-]+", key):
+            raise ValueError("%s:%d: key %r: use letters, digits, _ . - only" % (where, n, key))
+        if key in seen:
+            raise ValueError("%s:%d: duplicate key %r" % (where, n, key))
+        seen.add(key)
+        pairs.append((key, val.strip().replace("\\n", "\n")))
+    return pairs
+
+
+def stf_format_text(pairs):
+    return "".join("%s = %s\n" % (k, v.replace("\n", "\\n")) for k, v in pairs)
+
+
+# ------------------------------------------------------------------ TRE archives
+
+HEADER = struct.Struct("<4s4sIIIIIII")   # magic, version, records, tocOffset, fct, fcs, nct, ncs, nus
+RECORD = struct.Struct("<6I")             # crc, uncompSize, offset, compType, compSize, nameOffset
+MAGIC, VERSION = b"EERT", b"5000"
+
+
+class TreRecord:
+    __slots__ = ("name", "crc", "size", "offset", "ctype", "csize", "name_offset", "md5", "stored")
+
+    def __init__(self, name, crc, size, offset, ctype, csize, name_offset, md5, stored):
+        self.name, self.crc, self.size, self.offset = name, crc, size, offset
+        self.ctype, self.csize, self.name_offset, self.md5, self.stored = ctype, csize, name_offset, md5, stored
+
+    def data(self):
+        return zlib.decompress(self.stored) if self.ctype == 2 else self.stored
+
+
+def tre_read(blob):
+    """Parse a .tre blob into a list of TreRecord (file order, i.e. sorted by crc)."""
+    magic, version, n, toc, fct, fcs, nct, ncs, nus = HEADER.unpack_from(blob, 0)
+    if magic != MAGIC:
+        raise ValueError("not a TRE file (magic %r)" % magic)
+    if version != VERSION:
+        raise ValueError("unsupported TRE version %r" % version)
+    fb = blob[toc:toc + fcs]
+    fb = zlib.decompress(fb) if fct == 2 else fb
+    nb = blob[toc + fcs:toc + fcs + ncs]
+    nb = zlib.decompress(nb) if nct == 2 else nb
+    if len(fb) != n * RECORD.size or len(nb) != nus:
+        raise ValueError("block sizes do not match the header")
+    md5s = blob[toc + fcs + ncs:toc + fcs + ncs + 16 * n]
+    recs = []
+    for i in range(n):
+        crc, size, off, ctype, csize, noff = RECORD.unpack_from(fb, i * RECORD.size)
+        name = nb[noff:nb.index(b"\0", noff)].decode("ascii")
+        stored = blob[off:off + (csize if ctype == 2 else size)]
+        recs.append(TreRecord(name, crc, size, off, ctype, csize, noff, md5s[i * 16:(i + 1) * 16], stored))
+    return recs
+
+
+def tre_write(files):
+    """Pack {path: bytes} into a .tre blob (deterministic)."""
+    names = sorted(files)
+    for p in names:
+        if "/" not in p or p.startswith("/") or "\\" in p or p != p.strip():
+            raise ValueError("record path %r must be 'dir/file' with forward slashes" % p)
+    entries = sorted(((swg_crc(p), p) for p in names), key=lambda t: (t[0], t[1]))
+    data = bytearray()
+    offset = HEADER.size
+    records, names_blob, md5s = [], bytearray(), bytearray()
+    for crc, p in entries:
+        raw = files[p]
+        comp = zlib.compress(raw, 9) if raw else b""
+        if raw and len(comp) < len(raw):
+            ctype, stored = 2, comp
+        else:
+            ctype, stored = 0, raw
+        name_offset = len(names_blob)
+        names_blob += p.encode("ascii") + b"\0"
+        records.append(RECORD.pack(crc, len(raw), offset, ctype, len(stored) if ctype == 2 else 0, name_offset))
+        md5s += hashlib.md5(stored).digest()
+        data += stored
+        offset += len(stored)
+    file_block = zlib.compress(b"".join(records), 9)
+    name_block = zlib.compress(bytes(names_blob), 9)
+    header = HEADER.pack(MAGIC, VERSION, len(entries), offset, 2, len(file_block), 2, len(name_block), len(names_blob))
+    return header + bytes(data) + file_block + name_block + bytes(md5s)
+
+
+def tre_check(blob):
+    """Re-read a tre and verify crc, md5, sort order and sizes. Returns (records, problems)."""
+    recs = tre_read(blob)
+    problems = []
+    last = -1
+    for r in recs:
+        if r.crc != swg_crc(r.name):
+            problems.append("%s: crc %08x != %08x" % (r.name, r.crc, swg_crc(r.name)))
+        if r.crc < last:
+            problems.append("%s: records not sorted by crc" % r.name)
+        last = r.crc
+        if hashlib.md5(r.stored).digest() != r.md5:
+            problems.append("%s: md5 mismatch" % r.name)
+        if len(r.data()) != r.size:
+            problems.append("%s: uncompressed size %d != %d" % (r.name, len(r.data()), r.size))
+    return recs, problems
+
+
+# ------------------------------------------------------------------ build from tre-src
+
+def collect_sources(src):
+    """Walk tre-src/, compile *.stf.txt under string/, return {archive_path: bytes}."""
+    files = {}
+    if not os.path.isdir(src):
+        raise SystemExit("source directory %s missing" % src)
+    for root, dirs, names in os.walk(src):
+        dirs.sort()
+        for n in sorted(names):
+            if n.startswith(".") or n.lower() == "readme.md":
+                continue
+            full = os.path.join(root, n)
+            rel = os.path.relpath(full, src).replace(os.sep, "/")
+            with open(full, "rb") as fh:
+                raw = fh.read()
+            if rel.endswith(".stf.txt"):
+                if not rel.startswith("string/"):
+                    raise SystemExit("%s: string tables belong under string/<lang>/" % rel)
+                pairs = stf_parse_text(raw.decode("utf-8"), rel)
+                files[rel[:-4]] = stf_encode(pairs)
+            else:
+                files[rel] = raw
+    if not files:
+        raise SystemExit("nothing to pack under %s" % src)
+    return files
+
+
+def sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def tre_path_from_config():
+    """The server's TrePath (config-local.lua overrides config.lua)."""
+    for cfg in (CONFIG_LOCAL, CONFIG_MAIN):
+        try:
+            with open(cfg, encoding="utf-8", errors="replace") as fh:
+                m = re.search(r'^\s*TrePath\s*=\s*"([^"]+)"', fh.read(), re.M)
+            if m:
+                return m.group(1)
+        except OSError:
+            continue
+    return "/tre"
+
+
+def config_lists_tre():
+    try:
+        with open(CONFIG_MAIN, encoding="utf-8", errors="replace") as fh:
+            m = re.search(r"TreFiles\s*=\s*\{\s*\"([^\"]+)\"", fh.read())
+        return m.group(1) if m else None
+    except OSError:
+        return None
+
+
+def client_dir(explicit=None):
+    if explicit:
+        return explicit
+    try:
+        with open(CLIENT_DIR_FILE, encoding="utf-8") as fh:
+            d = fh.read().strip()
+        return d or None
+    except OSError:
+        return None
+
+
+def patch_live_cfg(cfg_path):
+    """Add finalboss.tre at the top of the client's search order (idempotent). Returns a message."""
+    with open(cfg_path, "rb") as fh:
+        raw = fh.read()
+    nl = b"\r\n" if b"\r\n" in raw else b"\n"
+    text = raw.decode("utf-8", errors="replace")
+    if TRE_NAME in text:
+        return "swgemu_live.cfg already lists %s" % TRE_NAME
+    m = re.search(r"^(\s*)maxSearchPriority\s*=\s*(\d+)\s*$", text, re.M)
+    if not m:
+        return "swgemu_live.cfg has no maxSearchPriority line; add searchTree_00_N=%s by hand" % TRE_NAME
+    indent, n = m.group(1), int(m.group(2))
+    lines = text.split("\n")
+    out = []
+    for line in lines:
+        if re.match(r"^\s*maxSearchPriority\s*=", line):
+            out.append("%smaxSearchPriority=%d" % (indent, n + 1))
+            out.append("%ssearchTree_00_%d=%s" % (indent, n, TRE_NAME))
+        else:
+            out.append(line)
+    bak = cfg_path + ".finalboss.bak"
+    if not os.path.exists(bak):
+        with open(bak, "wb") as fh:
+            fh.write(raw)
+    with open(cfg_path, "wb") as fh:
+        fh.write(nl.join(l.rstrip("\r") for l in out).encode("utf-8"))
+    return "swgemu_live.cfg: maxSearchPriority %d -> %d, searchTree_00_%d=%s (backup %s)" % (
+        n, n + 1, n, TRE_NAME, os.path.basename(bak))
+
+
+# ------------------------------------------------------------------ commands
+
+def cmd_build(a):
+    files = collect_sources(a.src)
+    blob = tre_write(files)
+    _, problems = tre_check(blob)
+    if problems:
+        raise SystemExit("self-check failed:\n  " + "\n  ".join(problems))
+    os.makedirs(os.path.dirname(a.out), exist_ok=True)
+    old = sha256_file(a.out) if os.path.exists(a.out) else None
+    with open(a.out, "wb") as fh:
+        fh.write(blob)
+    new = sha256_file(a.out)
+    print("built %s: %d records, %d bytes, sha256 %s%s" % (
+        a.out, len(files), len(blob), new[:12], "" if old != new else " (unchanged)"))
+    for p in sorted(files):
+        print("  %-60s %7d" % (p, len(files[p])))
+    return 0
+
+
+def cmd_list(a):
+    with open(a.file, "rb") as fh:
+        recs = tre_read(fh.read())
+    shown = 0
+    for r in recs:
+        if a.substr and a.substr not in r.name:
+            continue
+        print("%-70s %9d %s crc=%08x" % (r.name, r.size, "zlib" if r.ctype == 2 else "raw ", r.crc))
+        shown += 1
+    print("%d of %d records" % (shown, len(recs)), file=sys.stderr)
+    return 0
+
+
+def _find(recs, path):
+    for r in recs:
+        if r.name == path:
+            return r
+    raise SystemExit("%s not in archive" % path)
+
+
+def cmd_extract(a):
+    with open(a.file, "rb") as fh:
+        rec = _find(tre_read(fh.read()), a.path)
+    data = rec.data()
+    if a.out:
+        os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
+        with open(a.out, "wb") as fh:
+            fh.write(data)
+        print("wrote %s (%d bytes)" % (a.out, len(data)))
+    elif a.path.endswith(".stf"):
+        sys.stdout.write(stf_format_text(stf_decode(data)))
+    else:
+        sys.stdout.buffer.write(data)
+    return 0
+
+
+def cmd_strings(a):
+    with open(a.file, "rb") as fh:
+        blob = fh.read()
+    if a.file.endswith(".tre"):
+        if not a.path:
+            raise SystemExit("strings FILE.tre needs the record PATH")
+        blob = _find(tre_read(blob), a.path).data()
+    sys.stdout.write(stf_format_text(stf_decode(blob)))
+    return 0
+
+
+def cmd_verify(a):
+    with open(a.file, "rb") as fh:
+        recs, problems = tre_check(fh.read())
+    for p in problems:
+        print("PROBLEM " + p)
+    print("%s: %d records, %s" % (a.file, len(recs), "OK" if not problems else "%d problems" % len(problems)))
+    return 1 if problems else 0
+
+
+def cmd_roundtrip(a):
+    with open(a.file, "rb") as fh:
+        blob = fh.read()
+    recs, problems = tre_check(blob)
+    for p in problems:
+        print("stock PROBLEM " + p)
+    files = {r.name: r.data() for r in recs}
+    stf_bad = 0
+    for name, data in files.items():
+        if name.endswith(".stf") and data:
+            try:
+                pairs = stf_decode(data)
+                if stf_decode(stf_encode(pairs)) != pairs:
+                    stf_bad += 1
+            except Exception as e:  # noqa: BLE001 - report and continue
+                stf_bad += 1
+                print("stf %s: %s" % (name, e))
+    again = tre_read(tre_write(files))
+    same = {r.name: r.data() for r in again} == files
+    print("%s: %d records, stock checks %s, repack %s, %d stf tables%s" % (
+        a.file, len(recs), "OK" if not problems else "%d problems" % len(problems),
+        "identical" if same else "DIFFER", sum(1 for n in files if n.endswith(".stf")),
+        "" if not stf_bad else ", %d stf round-trip failures" % stf_bad))
+    return 0 if (same and not problems and not stf_bad) else 1
+
+
+def cmd_install(a):
+    if not os.path.exists(a.out):
+        raise SystemExit("%s not built yet (tre build)" % a.out)
+    import shutil
+    tre_dir = a.tre_dir or tre_path_from_config()
+    dest = os.path.join(tre_dir, TRE_NAME)
+    changed = not os.path.exists(dest) or sha256_file(dest) != sha256_file(a.out)
+    if changed:
+        shutil.copyfile(a.out, dest)
+    print("%s %s" % ("installed" if changed else "up to date", dest))
+    first = config_lists_tre()
+    if first != TRE_NAME:
+        print("WARNING: config.lua TreFiles does not start with %s (first entry: %s)" % (TRE_NAME, first))
+    cdir = client_dir(a.client)
+    if a.client:
+        os.makedirs(LABDIR, exist_ok=True)
+        with open(CLIENT_DIR_FILE, "w", encoding="utf-8") as fh:
+            fh.write(a.client + "\n")
+    if not cdir:
+        print("no client folder known: tre install --client '<folder with SwgClient_r.exe>' once")
+        return 0
+    if not os.path.isdir(cdir):
+        raise SystemExit("client folder %s not found" % cdir)
+    cdest = os.path.join(cdir, TRE_NAME)
+    cchanged = not os.path.exists(cdest) or sha256_file(cdest) != sha256_file(a.out)
+    if cchanged:
+        shutil.copyfile(a.out, cdest)
+    print("%s %s" % ("installed" if cchanged else "up to date", cdest))
+    cfg = os.path.join(cdir, "swgemu_live.cfg")
+    if os.path.exists(cfg):
+        print(patch_live_cfg(cfg))
+    else:
+        print("no swgemu_live.cfg in %s; add searchTree_00_N=%s at the top of the client's search order by hand" % (cdir, TRE_NAME))
+    return 0
+
+
+def cmd_status(a):
+    built = sha256_file(a.out)[:12] if os.path.exists(a.out) else None
+    print("built:     %s %s" % (a.out, built or "(missing)"))
+    tre_dir = tre_path_from_config()
+    dest = os.path.join(tre_dir, TRE_NAME)
+    inst = sha256_file(dest)[:12] if os.path.exists(dest) else None
+    print("server:    %s %s%s" % (dest, inst or "(missing)", "" if inst == built else "  <- differs from built"))
+    print("config:    TreFiles first entry = %s" % config_lists_tre())
+    cdir = client_dir()
+    if cdir:
+        cdest = os.path.join(cdir, TRE_NAME)
+        cinst = sha256_file(cdest)[:12] if os.path.exists(cdest) else None
+        print("client:    %s %s%s" % (cdest, cinst or "(missing)", "" if cinst == built else "  <- differs from built"))
+    else:
+        print("client:    unknown (tre install --client DIR)")
+    if a.json:
+        print(json.dumps({"built": built, "server": inst, "client_dir": cdir}))
+    return 0
+
+
+def cmd_crc(a):
+    print("%08x %d" % (swg_crc(a.string), swg_crc(a.string)))
+    return 0
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(prog="tre", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    p = sub.add_parser("build"); p.add_argument("--src", default=DEFAULT_SRC); p.add_argument("--out", default=DEFAULT_OUT); p.set_defaults(fn=cmd_build)
+    p = sub.add_parser("list"); p.add_argument("file"); p.add_argument("substr", nargs="?"); p.set_defaults(fn=cmd_list)
+    p = sub.add_parser("extract"); p.add_argument("file"); p.add_argument("path"); p.add_argument("--out"); p.set_defaults(fn=cmd_extract)
+    p = sub.add_parser("strings"); p.add_argument("file"); p.add_argument("path", nargs="?"); p.set_defaults(fn=cmd_strings)
+    p = sub.add_parser("verify"); p.add_argument("file"); p.set_defaults(fn=cmd_verify)
+    p = sub.add_parser("roundtrip"); p.add_argument("file"); p.set_defaults(fn=cmd_roundtrip)
+    p = sub.add_parser("install"); p.add_argument("--out", default=DEFAULT_OUT); p.add_argument("--tre-dir"); p.add_argument("--client"); p.set_defaults(fn=cmd_install)
+    p = sub.add_parser("status"); p.add_argument("--out", default=DEFAULT_OUT); p.add_argument("--json", action="store_true"); p.set_defaults(fn=cmd_status)
+    p = sub.add_parser("crc"); p.add_argument("string"); p.set_defaults(fn=cmd_crc)
+    a = ap.parse_args(argv)
+    return a.fn(a)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

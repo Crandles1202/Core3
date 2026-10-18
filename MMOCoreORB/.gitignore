@@ -51,5 +51,9 @@ bin/screenlog*
 compile_commands.json
 .env*
 
-# Final Boss lab test file (upstream ignores *test*)
+# Final Boss lab test files (upstream ignores *test*)
 !bin/scripts/custom_scripts/screenplays/fb_lab_tests.lua
+!src/tests/
+
+# Final Boss client/server archive built by tools/tre from tre-src/
+bin/tre/

@@ -280,21 +280,30 @@ function FbLabTests.checkNpc(npc)
 		return
 	end
 
-	local alive, gone, zones = 0, {}, {}
-	for _, s in ipairs(spawns) do
+	-- Records accumulate over a server run: the traveling merchant despawns its old self when it moves,
+	-- dead patrol squads are replaced, scenarios kill and respawn things. Every such event leaves an
+	-- older record gone and a newer one alive, so the rule is: the newest record of the template must be
+	-- alive, and nothing recorded after the newest gone one may be missing. Older gone records are INFO.
+	local alive, gone, zones, newestGone, newestAlive = 0, {}, {}, 0, 0
+	for i, s in ipairs(spawns) do
 		local pObj = getSceneObject(s.oid)
 		if pObj ~= nil and SceneObject(pObj):getZoneName() == s.zone then
 			alive = alive + 1
 			zones[s.zone] = (zones[s.zone] or 0) + 1
+			newestAlive = i
 		else
 			gone[#gone + 1] = s.zone .. "#" .. tostring(s.oid)
+			newestGone = i
 		end
 	end
 	local where = {}
 	for z, n in pairs(zones) do where[#where + 1] = z .. "=" .. n end
 	table.sort(where)
-	check(p .. "spawned", alive == #spawns and alive > 0,
+	check(p .. "spawned", alive > 0 and newestAlive == #spawns,
 		alive .. "/" .. #spawns .. " alive; missing: " .. table.concat(gone, ", "))
+	if #gone > 0 and newestAlive == #spawns then
+		report("INFO", p .. "retired_spawns", #gone .. " older record(s) gone (moved/respawned): " .. table.concat(gone, ", "))
+	end
 	report("INFO", p .. "spawn_zones", table.concat(where, " "))
 end
 
@@ -590,6 +599,19 @@ function FbLabTests.checkTerritory()
 	end
 end
 
+-- Phase 4.0: strings from finalboss.tre (tre-src/, built by tools/tre) reach the server. StringIdManager
+-- caches every string table in the ODB at first boot; `swg start` passes reloadstrings when the archive changed.
+function FbLabTests.checkTreStrings()
+	local hint = " (finalboss.tre not installed in TrePath, or the server was started without reloadstrings?)"
+	local first = getStringId("@fb_lab:probe_first")
+	check("tre.probe_first", first == "Final Boss TRE probe: first", tostring(first) .. hint)
+	local last = getStringId("@fb_lab:probe_last")
+	check("tre.probe_last", last == "Final Boss TRE probe: last", tostring(last) .. hint)
+	local mid = getStringId("@fb_lab:probe_middle")
+	check("tre.probe_middle_escapes", mid:find("\n", 1, true) ~= nil and mid:find("%TT", 1, true) ~= nil, (mid:gsub("\n", "\\n")))
+	check("tre.stock_strings_intact", getStringId("@jedi_spam:fs_progress_1") ~= "", "stock jedi_spam table unreadable")
+end
+
 -- ---------------------------------------------------------------- entry points
 
 -- runLuaFunction passes the FbLabTests table as the first argument, then the ':'-separated args.
@@ -620,6 +642,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkWeatherEvents()
 		FbLabTests.checkInvasions()
 		FbLabTests.checkTerritory()
+		FbLabTests.checkTreStrings()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)
@@ -1005,6 +1028,25 @@ function FbLabTests:questStatus(key, value)
 	local current = getQuestStatus(key)
 	print(string.format("INFO queststatus key=%s value=%s", tostring(key), tostring(current)))
 	return tostring(current)
+end
+
+-- stringId:<file>:<key> → the text the server resolves for @file:key ("" when unknown)
+function FbLabTests:stringId(file, key)
+	local id = "@" .. tostring(file) .. ":" .. tostring(key)
+	local v = getStringId(id)
+	print(string.format("INFO stringid id=%s text=%s", id, (tostring(v):gsub("\n", "\\n"))))
+	return v
+end
+
+-- systemMessage:<char>:<file>:<key> → send @file:key to an online character as a string-id system message
+-- (the client renders it from its own copy of the string table; the bot logs the id)
+function FbLabTests:systemMessage(charName, file, key)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then print("ERROR " .. tostring(charName) .. " is not online"); return "offline" end
+	local id = "@" .. tostring(file) .. ":" .. tostring(key)
+	CreatureObject(pPlayer):sendSystemMessage(id)
+	print(string.format("INFO systemmessage char=%s id=%s", charName, id))
+	return "sent"
 end
 
 -- merchant → where the traveling merchant is and what he sells this visit
