@@ -502,6 +502,21 @@ function FbLabTests.checkFactionPatrols()
 	end
 end
 
+-- Phase 3.10: every HoloNet relay is up in its place and the segment carries the live story.
+function FbLabTests.checkHoloNet()
+	if FbHoloNet == nil then check("holonet.loaded", false); return end
+	for li, loc in ipairs(FbHoloNet.locations) do
+		local st = FbHoloNet:status(li)
+		check("holonet." .. loc.key .. ".relay_up", not st:find("relay=0 ", 1, true), st)
+		check("holonet." .. loc.key .. ".in_cell", st:find("cell=" .. (loc.cell or 0), 1, true) ~= nil, st)
+	end
+	local lines = FbHoloNet:segment()
+	check("holonet.segment_length", #lines >= 5, #lines .. " lines")
+	local hasStory = false
+	for _, l in ipairs(lines) do if l:find("Top story:", 1, true) then hasStory = true end end
+	check("holonet.segment_has_top_story", hasStory)
+end
+
 -- ---------------------------------------------------------------- entry points
 
 -- runLuaFunction passes the FbLabTests table as the first argument, then the ':'-separated args.
@@ -527,6 +542,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkGalaxyChatter()
 		FbLabTests.checkStoryTicker()
 		FbLabTests.checkFactionPatrols()
+		FbLabTests.checkHoloNet()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)
@@ -976,6 +992,31 @@ function FbLabTests:travelCell(charName, planet, x, z, y, cellID)
 	SceneObject(pPlayer):switchZone(planet, tonumber(x), tonumber(z), tonumber(y), tonumber(cellID))
 	print(string.format("INFO travelCell char=%s planet=%s x=%s z=%s y=%s cell=%s", charName, planet, x, z, y, cellID))
 	return "ok"
+end
+
+-- holonet → one INFO line per HoloNet relay (oid, cell, players near)
+function FbLabTests:holonet()
+	if FbHoloNet == nil then print("ERROR FbHoloNet not loaded"); return "none" end
+	for li, loc in ipairs(FbHoloNet.locations) do
+		print(string.format("INFO holonet %s planet=%s x=%s y=%s z=%s", FbHoloNet:status(li), loc.planet, tostring(loc.x), tostring(loc.y), tostring(loc.z or "terrain")))
+	end
+	return tostring(#FbHoloNet.locations)
+end
+
+-- holonetSegment → the lines the next broadcast would read
+function FbLabTests:holonetSegment()
+	if FbHoloNet == nil then print("ERROR FbHoloNet not loaded"); return "none" end
+	local lines = FbHoloNet:segment()
+	for i, l in ipairs(lines) do print(string.format("INFO holonet_line i=%d text=%s", i, l)) end
+	return tostring(#lines)
+end
+
+-- holonetBroadcast[:<loc>] → read a segment now at a relay; prints the line count
+function FbLabTests:holonetBroadcast(li)
+	if FbHoloNet == nil then print("ERROR FbHoloNet not loaded"); return "none" end
+	local n = FbHoloNet:broadcast(li or 1)
+	print("INFO holonetBroadcast lines=" .. tostring(n))
+	return tostring(n)
 end
 
 -- patrols → one INFO line per faction patrol route (leader oid/position, members alive, point)
