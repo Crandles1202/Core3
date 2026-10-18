@@ -26,7 +26,7 @@ FbAmbientLife.locations = {
 		seats = {   -- extra patrons; positions sit beside stock tables without overlapping stock seats
 			{ x = 12.6, z = -0.9, y = -5.6, dir = 20,  cell = 1082877 },
 			{ x = 25.2, z = -0.9, y = -6.9, dir = 200, cell = 1082877 },
-			{ x = -1.0, z = -0.9, y = 12.6, dir = 180, cell = 1082877 },
+			{ x = 16.0, z = -0.9, y = 10.0, dir = 180, cell = 1082877 },   -- (-1.0, 12.6) sat inside the wall: 0/8 line of sight (placement audit, 2026-10-18)
 			{ x = -4.9, z = -0.9, y = -9.9, dir = 40,  cell = 1082877 },
 			{ x = 21.6, z = -0.9, y = 7.5,  dir = 250, cell = 1082877 },
 		},
@@ -115,11 +115,13 @@ FbAmbientLife.locations = {
 	{
 		-- outdoors: travellers waiting outside the Mos Eisley starport (cell 0, height from the terrain)
 		key = "mos_eisley_starport", label = "Mos Eisley Starport (outside)", planet = "tatooine",
-		anchor = { x = 3508, z = 5, y = -4797, cell = 0 },
+		-- the open plaza in front of the FB vendor row (the first spots, north-west of the entrance,
+		-- were out of sight of a player on the plaza)
+		anchor = { x = 3516, z = 5, y = -4806, cell = 0 },
 		seats = {
-			{ x = 3504, y = -4794, dir = 140, cell = 0 },
-			{ x = 3511, y = -4792, dir = 220, cell = 0 },
-			{ x = 3498, y = -4800, dir = 60,  cell = 0 },
+			{ x = 3516, y = -4804, dir = 140, cell = 0 },
+			{ x = 3519, y = -4807, dir = 220, cell = 0 },
+			{ x = 3514, y = -4809, dir = 60,  cell = 0 },
 		},
 		templates = { "commoner_tatooine", "commoner", "businessman", "patron_ithorian", "commoner_old" },
 		moods = { "bored", "worried", "conversation", "calm", "npc_standing_drinking" },
@@ -174,6 +176,12 @@ function FbAmbientLife:spawnSeat(li, si)
 	if pMobile == nil then
 		printf("FbAmbientLife: could not spawn %s at %s seat %d\n", template, loc.label, si)
 		return nil
+	end
+	-- patrons stay on their seat: AI_STATIC + no AI (same pattern as the cantina entertainers);
+	-- without it the stock commoner AI wandered the outdoor travellers 20–30 m from the starport
+	AiAgent(pMobile):addObjectFlag(AI_STATIC)
+	if CreatureObject(pMobile):getPvpStatusBitmask() == 0 then
+		CreatureObject(pMobile):clearOptionBit(AIENABLED)
 	end
 	CreatureObject(pMobile):setMoodString(pick(loc.moods))
 	setQuestStatus(seatKey(loc, si), tostring(SceneObject(pMobile):getObjectID()))

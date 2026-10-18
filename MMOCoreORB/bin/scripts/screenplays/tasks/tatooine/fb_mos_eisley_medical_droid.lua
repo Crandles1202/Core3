@@ -65,7 +65,7 @@ FbMosEisleyMedicalDroid = ScreenPlay:new {
 		-- Narmle: INSIDE the medcenter
 		{ planet = "rori", label = "Narmle",                          x = 29.20, z = 0.26, y = 0.07, dir = 1, cellID = 4635420 },
 		-- Restuss: INSIDE the medcenter
-		{ planet = "rori", label = "Restuss",                         x = 29.41, z = 0.26, y = 0.01, dir = 1, cellID = 4635789 },
+		{ planet = "rori", label = "Restuss",                         x = 29.41, z = 0.26, y = 0.01, dir = 1, cellID = 4635728 },
 
 		-- Outer rim — one per planet at the main settlement
 		-- Dantooine Mining Outpost: INSIDE a small outpost building

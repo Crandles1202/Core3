@@ -24,13 +24,31 @@ FbGalaxyChatter = {
 
 -- addNews(key, line, ttlSeconds): a dated line that expires; stored in quest status so every Lua
 -- state and the next server start see it. Keys must not contain ':'.
+-- The pool stays short: the same line posted again (a second convoy, another storm) refreshes the
+-- existing entry instead of adding a twin, expired entries are dropped, and only the newest maxNews
+-- survive — a cantina full of patrons repeating sixty old headlines is not news.
+FbGalaxyChatter.maxNews = 8
+
 function FbGalaxyChatter.addNews(key, line, ttlSeconds)
-	local expires = os.time() + (tonumber(ttlSeconds) or 7 * 24 * 3600)
-	setQuestStatus("FbGalaxyChatter.news." .. key, tostring(expires) .. "|" .. line)
+	local now = os.time()
+	local expires = now + (tonumber(ttlSeconds) or 7 * 24 * 3600)
 	local keys = getQuestStatus("FbGalaxyChatter.newsKeys") or ""
-	if not keys:find("," .. key .. ",", 1, true) then
-		setQuestStatus("FbGalaxyChatter.newsKeys", keys .. "," .. key .. ",")
+	local kept = {}
+	for k in keys:gmatch("[^,]+") do
+		local raw = getQuestStatus("FbGalaxyChatter.news." .. k)
+		local exp, text = (raw or ""):match("^(%d+)|(.*)$")
+		if k == key or exp == nil or tonumber(exp) <= now or text == line then
+			if k ~= key then removeQuestStatus("FbGalaxyChatter.news." .. k) end   -- expired, or the twin we replace
+		else
+			kept[#kept + 1] = k
+		end
 	end
+	kept[#kept + 1] = key
+	while #kept > FbGalaxyChatter.maxNews do
+		removeQuestStatus("FbGalaxyChatter.news." .. table.remove(kept, 1))
+	end
+	setQuestStatus("FbGalaxyChatter.news." .. key, tostring(expires) .. "|" .. line)
+	setQuestStatus("FbGalaxyChatter.newsKeys", "," .. table.concat(kept, ",") .. ",")
 end
 
 function FbGalaxyChatter.newsLines()

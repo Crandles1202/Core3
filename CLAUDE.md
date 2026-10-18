@@ -152,7 +152,7 @@ tools/swg tre build|install [--client DIR]|patchcfg FILE|status|strings … # fi
 | 3.10 | HoloNet relays "HN-7" (silver protocol droid) at the Mos Eisley starport, Mos Eisley cantina and Bestine cantina read a produced segment every 45–75 s while listeners are near: sting, top story (live ticker), this week's wanted (the story's mobs), a galaxy item, where the merchant trades, propaganda, outro. Conversation option replays it | `fb_holonet*.lua` |
 | 3.2 | Faction patrols: an Imperial squad (squad leader + 2 stormtroopers) walks the stock Mos Eisley patrol loop and a Rebel squad (commando + 2 troopers) the desert west of the walls; leader walks `setNextPosition` legs with a dwell at each point, members follow, dead squads are replaced. Stock faction rules apply (they fight declared enemies, ignore neutrals). Routes are data | `fb_faction_patrols.lua` |
 | 3.5 | Story event ticker: once a week (persistent event `FbStoryTick`) one of three stories fires — Tusken raiders east of Mos Eisley, pirates outside Anchorhead, Imperial crackdown around Bestine. Each posts its news into the galaxy chatter (one-week TTL), broadcasts one line to everyone online, and camps 4–5 killable mobs at its spot, refilled hourly for the week. `FbStoryTicker:fire(idx)` public | `fb_story_ticker.lua` |
-| 3.6 | Galaxy chatter: a shared pool the ambient patrons draw 35% of their spoken lines from — 10 static galaxy news lines, live facts (where the traveling merchant is, Bestine election phase) and dated news posted via `FbGalaxyChatter.addNews(key, line, ttl)` (quest-status backed, expires). The 3.5 story ticker plugs in there | `fb_galaxy_chatter.lua` |
+| 3.6 | Galaxy chatter: a shared pool the ambient patrons draw 35% of their spoken lines from — 10 static galaxy news lines, live facts (where the traveling merchant is, Bestine election phase) and dated news posted via `FbGalaxyChatter.addNews(key, line, ttl)` (quest-status backed, expires; a repeated line refreshes its entry, the pool keeps the newest `maxNews = 8`). The 3.5 story ticker plugs in there | `fb_galaxy_chatter.lua` |
 | 3.7 / 3.8 | Ambient life in three cantinas, each with its own voice: Mos Eisley (wretched hive, 5 patrons), Bestine (Imperial-leaning, tense, 4), Coronet (pilot-heavy, gambling, 4), plus three travellers waiting outside the Mos Eisley starport (outdoor seats, terrain height). Patrons mutter, gesture, notice newcomers and change seats every 5–10 min — only while a player is within 20 m. Stock Core3 already seats the silent crowd; this is the behaviour layer. Data-driven `FbAmbientLife.locations`; `tick`/`churn`/`status` public. Theed pending (its cantina cell is not in the stock city file) | `fb_ambient_life.lua` |
 | 2.9 | Traveling merchant "Ozlo Vantrek": one NPC that moves between 9 audited city stops every 3 h (persistent server event `FbMerchantMove`, state in quest status), selling 8 of a 34-item cosmetic pool (paintings, jewellery, hats, goggles) that rotates per visit. `FbTravelingMerchant:move()` / `:status()` are public for the lab | `fb_traveling_merchant*.lua` |
 | 2.10 | Vendor maintenance auto-skim: on a player vendor 5% of each sale (`Core3.Vendor.SaleMaintenancePercent`) goes into the vendor's maintenance, the owner banks 95%; bazaar sales untouched. **Not lab-verified** (a vendor needs an owned structure); Chuck checks with a real vendor | `AuctionManagerImplementation.cpp` (`doInstantBuy`), `VendorDataComponent.h` |
@@ -167,6 +167,7 @@ tools/swg tre build|install [--client DIR]|patchcfg FILE|status|strings … # fi
 | 2.7 | FB-72 armory droid (Mos Eisley starport + 2 weapon shops) | `fb_armory_droid*.lua` |
 | — | QoL: 100k cash/bank start, global XP ×2, group XP ×1.25, pet/vehicle call 5 s, 20 housing lots, resource stack 10M, admin `flag = 2` | `player_creation_manager.lua`, `player_manager.lua`, `*ControlDeviceImplementation.cpp`, `PlayerObject.idl`, `ResourceContainer.idl`, `staff/levels/admin.lua` |
 | 2.1 | Vex Renn stim/medical dealer (Mos Eisley) | `fb_stim_dealer*.lua` |
+| lab | NPC placement toolkit: every spawn an `fb_*` file makes is recorded with its spot (stock templates too); `placement[:filter]` audits line of sight (8 probes at 3 m), terrain height and drift, `findNpc`/`gotoNpc`/`waypointTo` find an NPC by name, template or source file; `checkPlacement` in `runAll` fails the Lua run for a boxed-in or underground NPC. Found and fixed: Rori Restuss medical droid in a wrong cell (underground), starport travellers wandering (now `AI_STATIC`) and the starport HoloNet relay behind the plinth (moved to the plaza) | `fb_lab_tests.lua`, scenario `npc-placement` |
 | lab | FB mobiles given `mobType`/`chanceHit`/`damageMin`/`baseHAM` so `LuaMobileTemplatesTest` passes; `core3client` create-character race fixed (`ZonePacketHandler.cpp`) | `mobile/quest/tatooine/fb_*.lua`, `src/client/zone/` |
 
 Non-combat NPC templates still need positive `chanceHit`, `damageMin/Max`, `baseHAM/HAMmax` and a `mobType`
@@ -205,11 +206,26 @@ Persisted object fields (`containerVolumeLimit`, …) are only read from the tem
 - An AI agent leashes back to its spawn point when sent or teleported far away; move its home too
   (`AiAgent:setHomeLocation(x, z, y, nil)`) before long walks. Short legs (patrols, convoy) are fine.
 - Starting a conversation needs same cell, ≤ 5 m and line of sight to the NPC, and fails silently otherwise.
-  Place new NPCs next to proven spots and have the scenario converse before trusting a position.
+  **Before trusting an NPC spot:** `swg cmd "runLuaFunction FbLabTests:placement:<name>"` (line of sight to
+  probes 3 m around, height above terrain, drift; `checkPlacement` runs it for every FB spawn in `swg test lua`),
+  then `gotoNpc:<char>:<name>` and look at it in the client — the server's collision data misses some decorative
+  world meshes, so an 8/8 spot can still be hidden behind a plinth (HN-7 at the starport, 2026-10-18). A wrong
+  `cellID` makes `spawnMobile` fall back to the cell-local numbers as world coordinates (Rori droid at 29,0,
+  84 m underground); the audit's terrain rule catches that. Stock commoner templates wander unless
+  `AiAgent:addObjectFlag(AI_STATIC)` (+ `clearOptionBit(AIENABLED)` when not pvp-flagged).
+- Spawns made by server events (seat churn, respawns) are recorded in *that* Lua state's `FbLabTests.spawns`,
+  invisible to the console; the placement audit reaches them through the module's quest-status lookup
+  (`providedSpawns` in `fb_lab_tests.lua`) — add a provider when a module respawns things after `start()`.
 - Screenplay table fields set in `start()` are not visible from the console or server-event Lua states;
   persist cross-call state with `setQuestStatus`/`getQuestStatus` (keys without `:`). `getTerrainHeight`
   needs a creature; use `getTerrainHeightAt(zone, x, y)` when there is none.
 - gtest's `<<` cannot print an engine3 `String`; use `.toCharArray()` in assertion messages.
+- Lua bindings read arguments from the top of the stack and do not validate: a call with the wrong
+  arity (`faceObject(pNpc)` instead of `faceObject(pNpc, true)`) passes garbage/null into C++ and
+  segfaults the server. Check the binding's signature in `Lua*.cpp` before using a method for the first
+  time. If the server is halted at a gdb catchpoint (`swg status` says HALTED IN GDB), a null-deref in a
+  leaf function can be skipped with `frame N` / `return` / `continue` in the tmux pane; otherwise
+  `swg stop` kills it from gdb and keeps the backtrace in `~/.swg-lab/crashes/`.
 - `git ls-files -v | grep ^S` shows skip-worktree files. `resource_manager_spawns.lua` is written by the
   server and must stay that way; nothing else should carry the flag.
 
@@ -248,12 +264,12 @@ _Updated: 2026-10-18 (session 3: Phase 4 design settled with Chuck, 4.0 TRE tool
   clues, FRS rank trees as the ladder, Masters in the Yavin 4 enclaves, cosmetic colour crystals, fixer-paid
   bounties). 4.0 custom TRE tooling shipped and installed in Chuck's client (`/mnt/c/EMU/swg - Copy/SWGEmu`); next: 4a.1 attunement + Old Man on `feature/phase4a.1-*`.
 - Binaries: `bin/core3` and `bin/core3client` built 2026-10-17 from this tree (`swg build`).
-- Lab now: 261 unit, 322 Lua checks, bot, 20 scenarios (+2 manual audits) (`tre-strings`, `stimpack-heals`, `npc-conversation`,
+- Lab now: 261 unit, ~390 Lua checks (one placement check per live FB spawn), bot, 21 scenarios (+2 manual audits) (`npc-placement`, `tre-strings`, `stimpack-heals`, `npc-conversation`,
   `inventory-100`, `mission-hints`, `entertainer-xp`, `schematic-broker`, `schematic-broker-ui` (real SUI path),
   `parts-dealer`, `bazaar-listings`, `traveling-merchant`, `ambient-cantina`, `galaxy-chatter`, `story-ticker`, `faction-patrols`, `holonet`, `convoy-ambush`, `sandstorm`, `invasion-bestine`, `territory`; manual: `merchant-stops`, `ambient-locations`). Oracle
   additions today: `inventoryLimit`, `setInventoryLimit`, `loginHook`, `spawnObjectNear`, `destroyObject`,
   `missions`, `xp`, `cash`, `buySchematic` / `buyPart` / `buyMerchant` (by item name), `hasSchematic`, `merchant`,
-  `merchantMove[:stop]`, `merchantStops`, `questStatus`, `travelCell`, `ambient`, `ambientTick`, `ambientChurn`, `ambientLocations`, `galaxyNews`, `galaxyAddNews`, `story`, `storyFire`, `objectAlive`, `patrols`, `patrolStep`, `holonet`, `holonetSegment`, `holonetBroadcast`, `convoy`, `convoySpawn`, `killNpc`, `factionStanding`, `containerItems`, `weather`, `weatherSet`, `storm`, `stormTick`, `invasion`, `invasionBegin`, `invasionAssault`, `invasionEngage`, `invasionResolve`, `invasionSide`, `teleportObject`, `objectPos`, `territory`, `territorySet`, `territoryShift`, `patrolRespawn`, `stringId`, `systemMessage`. The
+  `merchantMove[:stop]`, `merchantStops`, `questStatus`, `travelCell`, `findNpc`, `gotoNpc`, `waypointTo`, `placement`, `spawnNpcAt`, `ambient`, `ambientTick`, `ambientChurn`, `ambientLocations`, `galaxyNews`, `galaxyAddNews`, `story`, `storyFire`, `objectAlive`, `patrols`, `patrolStep`, `holonet`, `holonetSegment`, `holonetBroadcast`, `convoy`, `convoySpawn`, `killNpc`, `factionStanding`, `containerItems`, `weather`, `weatherSet`, `storm`, `stormTick`, `invasion`, `invasionBegin`, `invasionAssault`, `invasionEngage`, `invasionResolve`, `invasionSide`, `teleportObject`, `objectPos`, `territory`, `territorySet`, `territoryShift`, `patrolRespawn`, `stringId`, `systemMessage`. The
   client now logs spatial chat (`SpatialChat from=<oid>: text`, last 50 kept in its var store). Bot
   additions: `--missions <terminalOid>`, `--command-nowait`, `--sell`/`--buy`/`--retrieve`, `--sui`, `--keep-going`, and an
   end-of-run `=> #N {...}` results dump that `bot_action_status`/`bot_action_count` read. Known gap: the client does not decode every

@@ -17,7 +17,7 @@ FbHoloNet = ScreenPlay:new {
 }
 
 FbHoloNet.locations = {
-	{ key = "mos_eisley_starport", label = "Mos Eisley Starport", region = "mos_eisley", planet = "tatooine", x = 3540, y = -4816, dir = 1, cell = 0 },   -- end of the FB vendor row; (3512,-4790) had no line of sight for conversations
+	{ key = "mos_eisley_starport", label = "Mos Eisley Starport", region = "mos_eisley", planet = "tatooine", x = 3530, y = -4809, dir = 3, cell = 0 },   -- open plaza in front of the FB vendor row; (3540,-4816) behind the plinth was never found by a player, (3512,-4790) had no line of sight for conversations
 	{ key = "mos_eisley_cantina",  label = "Mos Eisley Cantina",  region = "mos_eisley", planet = "tatooine", x = 10.5, z = -0.9, y = 8.5, dir = 3, cell = 1082877 },
 	{ key = "bestine_cantina",     label = "Bestine Cantina",     region = "bestine", planet = "tatooine", x = 9.0,  z = 0.4,  y = -8.5, dir = 3, cell = 1528397 },
 }

@@ -70,6 +70,14 @@ session_running_gdb() {
 	[ "$(tmux display-message -p -t "$SESSION" '#{pane_current_command}' 2>/dev/null)" = "gdb" ]
 }
 
+# core3 alive but stopped under the debugger (a gdb catchpoint fired: SIGSEGV/SIGUSR1); the process
+# state is 't' (traced/stopped). The console is dead until gdb continues or kills it.
+halted_in_gdb() {
+	local pid; pid=$(core3_pid); [ -n "$pid" ] || return 1
+	case "$(ps -o stat= -p "$pid" 2>/dev/null | tr -d ' ')" in t*|T*) return 0 ;; esac
+	return 1
+}
+
 log_lines() { [ -f "$LOG" ] && wc -l < "$LOG" || echo 0; }
 
 count_errors() {
@@ -219,6 +227,18 @@ cmd_stop() {
 	fi
 	has_session || die "core3 (pid $(core3_pid)) is running but not in tmux session '$SESSION' — it was not started by swg; stop it at its own console"
 
+	if halted_in_gdb; then
+		# no console to type 'shutdown' into: the process sits on a fatal signal. Kill it from gdb
+		# (the periodic ODB backup is the last saved state) and keep the backtrace.
+		warn "core3 is halted in gdb (crashed) — killing it from gdb; backtrace kept in $BIN/gdb.log"
+		tmux send-keys -t "$SESSION" -l -- "kill"; tmux send-keys -t "$SESSION" Enter; sleep 1
+		tmux send-keys -t "$SESSION" -l -- "y"; tmux send-keys -t "$SESSION" Enter; sleep 2
+		tmux send-keys -t "$SESSION" -l -- "quit"; tmux send-keys -t "$SESSION" Enter; sleep 2
+		has_session && tmux kill-session -t "$SESSION"
+		is_running && die "core3 still alive after gdb kill — attach with: tmux attach -t $SESSION"
+		mkdir -p "$LABDIR/crashes"; [ -f "$BIN/gdb.log" ] && cp "$BIN/gdb.log" "$LABDIR/crashes/gdb-$(date +%Y%m%d-%H%M%S).log"
+		return 1
+	fi
 	say "sending 'shutdown' to pid $(core3_pid)"
 	tmux send-keys -t "$SESSION" -l -- "shutdown"
 	tmux send-keys -t "$SESSION" Enter
@@ -246,14 +266,18 @@ cmd_stop() {
 		tmux kill-session -t "$SESSION"
 	fi
 	if grep -aqE 'Program received signal|SIG(SEGV|ABRT) Caught' "$LOG" 2>/dev/null; then
-		warn "crash markers in the log — see $BIN/gdb.log"
+		mkdir -p "$LABDIR/crashes"; [ -f "$BIN/gdb.log" ] && cp "$BIN/gdb.log" "$LABDIR/crashes/gdb-$(date +%Y%m%d-%H%M%S).log"
+		warn "crash markers in the log — see $BIN/gdb.log (copied to $LABDIR/crashes/)"
 		return 2
 	fi
 	return 0
 }
 
 cmd_status() {
-	if is_running; then
+	if halted_in_gdb; then
+		local pid; pid=$(core3_pid)
+		say "core3 HALTED IN GDB  pid $pid  up $(ps -o etimes= -p "$pid" | tr -d ' ')s  (a catchpoint fired — backtrace in $BIN/gdb.log; 'tmux attach -t $SESSION' to inspect, 'swg stop' kills it)"
+	elif is_running; then
 		local pid; pid=$(core3_pid)
 		say "core3 RUNNING  pid $pid  up $(ps -o etimes= -p "$pid" | tr -d ' ')s  $(has_session && echo "tmux:$SESSION" || echo "tmux:none")"
 	else

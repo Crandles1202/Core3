@@ -219,7 +219,51 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   (the lab bot, running inside WSL, never notices). Diagnostic: `ss -ulnp` shows core3 on 44453 and
   the log has no login line for the account. Fix: `networkingMode=mirrored` + `wsl --shutdown` (server
   stopped cleanly first). After that Chuck logged in as Banta and the client rendered
-  `@fb_lab:probe_first` as text — 4.0 verified end to end. Tests: gtest `FbTreTest` (first in list, lab table parses
+  `@fb_lab:probe_first` as text — 4.0 verified end to end. First starport play-test: Chuck could not find
+  the HoloNet relay or the three travellers; the vendors (2.2, 2.3, 2.6, 2.7) all worked. Built the
+  **NPC placement toolkit** he asked for (`feature/lab-npc-placement`): the lab's `spawnMobile` wrapper now
+  records every spawn made from an `fb_*` file (via `debug.getinfo` on the caller chain, so stock templates
+  such as the ambient patrons count too) with its spawn position; `placement[:filter]` spawns a probe
+  object 3 m away in 8 directions and asks `AiAgent:checkLineOfSight` (a binding that already existed),
+  compares z with the terrain outdoors and measures drift from the spawn spot (walker files exempt);
+  `findNpc`, `gotoNpc` (teleports a character 2 m in front of the NPC, same cell, facing it) and
+  `waypointTo` (datapad waypoint via `PlayerObject:addWaypoint`). `checkPlacement` runs it in `runAll`
+  (boxed-in = ≤1/8, underground/floating = >3 m fail). Findings on the live world: the Restuss (Rori)
+  FB-21 droid sat at world (29, 0) 84 m underground because its `cellID` 4635789 does not exist (stock
+  `rori_restuss.lua` puts the medic trainers in 4635728 — fixed in the spawn table and the travel menu);
+  the starport travellers had wandered 20–30 m (stock commoner AI) — now `AI_STATIC` like the cantina
+  entertainers, seats moved onto the plaza; the starport relay at (3540, −4816) measured 8/8 clear yet
+  no player found it behind the vendor-row plinth — moved to (3530, −4809). Lesson: the server's
+  collision knows buildings, not every decorative world mesh, so the audit is a floor, not a proof;
+  `gotoNpc` + eyes is the last step for any new NPC. Gotcha: `goto` is a Lua keyword (hence `gotoNpc`);
+  the `lab` scenario helper only passes `INFO`/`ERROR` lines, so verdicts go on the INFO line.
+  **Crash and rescue:** the first `gotoNpc` call segfaulted the server — `SceneObject:faceObject(obj,
+  notifyClient)` takes two arguments and the binding reads them from the top of the stack, so a
+  one-argument call hands it a null target (the Lua bindings do not validate; a wrong arity is a
+  crash, not an error). gdb's SIGSEGV catchpoint froze the process with Chuck in game. Rescue that
+  worked instead of a kill: in the tmux pane `frame 1` (the void `faceObject` implementation, nothing
+  locked yet), `return`, `y`, `continue` — the server carried on, the Lua call even returned ok, and a
+  clean `shutdown` followed; Chuck's client had timed out in the 90 s freeze. `swg status` now reports
+  "HALTED IN GDB" (process state `t`), `swg stop` kills such a process from gdb instead of typing
+  `shutdown` into a dead console, and both copy `bin/gdb.log` to `~/.swg-lab/crashes/`. `swg stop`'s
+  crash-marker check made the next `test all` stop after the clean shutdown — intended; archive the
+  log and rerun. Second pass of the audit (after the restart, now with `src=` populated): Mos Eisley
+  cantina seat 3 at cell-local (−1.0, 12.6) was 0/8 for every patron that sat there — inside the wall;
+  three probe patrons (`spawnNpcAt:patron:tatooine:x:y:1082877:-0.9` + `placement:<oid>`) found
+  (16, 10) clear 8/8 and the seat moved there. Lua-state lesson again: seat churn and relay respawns run
+  on worker threads, whose copy of `FbLabTests.spawns` the console never sees, so `liveSpawns` also asks
+  the modules' quest-status lookups (`FbAmbientLife:seatMobile`, `FbHoloNet:relay`) — add a provider
+  there for any module that respawns after `start()`. `placement:<oid>` audits any object, recorded or
+  not. Lab probes carry `src="lab"`, are skipped by the `spawned` check and forgotten by `destroyObject`.
+  Remaining WARNs (3/8 in the weapon-shop and droid-shop cells, two FB-21 droids in tight medcenters,
+  Tamsin Rook with her back to the plinth) are tight rooms, not bugs; Chuck used all of them. The merge
+  gate then failed three `news_posted` checks although the lines were in the pool: a day of test runs
+  had grown the galaxy news to 66 dated entries (every convoy/storm/invasion posts under an
+  `os.time()` key, one-week TTL) — bad for players (patrons repeat sixty stale headlines) and heavy for
+  the console. `FbGalaxyChatter.addNews` now refreshes an entry whose text is already there, drops
+  expired keys and keeps only the newest `maxNews = 8`; the scenario `lab` helper retries once when the
+  `result=` line never arrived (the console runs commands on the main thread, so a delta save or a busy
+  world can push the reply past the 8 s capture window). Tests: gtest `FbTreTest` (first in list, lab table parses
   with first/middle/last keys, stock `jedi_spam` still resolves), Lua `checkTreStrings` through
   `getStringId`, oracle `stringId:<file>:<key>`. Lesson: gtest `<<` cannot print engine3 `String`;
   use `.toCharArray()`. Two lab fixes found by the full cycle: (1) `claude-player` hit the galaxy's
