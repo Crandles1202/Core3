@@ -35,9 +35,10 @@
   <h1>Final Boss Site Planner</h1>
   <h2>Area</h2>
   <label>Planet</label>
-  <select id="planet"><option>tatooine</option><option>naboo</option><option>corellia</option><option>talus</option><option>rori</option><option>dantooine</option><option>lok</option><option>yavin4</option><option>endor</option><option>dathomir</option></select>
-  <label>City / point of interest / shuttle</label>
-  <select id="placeSel"><option value="">— pick a place —</option></select>
+  <input type="hidden" id="planet" value="tatooine">
+  <div id="planets" style="display:flex; flex-wrap:wrap; gap:4px;"></div>
+  <label>City / point of interest / shuttle <small>(scroll; click to load)</small></label>
+  <select id="placeSel" size="9"></select>
   <div class="row"><div><label>Centre x</label><input id="cx" type="number" value="3520"></div><div><label>Centre y</label><input id="cy" type="number" value="-4810"></div><div><label>Radius m</label><input id="radius" type="number" value="250"></div></div>
   <button id="load" class="primary">Load area</button>
   <button id="live">Overlay live NPCs (needs the server)</button>
@@ -543,8 +544,13 @@ $("load").onclick = loadArea;
 // buttons keep keyboard focus after a click, so a later Enter would re-fire them: drop it
 document.addEventListener("click", e => { if (e.target.tagName === "BUTTON") e.target.blur(); });
 for (const id of ["cx", "cy", "radius"]) $(id).addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); loadArea(); } });
+const PLANETS = ["tatooine", "naboo", "corellia", "talus", "rori", "dantooine", "lok", "yavin4", "endor", "dathomir"];
+function renderPlanets() {
+  const box = $("planets"); box.innerHTML = "";
+  for (const pl of PLANETS) { const b = document.createElement("button"); b.textContent = pl; b.style.width = "auto"; b.style.margin = "0"; b.style.padding = "3px 7px"; if (pl === $("planet").value) b.className = "primary"; b.onclick = () => { $("planet").value = pl; renderPlanets(); fillShells(); loadPlaces(true); }; box.appendChild(b); }
+}
 async function loadPlaces(jumpToFirstCity) {
-  const sel = $("placeSel"); sel.innerHTML = "<option value=''>— pick a place —</option>";
+  const sel = $("placeSel"); sel.innerHTML = "";
   try {
     const pl = await api("/api/places?planet=" + encodeURIComponent($("planet").value));
     if (jumpToFirstCity && pl.length) { const c = pl.find(p => p.kind === "city") || pl[0]; $("cx").value = c.x; $("cy").value = c.y; $("radius").value = c.r; }
@@ -555,9 +561,10 @@ async function loadPlaces(jumpToFirstCity) {
       document.getElementById("pg_" + p.kind).appendChild(o);
     }
     if (jumpToFirstCity && pl.length) { const c = pl.find(p => p.kind === "city") || pl[0]; sel.value = JSON.stringify([c.x, c.y, c.r]); await loadArea(); }
+    else { const here = pl.find(p => Math.hypot(p.x - +$("cx").value, p.y - +$("cy").value) < 150); if (here) sel.value = JSON.stringify([here.x, here.y, here.r]); }
   } catch (e) { status(/not found/i.test(e.message) ? "The planner server is older than the page: restart tools/siteplanner serve" : "No places for this planet: " + e.message, "warn"); }
 }
-$("planet").onchange = () => { fillShells(); loadPlaces(true); };
+renderPlanets();
 $("placeSel").onchange = () => { if (!$("placeSel").value) return; const [x, y, r] = JSON.parse($("placeSel").value); $("cx").value = x; $("cy").value = y; $("radius").value = r; loadArea(); };
 $("allPlanets").onchange = fillShells;
 for (const id of ["L_furniture", "L_usables", "L_objects", "L_stock", "L_live", "L_labels"]) $(id).onchange = draw;
@@ -593,7 +600,7 @@ $("sites").onchange = () => {
   const s = S.sites.find(x => x.file === $("sites").value); if (!s) return;
   const sh = S.shells.find(x => x.server === s.template || x.template === s.template); if (!sh) { status("Shell of that site is not in the catalogue: " + s.template, "bad"); return; }
   S.draft = { shell: sh, x: s.x, y: s.y, heading: s.heading, tenants: s.tenants.map(t => ({ ...t })), outside: s.outside.map(o => ({ ...o })), name: s.name };
-  S.loadedFile = s.file; $("name").value = s.name; $("ddx").value = s.door.dx; $("ddy").value = s.door.dy; $("planet").value = s.planet;
+  S.loadedFile = s.file; $("name").value = s.name; $("ddx").value = s.door.dx; $("ddy").value = s.door.dy; $("planet").value = s.planet; renderPlanets();
   S.view.cx = s.x; S.view.cy = s.y; S.mode = "map"; refresh(); status(`Loaded ${s.name}; Save overwrites its file.`, "ok");
 };
 
