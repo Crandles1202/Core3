@@ -10,6 +10,9 @@ tools/tre), so it answers from the same files the client renders:
                                                   (those ids are what city screenplays spawn into)
   lotsurvey footprint TEMPLATE                    a building template's exterior floor extents (local x/z)
   lotsurvey rooms TEMPLATE                        each cell: name, cell-local x/y range, floor height z
+  lotsurvey furniture TEMPLATE [ROOM]             the client-only furniture inside (interior layout .ilf)
+  lotsurvey check TEMPLATE --lua SCREENPLAY | --spot ROOM,X,Y …
+                                                  are these standing spots clear of the furniture?
   lotsurvey lots PLANET X Y [RADIUS] [--template T | --width W --back B --front F]
                                                   free lots nearest the point for a building of that size,
                                                   clear of every stock footprint; prints origin + heading
@@ -21,6 +24,9 @@ Formats (from the server's own readers, see docs/dev-notes.md 2026-10-18):
   .pob portal layout: strings only (per-room floor .flr names, in cell order; r0 = exterior).
   .flr floor mesh: VERT chunk (count, count x (x, height, z) floats). Cell-local server coordinates are
        (x, floor height, z) -> Lua spawn (x, z=height, y=meshZ).
+  .ilf interior layout (client only — the server never sees this furniture): NODE chunks, each a prop
+       template C string, a cell-name C string and a 3x4 matrix (row-major; translation x, height, z).
+  prop boxes: template .iff -> .apt -> .lod/.msh, first BOX chunk (6 floats: two corners).
 """
 import argparse, importlib.util, math, os, re, struct, sys
 
@@ -174,6 +180,135 @@ def guessed_radius(name):
     return 22.0   # shells without a portal layout (filler buildings)
 
 
+# ---------------------------------------------------------------- furniture (interior layouts)
+
+APPEARANCE_RE = re.compile(rb"appearance/[\x21-\x7e]+?\.(?:apt|lod|msh|sat|cmp)")
+
+
+def ilf_of(vfs, template):
+    """The building's interior layout file (client-only furniture), or None."""
+    for s in iff_strings(vfs.read(template)):
+        m = re.search(r"interiorlayout/[\x21-\x7e]+?\.ilf", s)
+        if m:
+            return m.group(0)
+    return None
+
+
+def read_ilf(vfs, ilf):
+    """[(prop template, cell name, x, height, z, yaw degrees)] — NODE chunks: two C strings + a 3x4 matrix."""
+    d = vfs.read(ilf)
+    out, pos = [], 0
+    while pos < len(d):
+        tag = d[pos:pos + 4]
+        size = struct.unpack(">I", d[pos + 4:pos + 8])[0]
+        if tag == b"FORM":
+            pos += 12
+            continue
+        if tag == b"NODE":
+            p = d[pos + 8:pos + 8 + size]
+            a = p.index(b"\0")
+            b = p.index(b"\0", a + 1)
+            m = struct.unpack("<12f", p[b + 1:b + 49])
+            out.append(dict(template=p[:a].decode(), cell=p[a + 1:b].decode(), x=m[3], h=m[7], z=m[11],
+                            yaw=math.degrees(math.atan2(m[2], m[0])) % 360))
+        pos += 8 + size
+    return out
+
+
+def prop_box(vfs, template, cache={}):
+    """A prop's local bounding box (x0, y0, z0, x1, y1, z1) from the BOX chunk of its mesh/lod; None if not found."""
+    if template in cache:
+        return cache[template]
+    res, seen, queue = None, set(), [template.encode()]
+    while queue and res is None:
+        f = queue.pop(0)
+        if f in seen:
+            continue
+        seen.add(f)
+        try:
+            d = vfs.read(f.decode())
+        except FileNotFoundError:
+            continue
+        i = d.find(b"BOX ")
+        if i >= 0 and not f.endswith(b".iff"):
+            v = struct.unpack("<6f", d[i + 8:i + 32])
+            res = (min(v[0], v[3]), min(v[1], v[4]), min(v[2], v[5]), max(v[0], v[3]), max(v[1], v[4]), max(v[2], v[5]))
+            break
+        queue.extend(APPEARANCE_RE.findall(d))
+    cache[template] = res
+    return res
+
+
+def prop_clearance(px, pz, prop, box):
+    """Horizontal distance from a point to a prop's (yaw-rotated) footprint box; 0 when inside."""
+    if box is None:
+        return math.hypot(px - prop["x"], pz - prop["z"]) - 0.5   # unknown shape: half a metre
+    a = math.radians(-prop["yaw"])
+    dx, dz = px - prop["x"], pz - prop["z"]
+    lx = dx * math.cos(a) - dz * math.sin(a)
+    lz = dx * math.sin(a) + dz * math.cos(a)
+    ox = max(box[0] - lx, 0, lx - box[3])
+    oz = max(box[2] - lz, 0, lz - box[5])
+    return math.hypot(ox, oz)
+
+
+def standing_props(vfs, props):
+    """Furniture a person can collide with: on the floor, taller than a knee, not rugs/paintings/wall gear."""
+    out = []
+    for pr in props:
+        name = pr["template"].rsplit("/", 1)[-1]
+        if any(k in name for k in ("rug_", "painting", "terminal_wall", "lamp_desk", "lamp_tbl", "item_")):
+            continue
+        box = prop_box(vfs, pr["template"])
+        if box is not None and (box[4] - box[1]) < 0.35:
+            continue
+        out.append((pr, box))
+    return out
+
+
+def cmd_furniture(a):
+    vfs = Vfs()
+    ilf = ilf_of(vfs, a.template)
+    if ilf is None:
+        print("no interior layout in %s" % a.template)
+        return 1
+    print("interior layout %s" % ilf)
+    for pr in sorted(read_ilf(vfs, ilf), key=lambda p: (p["cell"], p["template"])):
+        if a.room and pr["cell"] != a.room:
+            continue
+        box = prop_box(vfs, pr["template"])
+        ext = "box x %.1f..%.1f z %.1f..%.1f h %.2f" % (box[0], box[3], box[2], box[5], box[4] - box[1]) if box else "(no box)"
+        print("%-9s x=%6.2f y=%6.2f floor=%.2f yaw=%3.0f  %-45s %s" % (pr["cell"], pr["x"], pr["z"], pr["h"], pr["yaw"], pr["template"].rsplit("/", 1)[-1], ext))
+    return 0
+
+
+def cmd_check(a):
+    """Spots (room, x, y) against the furniture: inside a piece = fail, within --margin of one = warn."""
+    vfs = Vfs()
+    ilf = ilf_of(vfs, a.template)
+    props = standing_props(vfs, read_ilf(vfs, ilf)) if ilf else []
+    spots = [tuple(s.split(",")) for s in a.spot]
+    if a.lua:
+        text = open(a.lua, encoding="utf-8").read()
+        for m in re.finditer(r'template\s*=\s*"([^"]+)".*?room\s*=\s*"([^"]+)".*?\bx\s*=\s*(-?[\d.]+).*?\by\s*=\s*(-?[\d.]+)', text):
+            spots.append((m.group(2), m.group(3), m.group(4), m.group(1)))
+    fails = warns = 0
+    for sp in spots:
+        room, x, y = sp[0], float(sp[1]), float(sp[2])
+        label = sp[3] if len(sp) > 3 else "%s,%s,%s" % (room, sp[1], sp[2])
+        near = sorted(((prop_clearance(x, y, pr, box), pr) for pr, box in props if pr["cell"] == room), key=lambda t: t[0])
+        if not near:
+            print("ok    %-28s %-9s x=%6.1f y=%6.1f  (no furniture in the room)" % (label, room, x, y))
+            continue
+        dist, pr = near[0]
+        verdict = "FAIL" if dist <= a.body else ("warn" if dist < a.margin else "ok")
+        fails += verdict == "FAIL"
+        warns += verdict == "warn"
+        print("%-5s %-28s %-9s x=%6.1f y=%6.1f  nearest %.2f m: %s at %.1f,%.1f" % (verdict, label, room, x, y, dist, pr["template"].rsplit("/", 1)[-1], pr["x"], pr["z"]))
+    print("summary spots=%d fail=%d warn=%d" % (len(spots), fails, warns))
+    return 1 if fails else 0
+
+
 # ---------------------------------------------------------------- commands
 
 def cmd_near(a):
@@ -302,6 +437,9 @@ def main(argv):
     p = sub.add_parser("cells"); p.add_argument("planet"); p.add_argument("x", type=float); p.add_argument("y", type=float); p.set_defaults(fn=cmd_cells)
     p = sub.add_parser("footprint"); p.add_argument("template"); p.set_defaults(fn=cmd_footprint)
     p = sub.add_parser("rooms"); p.add_argument("template"); p.set_defaults(fn=cmd_rooms)
+    p = sub.add_parser("furniture"); p.add_argument("template"); p.add_argument("room", nargs="?"); p.set_defaults(fn=cmd_furniture)
+    p = sub.add_parser("check"); p.add_argument("template"); p.add_argument("--spot", action="append", default=[], help="ROOM,X,Y (repeatable)"); p.add_argument("--lua", help="screenplay whose tenant table lists room/x/y")
+    p.add_argument("--body", type=float, default=0.35, help="NPC body radius: inside a piece when closer than this"); p.add_argument("--margin", type=float, default=0.8); p.set_defaults(fn=cmd_check)
     p = sub.add_parser("lots"); p.add_argument("planet"); p.add_argument("x", type=float); p.add_argument("y", type=float); p.add_argument("radius", type=float, nargs="?", default=220)
     p.add_argument("--template"); p.add_argument("--width", type=float, default=41); p.add_argument("--back", type=float, default=20.5); p.add_argument("--front", type=float, default=34)
     p.add_argument("--gap", type=float, default=3); p.add_argument("--step", type=int, default=4); p.add_argument("--count", type=int, default=10); p.set_defaults(fn=cmd_lots)

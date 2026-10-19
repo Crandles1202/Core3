@@ -32,12 +32,13 @@ FbTradeHall = ScreenPlay:new {
 	tenants = {
 		{ template = "fb_armory_droid",        label = "FB-72, weapons",            room = "mainroom", x = -3.7, z = 1.13, y = -6.0,  dir = 11  },
 		{ template = "fb_armor_droid",         label = "FB-44, armour",             room = "mainroom", x = 3.7,  z = 1.13, y = -6.0,  dir = 349 },
-		{ template = "fb_stim_dealer",         label = "Vex Renn, medical supplies", room = "meetinga", x = 12.0, z = 1.13, y = 2.0,   dir = 270 },
-		{ template = "fb_pet_vet",             label = "Doctor Yan'lara, pet medicine", room = "meetingb", x = -12.0, z = 1.13, y = 2.0, dir = 90 },
+		-- meetinga/b are dining rooms: a long table runs x≈±12, y 1..6 with chairs either side; stand in front of it
+		{ template = "fb_stim_dealer",         label = "Vex Renn, medical supplies", room = "meetinga", x = 12.0, z = 1.13, y = -1.5,  dir = 0 },
+		{ template = "fb_pet_vet",             label = "Doctor Yan'lara, pet medicine", room = "meetingb", x = -12.0, z = 1.13, y = -1.5, dir = 0 },
 		{ template = "fb_parts_dealer",        label = "Tamsin Rook, crafting parts", room = "meetingc", x = 9.0,  z = 1.13, y = -11.0, dir = 0 },
 		{ template = "fb_schematic_broker",    label = "Dannik Vosa, schematics",   room = "meetingc", x = 13.0, z = 1.13, y = -11.0, dir = 0   },
-		{ template = "fb_smuggler_goods",      label = "Greelo, odds and ends",     room = "meetingd", x = 3.3,  z = 1.13, y = -9.6,  dir = 249 },
-		{ template = "fb_combat_quartermaster", label = "Quartermaster Sehrev, combat supply", room = "meetingd", x = -3.0, z = 1.13, y = -10.0, dir = 111 },
+		{ template = "fb_smuggler_goods",      label = "Greelo, odds and ends",     room = "meetingd", x = 2.0,  z = 1.13, y = -13.0, dir = 0 },   -- the stock "mercenary" spot (3.3, -9.6) is inside the bar counter
+		{ template = "fb_combat_quartermaster", label = "Quartermaster Sehrev, combat supply", room = "meetingd", x = -1.5, z = 1.13, y = -10.5, dir = 111 },   -- coffee table + sofa chairs sit at x≈-4
 		{ template = "fb_pet_dealer",          label = "Handler Toobu, pets",       room = "meetinge", x = -11.0, z = 1.13, y = -11.0, dir = 0  },
 		{ template = "fb_property_agent",      label = "Property Agent Garlen, housing", room = "meetinge", x = -8.0, z = 1.13, y = -11.5, dir = 90 },
 		{ template = "fb_droid_dispenser",     label = "FB-3D, droids",             room = "halla",    x = 10.6, z = 2.5,  y = 9.5,   dir = 180 },

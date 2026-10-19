@@ -193,7 +193,15 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   persistence 0, so it is respawned every boot like any stock prop; cell ids change per boot, so the
   screenplay finds rooms by `getCellName`). The client already owns every stock mesh and portal
   layout, so no TRE change was needed. Picked `guild_commerce_tatooine_style_01` (9 cells: foyer,
-  halla/b, mainroom, meetinga–e). **Lot survey tooling — now `tools/lotsurvey` (near / cells / footprint / rooms / lots, reads the archives through `tools/tre`; the hall's lot search takes 7 s):**
+  halla/b, mainroom, meetinga–e). Chuck's first walk-through found Doctor Yan'lara standing in a dining
+  table: **furniture is client-only** — `interiorlayout/shared_guild_commerce_style_tatooine.ilf` (NODE
+  chunks: prop template, cell name, 3×4 matrix) places 201 props the server never loads, so LOS probes and
+  the placement audit cannot see them. `lotsurvey furniture` lists them with bounding boxes (template
+  → `.apt` → `.lod`/`.msh` BOX chunk; items on tables, rugs, paintings and wall gear ignored) and
+  `lotsurvey check --lua <screenplay>` grades every tenant spot (inside a box = FAIL, < 0.8 m = warn); it
+  found Vex Renn in the mirrored table and Greelo inside the bar counter — at the exact point the stock
+  city file spawns its mercenary, so stock spots are not proof either. The `trade-hall` scenario runs the
+  check. **Lot survey tooling — now `tools/lotsurvey` (near / cells / footprint / rooms / lots, reads the archives through `tools/tre`; the hall's lot search takes 7 s):**
   a `.ws` reader (WSNP → NODS → NODE/DATA: ids, quaternion, position, little-endian payload, big-endian
   IFF sizes; OTNL name table) listed every building near the square; footprints came from each
   template's `.pob` → `r0 … collision_floor.flr` VERT extents — the starport's apron is x −89..81,

@@ -1794,3 +1794,17 @@ function FbLabTests:tradeHall()
 	return st
 end
 
+-- moveNpc:<filter>:<x>:<z>:<y> → move the first matching NPC to cell-local (world when outdoors) coordinates
+-- inside the cell it is in now; re-homes it so it does not leash back. For trying spots without a restart.
+function FbLabTests:moveNpc(filter, x, z, y)
+	local e = FbLabTests.liveSpawns(filter)[1]
+	if e == nil then print("ERROR no live spawn matches " .. tostring(filter)); return "none" end
+	local p = e.pObj
+	x, z, y = tonumber(x), tonumber(z), tonumber(y)
+	local cell = SceneObject(p):getParentID()
+	SceneObject(p):switchZone(SceneObject(p):getZoneName(), x, z, y, cell)
+	if SceneObject(p):isAiAgent() then AiAgent(p):setHomeLocation(x, z, y, cell ~= 0 and getSceneObject(cell) or nil) end
+	print(string.format("INFO moveNpc %s -> x=%.1f z=%.2f y=%.1f cell=%d", e.name:gsub(" ", "_"), x, z, y, cell))
+	return "ok"
+end
+
