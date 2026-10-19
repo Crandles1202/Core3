@@ -425,7 +425,7 @@ canvas.addEventListener("mousedown", e => {
     if (hit) { S.sel = hit; down.person = hit; draw(); return; }
     if (S.mode === "map") {
       const [wx, wy] = s2w(sx, sy);
-      // the entrance arrow's tip is the rotate handle
+      // the tip of the entrance arrow is the rotate handle
       const [tx, ty] = toWorld(d.x, d.y, d.heading, 0, d.shell.fp.y1 + 3); const [tsx, tsy] = w2s(tx, ty);
       if (Math.hypot(tsx - sx, tsy - sy) < 12) { down.rotate = true; return; }
       if (distPointPoly(wx, wy, rectPoly(d.x, d.y, d.heading, d.shell.fp)) === 0) { down.building = { x: d.x, y: d.y, wx, wy }; return; }
