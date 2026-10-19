@@ -52,7 +52,7 @@
   <div id="floorsBox" style="display:none"><h2>Floors</h2><div id="floors" style="display:flex; flex-direction:column; gap:4px;"></div><small>Only this building's levels are shown; pick one to work on a single floor.</small></div>
 
   <h2>Building</h2>
-  <label>Shell</label><select id="shell"></select>
+  <label>Shell <small>(click to pick)</small></label><select id="shell" size="7"></select>
   <label><input type="checkbox" id="allPlanets" style="width:auto"> shells from every planet</label>
   <button id="place" class="primary">Place at the centre</button>
   <div class="row"><button id="rotL">Rotate −15</button><button id="rotR">Rotate +15</button></div>
@@ -60,14 +60,14 @@
   <button id="inside">Inside view ⇄ Map</button>
 
   <h2>People</h2>
-  <label>NPC</label><select id="npc"></select>
+  <label>NPC</label><select id="npc" size="6"></select>
   <label>Tool</label>
-  <select id="tool"><option value="tenant">Click inside a room: add tenant</option><option value="outside">Click on the map: add outdoor NPC</option><option value="none">Select / drag only</option></select>
+  <select id="tool" size="3"><option value="tenant" selected>Click inside a room: add tenant</option><option value="outside">Click on the map: add outdoor NPC</option><option value="none">Select / drag only</option></select>
   <small>Selected person: [ and ] turn by 15°, Delete removes. Arrows nudge the building (Shift = 5 m).</small>
 
   <h2>Site</h2>
   <label>Name (file)</label><input id="name" placeholder="mos_eisley_weapon_shop">
-  <label>Load an existing site</label><select id="sites"><option value="">—</option></select>
+  <label>Load an existing site</label><select id="sites" size="3"><option value="">—</option></select>
   <div class="row"><div><label>Door dx</label><input id="ddx" type="number" value="0"></div><div><label>Door dy</label><input id="ddy" type="number" value="10"></div></div>
   <button id="export">Build the site file</button>
   <button id="save" class="primary">Save to repo (tasks/sites)</button>
@@ -526,6 +526,7 @@ function refresh() {
 function fillShells() {
   const sel = $("shell"); sel.innerHTML = ""; const planet = $("planet").value, all = $("allPlanets").checked;
   for (const s of S.shells) { if (!all && s.planet !== planet) continue; const o = document.createElement("option"); o.value = s.template; o.textContent = `${s.short}  (${s.rooms.length} rooms, ${(s.fp.x1 - s.fp.x0).toFixed(0)}×${(s.fp.y1 - s.fp.y0).toFixed(0)} m)`; sel.appendChild(o); }
+  if (sel.options.length && sel.selectedIndex < 0) sel.selectedIndex = 0;
 }
 
 // ---------------------------------------------------------------- data
@@ -605,7 +606,7 @@ $("sites").onchange = () => {
 };
 
 (async () => {
-  try { S.shells = await api("/api/shells"); S.npcs = await api("/api/npcs"); const sel = $("npc"); for (const n of S.npcs) { const o = document.createElement("option"); o.value = n.template; o.textContent = `${n.label}  (${n.template})`; sel.appendChild(o); } }
+  try { S.shells = await api("/api/shells"); S.npcs = await api("/api/npcs"); const sel = $("npc"); for (const n of S.npcs) { const o = document.createElement("option"); o.value = n.template; o.textContent = `${n.label}  (${n.template})`; sel.appendChild(o); } if (sel.options.length) sel.selectedIndex = 0; }
   catch (e) { status("Could not load the catalogue: " + e.message, "bad"); }
   window.addEventListener("resize", resize); resize(); await loadPlaces(); await loadArea();
 })();
