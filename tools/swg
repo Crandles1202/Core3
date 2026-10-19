@@ -429,6 +429,13 @@ test_bot() {
 	require_running
 	[ -x "$BIN/core3client" ] || die "$BIN/core3client missing — build with: CMAKE_ARGS=-DENABLE_BUILD_CLIENT=ON ~/bin/build"
 	local user=${SWG_BOT_USER:-claude-player}
+	# swg test bot [--user <account>] [--wait N]: a scenario that needs an admin bot runs it as claude-admin
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--user) user=$2; shift 2 ;;
+			*) break ;;
+		esac
+	done
 	local passfile="$LABDIR/$user.pass"
 	[ -r "$passfile" ] || die "no credentials at $passfile (swg account create $user 0)"
 	local wait=${SWG_BOT_WAIT:-30}

@@ -54,12 +54,67 @@ if not FbLabTests._spawnMobileWrapped2 then
 				list[#list + 1] = { oid = oid, zone = zoneName, cell = cellID or 0, x = x, y = y, z = z, template = template, src = src }
 			end
 			FbLabTests.spawns[template] = list
+			FbLabTests.registryAdd({ oid = oid, zone = zoneName, cell = cellID or 0, x = x, y = y, z = z, template = template, src = src })
 		end
 
 		return pMobile
 	end
 
 	FbLabTests._spawnMobileWrapped2 = true
+end
+
+-- ---------------------------------------------------------------- shared spawn registry
+-- Every Lua state has its own FbLabTests.spawns, so a spawn made on a worker thread (seat churn, a
+-- scenario's probe, the Trade Hall tenants spawned at start on another state) is invisible to the
+-- console and to the Lab Remote's windows. The quest-status copy is the shared truth: one key per
+-- template holding "oid|zone|cell|x|y|z|src;" records, plus an index of templates. Stale records (the
+-- object is gone, or from a previous boot) are dropped whenever they are read.
+local REG_INDEX = "FbLabSpawns.templates"
+local function regKey(template) return "FbLabSpawns." .. template end
+
+function FbLabTests.registryAdd(s)
+	local rec = string.format("%d|%s|%d|%s|%s|%s|%s;", s.oid, s.zone or "", s.cell or 0, tostring(s.x or ""), tostring(s.y or ""), tostring(s.z or ""), s.src or "")
+	local cur = getQuestStatus(regKey(s.template)) or ""
+	if not cur:find("^" .. s.oid .. "|") and not cur:find(";" .. s.oid .. "|", 1, true) then
+		setQuestStatus(regKey(s.template), cur .. rec)
+	end
+	local idx = getQuestStatus(REG_INDEX) or ","
+	if not idx:find("," .. s.template .. ",", 1, true) then setQuestStatus(REG_INDEX, idx .. s.template .. ",") end
+end
+
+function FbLabTests.registryRemove(oid)
+	for template in (getQuestStatus(REG_INDEX) or ""):gmatch("[^,]+") do
+		local cur = getQuestStatus(regKey(template)) or ""
+		local kept = {}
+		for rec in cur:gmatch("[^;]+") do
+			if tonumber(rec:match("^(%d+)|")) ~= tonumber(oid) then kept[#kept + 1] = rec .. ";" end
+		end
+		local joined = table.concat(kept)
+		if joined ~= cur then setQuestStatus(regKey(template), joined) end
+	end
+end
+
+-- Records whose object is still in the world; rewrites a template's key when it held stale ones.
+function FbLabTests.registryLive()
+	local out = {}
+	for template in (getQuestStatus(REG_INDEX) or ""):gmatch("[^,]+") do
+		local cur = getQuestStatus(regKey(template)) or ""
+		local kept = {}
+		for rec in cur:gmatch("[^;]+") do
+			local oid, zone, cell, x, y, z, src = rec:match("^(%d+)|([^|]*)|(%d+)|([^|]*)|([^|]*)|([^|]*)|([^|]*)$")
+			if oid ~= nil then
+				local pObj = getSceneObject(tonumber(oid))
+				if pObj ~= nil and SceneObject(pObj):getZoneName() ~= "" then
+					kept[#kept + 1] = rec .. ";"
+					out[#out + 1] = { oid = tonumber(oid), zone = zone, cell = tonumber(cell), x = tonumber(x), y = tonumber(y), z = tonumber(z),
+						template = template, src = src ~= "" and src or nil }
+				end
+			end
+		end
+		local joined = table.concat(kept)
+		if joined ~= cur then setQuestStatus(regKey(template), joined) end
+	end
+	return out
 end
 
 -- Spawns these files make walk by design (patrol legs, convoys, columns, raiding parties, story camps
@@ -302,10 +357,14 @@ function FbLabTests.checkNpc(npc)
 	end
 
 	-- live spawns recorded by the spawnMobile wrapper
-	-- lab probes (spawnNpcAt) are not the screenplay's spawns
-	local spawns = {}
+	-- lab probes (spawnNpcAt) are not the screenplay's spawns; respawns made on other Lua states (the
+	-- merchant's moves, seat churn) are only in the shared registry, so merge its live records in
+	local spawns, seen = {}, {}
 	for _, s in ipairs(FbLabTests.spawns[npc.template] or {}) do
-		if s.src ~= "lab" then spawns[#spawns + 1] = s end
+		if s.src ~= "lab" then spawns[#spawns + 1] = s; seen[s.oid] = true end
+	end
+	for _, s in ipairs(FbLabTests.registryLive()) do
+		if s.template == npc.template and s.src ~= "lab" and not seen[s.oid] then spawns[#spawns + 1] = s; seen[s.oid] = true end
 	end
 	if #spawns == 0 then
 		check(p .. "spawned", false, "no spawnMobile calls recorded for this template (no screenplay spawns it, or fb_lab_tests.lua loaded after start())")
@@ -663,6 +722,20 @@ function FbLabTests.checkTradeHall()
 	check("tradehall.keeper_on_square", #FbLabTests.liveSpawns("fb_trade_hall_keeper") >= 1)
 end
 
+-- Phase 2.12: the Lab Remote's screenplay, menu component and item template are wired; nobody but an
+-- admin is allowed (no player object = not allowed), and the shared spawn registry sees spawns.
+function FbLabTests.checkLabRemote()
+	check("labremote.screenplay_loaded", FbLabRemote ~= nil)
+	check("labremote.menu_component", FbLabRemoteMenuComponent ~= nil and FbLabRemoteMenuComponent.handleObjectMenuSelect ~= nil)
+	check("labremote.template_included", fileContains("scripts/custom_scripts/object/serverobjects.lua", "fb_lab_remote/fb_lab_remote.lua"))
+	check("labremote.denies_non_players", FbLabRemote ~= nil and FbLabRemote:allowed(nil) == false)
+	check("labremote.shared_registry_populated", #FbLabTests.registryLive() > 0, "quest-status spawn registry is empty")
+	if FbLabRemote ~= nil then
+		local lines = FbLabTests.capture("tradeHall")
+		check("labremote.capture_works", #lines > 0 and lines[1]:find("INFO tradehall", 1, true) ~= nil, tostring(lines[1]))
+	end
+end
+
 -- ---------------------------------------------------------------- entry points
 
 -- runLuaFunction passes the FbLabTests table as the first argument, then the ':'-separated args.
@@ -695,6 +768,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkTerritory()
 		FbLabTests.checkTreStrings()
 		FbLabTests.checkTradeHall()
+		FbLabTests.checkLabRemote()
 		FbLabTests.checkPlacement()
 	end)
 	if not ok then
@@ -940,6 +1014,7 @@ function FbLabTests:destroyObject(oid)
 			if list[i].oid == tonumber(oid) then table.remove(list, i) end
 		end
 	end
+	FbLabTests.registryRemove(oid)
 	print("INFO destroyed oid=" .. tostring(oid))
 	return "ok"
 end
@@ -1538,6 +1613,7 @@ function FbLabTests.liveSpawns(filter)
 		for _, s in ipairs(list) do all[#all + 1] = s; s.template = s.template or template end
 	end
 	for _, s in ipairs(providedSpawns()) do all[#all + 1] = s end
+	for _, s in ipairs(FbLabTests.registryLive()) do all[#all + 1] = s end
 	for _, s in ipairs(all) do
 		local template = s.template
 		if not seen[s.oid] then
@@ -1713,6 +1789,7 @@ function FbLabTests:spawnNpcAt(template, planet, x, y, cell, z)
 	if list[#list] == nil or list[#list].oid ~= oid then
 		list[#list + 1] = { oid = oid, zone = planet, cell = cell, x = x, y = y, z = z, template = template, src = "lab" }
 		FbLabTests.spawns[template] = list
+		FbLabTests.registryAdd(list[#list])
 	end
 	print(string.format("INFO spawnNpcAt oid=%d template=%s planet=%s x=%.1f y=%.1f z=%.1f cell=%d", oid, template, planet, x, y, z, cell))
 	return tostring(oid)
@@ -1806,5 +1883,33 @@ function FbLabTests:moveNpc(filter, x, z, y)
 	if SceneObject(p):isAiAgent() then AiAgent(p):setHomeLocation(x, z, y, cell ~= 0 and getSceneObject(cell) or nil) end
 	print(string.format("INFO moveNpc %s -> x=%.1f z=%.2f y=%.1f cell=%d", e.name:gsub(" ", "_"), x, z, y, cell))
 	return "ok"
+end
+
+-- capture(fnName, ...) → the lines an oracle printed (and its return value); the Lab Remote shows them
+-- in windows. The oracles report through the global print, which is swapped for the call.
+function FbLabTests.capture(fnName, ...)
+	local lines = {}
+	local fn = FbLabTests[fnName]
+	if fn == nil then return { "ERROR no oracle " .. tostring(fnName) }, nil end
+	local realPrint = print
+	print = function(...)
+		local parts = {}
+		for i = 1, select("#", ...) do parts[#parts + 1] = tostring(select(i, ...)) end
+		lines[#lines + 1] = table.concat(parts, " ")
+	end
+	local ok, res = pcall(fn, FbLabTests, ...)
+	print = realPrint
+	if not ok then lines[#lines + 1] = "ERROR " .. tostring(res) end
+	return lines, res
+end
+
+-- giveRemote:<char> → a Final Boss Lab Remote in the character's inventory (admins only; idempotent)
+function FbLabTests:giveRemote(charName)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	if FbLabRemote == nil then print("ERROR FbLabRemote not loaded"); return "none" end
+	local oid = FbLabRemote:give(pPlayer)
+	print(string.format("INFO giveRemote char=%s oid=%d allowed=%s", charName, oid, tostring(FbLabRemote:allowed(pPlayer))))
+	return tostring(oid)
 end
 
