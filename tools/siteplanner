@@ -10,10 +10,16 @@ tools/lotsurvey / tools/tre) and reads and writes the site files the server buil
 Endpoints (all JSON):
   GET  /api/area?planet=tatooine&x=3520&y=-4810&r=250   stock buildings (footprint, heading) and props around a point
   GET  /api/shells                                       the shell catalogue: footprint, rooms (floor polygons), furniture
+  GET  /api/places?planet=tatooine                       cities, points of interest and travel points with centre + radius
   GET  /api/sites                                        the repo's site files, parsed
   GET  /api/npcs                                         the Final Boss NPC templates with their display names
   GET  /api/live?filter=…                                live NPC positions from the running server (tools/swg), best effort
+  GET  /api/terrain?planet=&pts=x,y;x,y                   terrain heights from the running server (the lot report's slope check)
   POST /api/save  {name, lua, force}                     write screenplays/tasks/sites/<name>.lua
+  POST /api/preview {lua, template}                      spawn the draft in the running game (FbSites:preview), audit it
+  POST /api/preview/end                                   tear the preview down, put the saved site back
+  POST /api/check {lua, template}                        furniture check (offline) + placement audit of the spawned preview
+  POST /api/teleport {char, planet, x, y}                move an online character there (FbLabTests:travel)
 """
 import argparse, importlib.machinery, importlib.util, json, os, re, socket, struct, subprocess, sys, urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -76,6 +82,90 @@ def floor_triangles(vfs, path):
     return tris
 
 
+def object_kind(name):
+    """What a snapshot object is for the page: terminal | station | vendor | elevator | furniture | static | other."""
+    n = name.lower()
+    if "/terminal/" in n or "terminal_" in n:
+        return "elevator" if "elevator" in n else "terminal"
+    if "/crafting/station" in n:
+        return "station"
+    if "vendor" in n or "bazaar" in n:
+        return "vendor"
+    if "/furniture/" in n or "/frn_" in n:
+        return "furniture"
+    if "object/static" in n:
+        return "static"
+    return "other"
+
+
+# ---------------------------------------------------------------- child objects of a building type (server template)
+
+OBJECT_DIR = os.path.join(REPO, "MMOCoreORB", "bin", "scripts", "object")
+CHILD_RE = re.compile(r'\{\s*templateFile\s*=\s*"([^"]+)"\s*,\s*x\s*=\s*(-?[\d.]+)\s*,\s*z\s*=\s*(-?[\d.]+)\s*,\s*y\s*=\s*(-?[\d.]+)\s*,\s*ox\s*=\s*(-?[\d.]+)\s*,\s*oy\s*=\s*(-?[\d.]+)\s*,\s*oz\s*=\s*(-?[\d.]+)\s*,\s*ow\s*=\s*(-?[\d.]+)\s*,\s*cellid\s*=\s*(-?\d+)')
+
+
+def child_objects(server_template, cache={}):
+    """What the server spawns inside every instance of this building type (childObjects in its template
+    Lua): travel terminals, ticket collectors, elevators… [{template, short, kind, x, y, z, heading, cell}]
+    with x/y building-local (cell -1 = outside the cells, still building-local)."""
+    if server_template in cache:
+        return cache[server_template]
+    out = []
+    path = os.path.join(OBJECT_DIR, server_template.replace("object/", "", 1)[:-4] + ".lua")
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except OSError:
+        cache[server_template] = out
+        return out
+    import math
+    for m in CHILD_RE.finditer(text):
+        t = m.group(1)
+        ox, oy, oz, ow = (float(m.group(i)) for i in (5, 6, 7, 8))
+        out.append(dict(template=t, short=t.rsplit("/", 1)[-1].replace(".iff", ""), kind=object_kind(t), x=round(float(m.group(2)), 2), z=round(float(m.group(3)), 2),
+                        y=round(float(m.group(4)), 2), heading=round(math.degrees(2 * math.atan2(oy, ow)) % 360), cell=int(m.group(9))))
+    cache[server_template] = out
+    return out
+
+
+# ---------------------------------------------------------------- radar shapes (the game's own top-down outline)
+
+def radar_shape(vfs, template, cache={}):
+    """The RADR shape of a building's appearance: a flat indexed triangle list (IDTL: VERT floats, INDX int32
+    triples) the client draws on the radar. [[(x, z), …] × 3, …] in building-local plan coordinates, or []."""
+    if template in cache:
+        return cache[template]
+    tris, seen, queue = [], set(), [template.encode()]
+    while queue and not tris:
+        f = queue.pop(0)
+        if f in seen:
+            continue
+        seen.add(f)
+        try:
+            d = vfs.read(f.decode())
+        except FileNotFoundError:
+            continue
+        i = d.find(b"RADR")
+        if i >= 0:
+            j = d.find(b"IDTL", i)
+            k = d.find(b"VERT", j) if j >= 0 else -1
+            m = d.find(b"INDX", j) if j >= 0 else -1
+            if k >= 0 and m >= 0:
+                vsize = struct.unpack(">I", d[k + 4:k + 8])[0]
+                verts = [struct.unpack("<fff", d[k + 8 + 12 * q:k + 8 + 12 * q + 12]) for q in range(vsize // 12)]
+                isize = struct.unpack(">I", d[m + 4:m + 8])[0]
+                idx = struct.unpack("<%di" % (isize // 4), d[m + 8:m + 8 + (isize // 4) * 4])
+                for q in range(0, len(idx) - 2, 3):
+                    a, b, c = idx[q:q + 3]
+                    if 0 <= a < len(verts) and 0 <= b < len(verts) and 0 <= c < len(verts):
+                        tris.append([[round(verts[a][0], 2), round(verts[a][2], 2)], [round(verts[b][0], 2), round(verts[b][2], 2)], [round(verts[c][0], 2), round(verts[c][2], 2)]])
+        queue.extend(ls.APPEARANCE_RE.findall(d))
+        for ref in re.findall(rb"appearance/[\x21-\x7e]+?\.pob", d):
+            queue.append(ref)
+    cache[template] = tris
+    return tris
+
+
 # ---------------------------------------------------------------- data for the page
 
 class Data:
@@ -91,7 +181,31 @@ class Data:
 
     def area(self, planet, x, y, r):
         buildings, props = [], []
-        for n in self.snapshot(planet):
+        nodes = self.snapshot(planet)
+        top = {n["oid"]: n for n in nodes if n["parent"] == 0}
+        cell_of = {}   # cell oid -> (building oid, cell index)
+        for n in nodes:
+            if n["parent"] != 0 and n["parent"] in top and "object/cell/" in n["name"]:
+                cell_of[n["oid"]] = (n["parent"], n["cell"])
+        objects_in = {}   # building oid -> [objects inside its cells, or parented to the building itself]
+        for n in nodes:
+            if n["parent"] in cell_of:
+                b, idx = cell_of[n["parent"]]
+                objects_in.setdefault(b, []).append(dict(n, cellIndex=idx))
+            elif n["parent"] in top and "object/building" in top[n["parent"]]["name"] and "object/cell/" not in n["name"]:
+                objects_in.setdefault(n["parent"], []).append(dict(n, cellIndex=0))
+        spawns = city_spawns(planet)
+        by_building = {}
+        outdoor = []
+        for sp in spawns:
+            if sp["cell"] == 0:
+                if ((sp["x"] - x) ** 2 + (sp["y"] - y) ** 2) ** 0.5 <= r:
+                    outdoor.append(sp)
+            elif sp["cell"] in cell_of:
+                b, idx = cell_of[sp["cell"]]
+                by_building.setdefault(b, []).append(dict(sp, cellIndex=idx))
+        shells = {sh["template"]: sh for sh in self.shells()}
+        for n in nodes:
             if n["parent"] != 0:
                 continue
             d = ((n["x"] - x) ** 2 + (n["y"] - y) ** 2) ** 0.5
@@ -108,10 +222,25 @@ class Data:
                     entry["radius"] = round(fp[0], 1)
                 else:
                     entry["radius"] = ls.guessed_radius(name)
+                    box = ls.prop_box(self.vfs, name)   # the mesh's bounding box: the real oriented rectangle of a filler shell
+                    if box is not None:
+                        entry["box"] = dict(x0=round(box[0], 1), y0=round(box[2], 1), x1=round(box[3], 1), y1=round(box[5], 1))
+                        entry["radius"] = round(max(abs(box[0]), abs(box[3]), abs(box[2]), abs(box[5])), 1)
+                entry["radar"] = radar_shape(self.vfs, name)
+                sh = shells.get(name)
+                rooms_by_index = {rm["cell"]: rm["name"] for rm in sh["rooms"]} if sh else {}
+                entry["npcs"] = [dict(template=sp["template"], x=round(sp["x"], 2), z=round(sp["z"], 2), y=round(sp["y"], 2), heading=round(sp["heading"]),
+                                      cell=sp["cell"], room=rooms_by_index.get(sp["cellIndex"], "cell%d" % sp["cellIndex"])) for sp in by_building.get(n["oid"], [])]
+                server = re.sub(r"/shared_([^/]+)$", r"/\1", name)
+                entry["children"] = [dict(c, room=rooms_by_index.get(c["cell"], "outside" if c["cell"] <= 0 else "cell%d" % c["cell"])) for c in child_objects(server)]
+                entry["objects"] = [dict(name=o["name"], short=o["name"].rsplit("/", 1)[-1].replace("shared_", "").replace(".iff", ""), kind=object_kind(o["name"]),
+                                         x=round(o["x"], 2), y=round(o["y"], 2), z=round(o["z"], 2), heading=round(o["heading"]), oid=o["oid"],
+                                         room=rooms_by_index.get(o["cellIndex"], "cell%d" % o["cellIndex"])) for o in objects_in.get(n["oid"], [])]
                 buildings.append(entry)
             elif d <= r and "soundobject" not in name and "object/static" not in name:
-                props.append(dict(x=round(n["x"], 1), y=round(n["y"], 1), short=name.rsplit("/", 1)[-1].replace("shared_", "").replace(".iff", "")))
-        return dict(planet=planet, x=x, y=y, r=r, buildings=buildings, props=props[:600])
+                props.append(dict(x=round(n["x"], 1), y=round(n["y"], 1), heading=round(n["heading"]), kind=object_kind(name), short=name.rsplit("/", 1)[-1].replace("shared_", "").replace(".iff", "")))
+        return dict(planet=planet, x=x, y=y, r=r, buildings=buildings, props=props[:600],
+                    npcs=[dict(template=sp["template"], x=round(sp["x"], 1), y=round(sp["y"], 1), heading=round(sp["heading"]), city=sp["city"]) for sp in outdoor][:800])
 
     def shells(self):
         if self._shells is not None:
@@ -123,8 +252,13 @@ class Data:
             if fp is None or pob is None:
                 continue
             rooms = []
+            exterior = []
             for idx, room, path in ls.floors_of(self.vfs, pob):
                 if idx == 0:
+                    try:
+                        exterior = floor_triangles(self.vfs, path)
+                    except (struct.error, ValueError):
+                        exterior = []
                     continue
                 e = ls.floor_extents(self.vfs, path)
                 try:
@@ -140,16 +274,20 @@ class Data:
             try:
                 for pr, box in (ls.standing_props(self.vfs, ls.read_ilf(self.vfs, ilf)) if ilf else []):
                     b = box if box is not None else (-0.5, 0, -0.5, 0.5, 0, 0.5)
-                    furniture.append(dict(room=pr["cell"], x=round(pr["x"], 2), y=round(pr["z"], 2), yaw=round(pr["yaw"]),
+                    furniture.append(dict(room=pr["cell"], x=round(pr["x"], 2), y=round(pr["z"], 2), z=round(pr["h"], 2), yaw=round(pr["yaw"]),
                                           x0=round(b[0], 2), y0=round(b[2], 2), x1=round(b[3], 2), y1=round(b[5], 2),
                                           name=pr["template"].rsplit("/", 1)[-1].replace("shared_", "").replace(".iff", "")))
             except FileNotFoundError:
                 pass
             e = fp[1]
-            out.append(dict(template=t, server=re.sub(r"/shared_([^/]+)$", r"/\1", t), short=t.rsplit("/", 1)[-1].replace("shared_", "").replace(".iff", ""),
+            server = re.sub(r"/shared_([^/]+)$", r"/\1", t)
+            rooms_by_index = {rm["cell"]: rm["name"] for rm in rooms}
+            children = [dict(c, room=rooms_by_index.get(c["cell"], "outside" if c["cell"] <= 0 else "cell%d" % c["cell"])) for c in child_objects(server)]
+            out.append(dict(template=t, server=server, children=children, exterior=exterior, radar=radar_shape(self.vfs, t), short=t.rsplit("/", 1)[-1].replace("shared_", "").replace(".iff", ""),
                             planet=(re.search(r"object/building/([a-z0-9_]+)/", t) or [None, ""])[1],
                             fp=dict(x0=round(e["x0"], 1), x1=round(e["x1"], 1), y0=round(e["z0"], 1), y1=round(e["z1"], 1)), radius=round(fp[0], 1),
                             rooms=rooms, furniture=furniture))
+            out[-1]["server"] = server
         self._shells = out
         return out
 
@@ -163,6 +301,85 @@ class Data:
             except FileNotFoundError:
                 pass
         return templates
+
+
+# ---------------------------------------------------------------- places (cities, points of interest, travel points)
+
+REGIONS_DIR = os.path.join(REPO, "MMOCoreORB", "bin", "scripts", "managers", "planet")
+REGION_RE = re.compile(r'^\s*\{\s*"([^"]+)"\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*\{\s*(CIRCLE|RECTANGLE|RING)\s*,\s*(-?[\d.]+)(?:\s*,\s*(-?[\d.]+))?\s*\}\s*,\s*([A-Z_ +]+)', re.M)
+TRAVEL_RE = re.compile(r'\{name\s*=\s*"([^"]+)"\s*,\s*x\s*=\s*(-?[\d.]+)\s*,\s*z\s*=\s*(-?[\d.]+)\s*,\s*y\s*=\s*(-?[\d.]+)')
+POI_WORDS = ("fort", "palace", "dungeon", "cave", "temple", "outpost", "bunker", "stronghold", "ruin", "lair", "village", "camp", "garrison", "hideout",
+             "facility", "mine", "tower", "base", "fortress", "estate", "lodge", "retreat", "shrine", "enclave", "crash", "poi", "sdungeon", "hq", "lab", "castle", "warren", "despot")
+
+
+def places(planet, cache={}):
+    """[{name, kind: city|poi|travel, x, y, r}] from <planet>_regions.lua (CITY regions, named regions and
+    dungeons) and planet_manager.lua's travel points for the planet."""
+    if planet in cache:
+        return cache[planet]
+    out, seen = [], set()
+    try:
+        with open(os.path.join(REGIONS_DIR, planet + "_regions.lua"), encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except OSError:
+        text = ""
+    for m in REGION_RE.finditer(text):
+        raw, x, y, shape, a, b, flags = m.group(1), float(m.group(2)), float(m.group(3)), m.group(4), float(m.group(5)), m.group(6), m.group(7)
+        name = raw.split(":", 1)[1] if ":" in raw else raw
+        if shape == "RECTANGLE" and b is not None:
+            # a rectangle is given by two corners (x, y) and (x2, y2), not a centre
+            x2, y2 = float(a), float(b)
+            x, y = (x + x2) / 2, (y + y2) / 2
+            r = max(abs(x2 - x), abs(y2 - y))
+        elif shape == "RING" and b is not None:
+            r = float(b)
+        else:
+            r = a
+        kind = None
+        if "CITY" in flags.split() or "CITY" in flags.replace("+", " ").split():
+            kind = "city"
+        elif "NAMEDREGION" in flags or any(w in name for w in POI_WORDS):
+            if not any(bad in name for bad in ("nobuild", "newbie", "spawn", "world_", "edge_", "_quest_", "medium", "easy", "hard", "stormtrooper", "wild")) and r <= 1500:
+                kind = "poi"
+        if kind and name not in seen:
+            seen.add(name)
+            out.append(dict(name=name, kind=kind, x=round(x), y=round(y), r=int(min(max(r, 120), 1600))))
+    try:
+        with open(os.path.join(REGIONS_DIR, "planet_manager.lua"), encoding="utf-8", errors="replace") as fh:
+            pm = fh.read()
+        block = re.search(r"\b%s\s*=\s*\{(.*?)\n\t\}" % planet, pm, re.S)
+        for m in TRAVEL_RE.finditer(block.group(1) if block else ""):
+            nm = m.group(1)
+            if nm not in seen:
+                seen.add(nm)
+                out.append(dict(name=nm, kind="travel", x=round(float(m.group(2))), y=round(float(m.group(4))), r=250))
+    except OSError:
+        pass
+    order = {"city": 0, "travel": 1, "poi": 2}
+    out.sort(key=lambda p: (order[p["kind"]], p["name"]))
+    cache[planet] = out
+    return out
+
+
+# ---------------------------------------------------------------- stock NPC spawns (city screenplays)
+
+CITIES_DIR = os.path.join(REPO, "MMOCoreORB", "bin", "scripts", "screenplays", "cities")
+SPAWN_RE = re.compile(r'\{\s*"([^"]+)"\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(\d+)\s*,')
+
+
+def city_spawns(planet, cache={}):
+    """[{template, x, z, y, heading, cell}] from screenplays/cities/<planet>_*.lua (x, y world when cell 0, else cell-local)."""
+    if planet in cache:
+        return cache[planet]
+    out = []
+    if os.path.isdir(CITIES_DIR):
+        for f in sorted(os.listdir(CITIES_DIR)):
+            if f.startswith(planet + "_") and f.endswith(".lua"):
+                with open(os.path.join(CITIES_DIR, f), encoding="utf-8", errors="replace") as fh:
+                    for m in SPAWN_RE.finditer(fh.read()):
+                        out.append(dict(template=m.group(1), x=float(m.group(3)), z=float(m.group(4)), y=float(m.group(5)), heading=float(m.group(6)), cell=int(m.group(7)), city=f[len(planet) + 1:-4]))
+    cache[planet] = out
+    return out
 
 
 # ---------------------------------------------------------------- site files
@@ -243,6 +460,98 @@ def live_npcs(filt):
     return out
 
 
+def terrain_heights(planet, pts):
+    """Terrain heights for 'x,y;x,y;…' from the running server (FbLabTests:terrainHeights); [] when it is not up."""
+    if not re.fullmatch(r"[-\d.,;| ]{1,2000}", pts or ""):
+        return []
+    try:
+        res = subprocess.run([os.path.join(HERE, "swg"), "cmd", "runLuaFunction FbLabTests:terrainHeights:%s:%s" % (planet, pts.replace(";", "|")), "--timeout", "8"],
+                             capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    out = []
+    for line in res.stdout.splitlines():
+        m = re.match(r"INFO terrain x=(-?[\d.]+) y=(-?[\d.]+) z=(-?[\d.]+)", line)
+        if m:
+            out.append(dict(x=float(m.group(1)), y=float(m.group(2)), z=float(m.group(3))))
+    return out
+
+
+# ---------------------------------------------------------------- the game loop (2.12d): preview, checks, teleport
+
+PREVIEW_DIR = os.path.join(SITES_DIR, ".preview")   # outside the loader's *.lua glob; git-ignored
+
+
+def swg_lua(call, timeout=8):
+    """Lines a lab oracle printed (runLuaFunction FbLabTests:<call>) on the running server; [] when it is down."""
+    try:
+        res = subprocess.run([os.path.join(HERE, "swg"), "cmd", "runLuaFunction FbLabTests:" + call, "--timeout", str(timeout)],
+                             capture_output=True, text=True, timeout=timeout + 25)
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    return [l for l in res.stdout.splitlines() if re.match(r"(INFO|ERROR|FAIL|WARN|PASS) ", l)]
+
+
+def write_preview(lua):
+    if not re.search(r"^FbSites:add \{", lua or "", re.M):
+        return None, "not a site file"
+    os.makedirs(PREVIEW_DIR, exist_ok=True)
+    out = os.path.join(PREVIEW_DIR, "preview.lua")
+    with open(out, "w", encoding="utf-8") as fh:
+        fh.write(lua if lua.endswith("\n") else lua + "\n")
+    return out, None
+
+
+def furniture_check(template, path):
+    """tools/lotsurvey check: every tenant spot in the file against the client-only furniture."""
+    try:
+        res = subprocess.run([os.path.join(HERE, "lotsurvey"), "check", template, "--lua", path], capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return ["ERROR furniture check did not run: %s" % e]
+    return [l for l in res.stdout.splitlines() if re.match(r"(FAIL|WARN|summary|OK)", l)] or [l for l in res.stderr.splitlines()[-3:]]
+
+
+def preview_site(lua, template):
+    """Push the draft into the running server (FbSites:preview via the lab), then audit it."""
+    path, err = write_preview(lua)
+    if err:
+        return dict(ok=False, lines=["ERROR " + err])
+    lines = swg_lua("sitePreview:preview", 20)
+    if not lines:
+        return dict(ok=False, lines=["ERROR the game server did not answer (tools/swg status)"])
+    m = re.search(r'name = "([a-z0-9_]+)"', lua)
+    if m and any(l.startswith("INFO sitePreview") for l in lines):
+        lines += swg_lua("sitePlacement:" + m.group(1), 20)
+    if template:
+        lines += furniture_check(template, path)
+    ok = any(l.startswith("INFO sitePreview") for l in lines) and not any(l.startswith(("ERROR", "FAIL")) for l in lines)
+    return dict(ok=ok, lines=lines)
+
+
+def check_site(lua, template):
+    """Lab checks without spawning: furniture (offline) plus, when the preview of this site is up, its placement audit."""
+    path, err = write_preview(lua)
+    if err:
+        return dict(ok=False, lines=["ERROR " + err])
+    lines = furniture_check(template, path) if template else []
+    m = re.search(r'name = "([a-z0-9_]+)"', lua)
+    if m:
+        lines += swg_lua("sitePlacement:" + m.group(1), 20) or ["INFO placement: the game server is not up, or this site is not spawned (Spawn preview first)"]
+    ok = not any(l.startswith(("ERROR", "FAIL")) for l in lines)
+    return dict(ok=ok, lines=lines)
+
+
+def teleport(char, planet, x, y):
+    if not re.fullmatch(r"[A-Za-z][A-Za-z' -]{0,39}", char or "") or not re.fullmatch(r"[a-z0-9_]{1,20}", planet or ""):
+        return dict(ok=False, lines=["ERROR give your character's first name (Site panel) and a planet"])
+    try:
+        x, y = float(x), float(y)
+    except (TypeError, ValueError):
+        return dict(ok=False, lines=["ERROR bad coordinates"])
+    lines = swg_lua("travel:%s:%s:%.1f:%.1f" % (char, planet, x, y), 10)
+    return dict(ok=any(l.startswith("INFO travel") for l in lines), lines=lines or ["ERROR the game server did not answer, or %s is not online" % char])
+
+
 def save_site(name, lua, force):
     name = re.sub(r"[^a-z0-9_]", "_", name.lower())
     if not name:
@@ -269,11 +578,20 @@ class Handler(BaseHTTPRequestHandler):
 
     def _json(self, obj, code=200):
         body = json.dumps(obj).encode("utf-8")
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass   # the browser gave up on this request (clicked on, reloaded): nothing to report
+
+    def handle(self):
+        try:
+            super().handle()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def do_GET(self):
         u = urllib.parse.urlparse(self.path)
@@ -291,10 +609,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(self.data.area(q.get("planet", "tatooine"), float(q.get("x", 3520)), float(q.get("y", -4810)), float(q.get("r", 250))))
             elif u.path == "/api/shells":
                 self._json(self.data.shells())
+            elif u.path == "/api/places":
+                self._json(places(q.get("planet", "tatooine")))
             elif u.path == "/api/sites":
                 self._json(load_sites())
             elif u.path == "/api/npcs":
                 self._json(npc_templates())
+            elif u.path == "/api/terrain":
+                self._json(terrain_heights(q.get("planet", "tatooine"), q.get("pts", "")))
             elif u.path == "/api/live":
                 self._json(live_npcs(q.get("filter", "")))
             else:
@@ -309,6 +631,15 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/save":
             ok, msg = save_site(body.get("name", ""), body.get("lua", ""), bool(body.get("force")))
             self._json(dict(ok=ok, message=msg), 200 if ok else 400)
+        elif u.path == "/api/preview":
+            self._json(preview_site(body.get("lua", ""), body.get("template", "")))
+        elif u.path == "/api/preview/end":
+            lines = swg_lua("sitePreviewEnd", 20)
+            self._json(dict(ok=bool(lines) and not any(l.startswith("ERROR") for l in lines), lines=lines or ["ERROR the game server did not answer"]))
+        elif u.path == "/api/check":
+            self._json(check_site(body.get("lua", ""), body.get("template", "")))
+        elif u.path == "/api/teleport":
+            self._json(teleport(body.get("char", ""), body.get("planet", ""), body.get("x"), body.get("y")))
         else:
             self._json(dict(error="not found"), 404)
 
@@ -329,6 +660,16 @@ def open_browser(port):
 
 def cmd_serve(a):
     Handler.data = Data()
+    # warm the slow data in the background so the first page load does not wait ~15 s on the archives
+    import threading
+    def warm():
+        try:
+            Handler.data.shells()
+            Handler.data.snapshot("tatooine")
+            print("site planner: catalogue ready")
+        except Exception as e:   # noqa: BLE001 — a warm-up failure only costs the first visitor time
+            print("site planner: warm-up failed: %s" % e)
+    threading.Thread(target=warm, daemon=True).start()
     if a.browser:
         open_browser(a.port)
     try:
@@ -354,14 +695,35 @@ def cmd_selftest(a):
     hall = next((s for s in shells if s["short"] == "guild_commerce_tatooine_style_01"), None)
     assert hall and len(hall["rooms"]) == 9, "commerce hall rooms"
     assert any(r["name"] == "meetingd" and len(r["tris"]) >= 4 for r in hall["rooms"]), "floor triangles"
+    assert len(hall["exterior"]) >= 10, "exterior outline triangles"
+    assert any(b.get("box") for b in area["buildings"] if "filler" in b["short"]), "filler boxes"
+    assert any(len(b.get("radar", [])) >= 20 for b in area["buildings"] if "filler_building_block" in b["short"]), "filler radar shape"
     assert any(f["room"] == "meetingb" and "dining" in f["name"] for f in hall["furniture"]), "dining table"
     sites = load_sites()
     th = next((s for s in sites if s["name"] == "mos_eisley_trade_hall"), None)
-    assert th and len(th["tenants"]) == 11 and th["heading"] == 180, "trade hall site parse"
+    assert th and len(th["tenants"]) == 11 and 0 <= th["heading"] < 360 and th["planet"] == "tatooine", "trade hall site parse"
+    hall_b = next((b for b in area["buildings"] if b["short"] == "guild_commerce_tatooine_style_01"), None)
+    assert hall_b and any(n["template"] == "trainer_artisan" and n["room"] == "meetingd" for n in hall_b["npcs"]), "stock npc -> room mapping"
+    assert len(area["npcs"]) > 20, "outdoor stock npcs"
+    bank = next((b for b in area["buildings"] if b["short"] == "bank_tatooine"), None)
+    assert bank and sum(1 for c in bank["children"] if "terminal_bank" in c["template"]) == 4, "bank terminals from the template's childObjects"
+    pth, err = write_preview(open(os.path.join(SITES_DIR, "mos_eisley_trade_hall.lua")).read())
+    assert pth and not err and os.path.exists(pth) and all(".preview" not in s["file"] for s in load_sites()), "preview file outside the site list"
+    assert any(l.startswith("summary spots=11 fail=0") for l in furniture_check("object/building/tatooine/shared_guild_commerce_tatooine_style_01.iff", pth)), "furniture check through the planner"
+    sp = next((b for b in area["buildings"] if b["short"] == "starport_tatooine"), None)
+    assert sp and any(o["kind"] == "terminal" for o in sp["objects"]), "starport terminals from the snapshot"
+    spsh = next((x for x in shells if x["short"] == "starport_tatooine"), None)
+    assert spsh and any("terminal_travel" in c["template"] for c in spsh["children"]), "starport travel terminal from the server template's childObjects"
+    pl = places("tatooine")
+    assert any(p["name"] == "mos_eisley" and p["kind"] == "city" for p in pl), "mos eisley in places"
+    assert any(p["name"] == "fort_tusken" for p in pl) and any(p["kind"] == "travel" for p in pl), "poi + travel places"
+    th = next((p for p in places("naboo") if p["name"] == "theed"), None)
+    assert th and abs(th["x"] + 5320) < 5 and abs(th["y"] - 4368) < 5 and th["r"] >= 800, "theed rectangle centre %r" % th
     npcs = npc_templates()
     assert any(n["template"] == "fb_parts_dealer" for n in npcs), "npc list"
     assert os.path.exists(os.path.join(UI_DIR, "index.html")), "ui page"
-    print("siteplanner selftest: %d buildings in the Mos Eisley area, %d shells, %d sites, %d npc templates — ok" % (len(area["buildings"]), len(shells), len(sites), len(npcs)))
+    print("siteplanner selftest: %d buildings (%d stock npcs indoors, %d outdoors, %d objects indoors) in the Mos Eisley area, %d shells, %d sites, %d npc templates — ok" % (
+        len(area["buildings"]), sum(len(b["npcs"]) for b in area["buildings"]), len(area["npcs"]), sum(len(b["objects"]) for b in area["buildings"]), len(shells), len(sites), len(npcs)))
     return 0
 
 

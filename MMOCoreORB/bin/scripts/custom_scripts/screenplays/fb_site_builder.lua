@@ -81,17 +81,20 @@ local function toWorld(bx, by, h, lx, ly)
 	return bx + lx * math.cos(a) + ly * math.sin(a), by - lx * math.sin(a) + ly * math.cos(a)
 end
 
+-- distance from a point to a convex polygon, 0 inside; winding-agnostic (all cross products share a sign)
 local function distPointRect(px, py, poly)
-	local inside, best = true, 1e9
+	local pos, neg, best = 0, 0, 1e9
 	for i = 1, #poly do
 		local ax, ay = poly[i][1], poly[i][2]
 		local bx, by = poly[i % #poly + 1][1], poly[i % #poly + 1][2]
 		local ex, ey = bx - ax, by - ay
 		local t = math.max(0, math.min(1, ((px - ax) * ex + (py - ay) * ey) / (ex * ex + ey * ey)))
 		best = math.min(best, math.sqrt((px - (ax + t * ex)) ^ 2 + (py - (ay + t * ey)) ^ 2))
-		if ex * (py - ay) - ey * (px - ax) > 0 then inside = false end
+		local cross = ex * (py - ay) - ey * (px - ax)
+		if cross > 0 then pos = pos + 1 elseif cross < 0 then neg = neg + 1 end
 	end
-	return inside and 0 or best
+	if pos == 0 or neg == 0 then return 0 end
+	return best
 end
 
 -- The lot report for a shell at (x, y, heading) on the player's planet: neighbours within reach (from

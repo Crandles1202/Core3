@@ -16,6 +16,9 @@
 --
 -- Public: FbSites:get(name), :building(name), :isOpen(name), :cellByName(name, room), :doorPosition(name),
 --         :giveWaypoint(name, pPlayer), :tenantLine(name), :status(name), FbSites.names (in file order)
+-- Preview (2.12d, the site planner's game loop): FbSites:preview(file) tears down the live site of the same
+-- name, spawns the site described in sites/.preview/<file>.lua instead; :previewEnd() removes it and puts the
+-- boot-time site back. Nothing here persists; a restart always rebuilds from the saved files.
 
 FbSites = ScreenPlay:new {
 	screenplayName = "FbSites",
@@ -67,21 +70,83 @@ function FbSites:build(site)
 	end
 	setQuestStatus(key(site.name, "building"), tostring(SceneObject(pBuilding):getObjectID()))
 
-	local placed = 0
+	local placed, npcs = 0, {}
 	for _, t in ipairs(site.tenants) do
 		local pCell = self:cellByName(site.name, t.room)
 		if pCell == nil then
 			printf("FbSites: %s — no room '%s' for %s\n", site.name, tostring(t.room), t.template)
 		else
 			local pNpc = spawnMobile(site.planet, t.template, 0, t.x, t.z, t.y, t.dir or 0, SceneObject(pCell):getObjectID())
-			if pNpc ~= nil then placed = placed + 1 end
+			if pNpc ~= nil then placed = placed + 1; npcs[#npcs + 1] = tostring(SceneObject(pNpc):getObjectID()) end
 		end
 	end
 	for _, o in ipairs(site.outside) do
-		spawnMobile(site.planet, o.template, 0, o.x, o.z or getTerrainHeightAt(site.planet, o.x, o.y), o.y, o.dir or 0, 0)
+		local pNpc = spawnMobile(site.planet, o.template, 0, o.x, o.z or getTerrainHeightAt(site.planet, o.x, o.y), o.y, o.dir or 0, 0)
+		if pNpc ~= nil then npcs[#npcs + 1] = tostring(SceneObject(pNpc):getObjectID()) end
 	end
-	printf("FbSites: %s open at %d,%d — %d of %d tenants, %d outside\n", site.name, site.x, site.y, placed, #site.tenants, #site.outside)
+	setQuestStatus(key(site.name, "npcs"), table.concat(npcs, ","))   -- so teardown (preview) can remove them
+	printf("FbSites: %s open at %.1f,%.1f — %d of %d tenants, %d outside\n", site.name, site.x, site.y, placed, #site.tenants, #site.outside)
 	return pBuilding
+end
+
+-- Remove a site's NPCs and building (a preview, or the live site a preview replaces). Returns how many objects went.
+function FbSites:teardown(name)
+	local gone = 0
+	local function destroy(oid)
+		oid = tonumber(oid)
+		if oid == nil or oid == 0 then return end
+		local p = getSceneObject(oid)
+		if p ~= nil then
+			SceneObject(p):destroyObjectFromWorld(true)
+			SceneObject(p):destroyObjectFromDatabase()
+			gone = gone + 1
+		end
+		if FbLabTests ~= nil and FbLabTests.registryRemove ~= nil then FbLabTests.registryRemove(oid) end
+	end
+	for oid in tostring(getQuestStatus(key(name, "npcs")) or ""):gmatch("[^,]+") do destroy(oid) end
+	destroy(getQuestStatus(key(name, "building")))
+	removeQuestStatus(key(name, "npcs"))
+	removeQuestStatus(key(name, "building"))
+	return gone
+end
+
+-- Read one site file without registering it: the FbSites:add call inside is captured.
+function FbSites:loadFile(path)
+	local captured
+	local env = setmetatable({ FbSites = { add = function(_, site) captured = site end } }, { __index = _G })
+	local chunk, err = loadfile(path, "t", env)
+	if chunk == nil then return nil, err end
+	local ok, rerr = pcall(chunk)
+	if not ok then return nil, rerr end
+	if captured == nil or captured.name == nil then return nil, "no FbSites:add { name = … } in " .. path end
+	captured.tenants = captured.tenants or {}
+	captured.outside = captured.outside or {}
+	return captured
+end
+
+-- Spawn the site in sites/.preview/<file>.lua now, in place of the live site of the same name.
+-- Returns the site table and the building pointer, or nil and an error.
+function FbSites:preview(file)
+	local site, err = self:loadFile(self.dir .. "/.preview/" .. tostring(file):gsub("[^%w_%-]", "") .. ".lua")
+	if site == nil then return nil, err end
+	local previous = getQuestStatus("FbSites.preview")
+	if previous ~= nil and previous ~= "" and previous ~= site.name then self:previewEnd() end   -- one preview at a time
+	self:teardown(site.name)                                                                  -- the live one, or the last preview
+	setQuestStatus("FbSites.preview", site.name)
+	local pBuilding = self:build(site)
+	if pBuilding == nil then return nil, "could not spawn " .. tostring(site.template) end
+	return site, pBuilding
+end
+
+-- Take the preview down; the site saved at boot (if one has that name) comes back on its own lot.
+function FbSites:previewEnd()
+	local name = getQuestStatus("FbSites.preview")
+	if name == nil or name == "" then return nil end
+	local gone = self:teardown(name)
+	removeQuestStatus("FbSites.preview")
+	local saved = self.sites[name]
+	if saved ~= nil then self:build(saved) end
+	return name, gone, saved ~= nil
 end
 
 function FbSites:get(name) return self.sites[name] end

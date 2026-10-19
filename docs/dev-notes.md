@@ -186,6 +186,41 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-19 — 2.12d, the planner's game loop.** Design: the planner never talks to the server directly;
+  it writes the draft as a real site file into `tasks/sites/.preview/` (a dot-directory, so the boot loader's
+  `ls …/sites/*.lua` never sees it; git-ignored) and asks the lab (`swg cmd runLuaFunction FbLabTests:sitePreview:preview`)
+  to build it. `FbSites:build` now records every NPC oid it spawns in quest status (`FbSites.<name>.npcs`), which
+  is what makes a teardown possible at all — nothing else remembers which stock-looking NPC belongs to which
+  site. A preview *replaces* the live site of the same name (so dragging the Trade Hall and previewing shows
+  one hall, not two); `previewEnd` rebuilds the boot-time table. The site file is parsed in a sandbox
+  (`loadfile(path, "t", env)` with a stub `FbSites.add` that captures the table) so previewing never registers
+  anything. Teleport reuses `travel` (3 m outside the door offset). Undo keeps serialized drafts (shell by
+  server template name) and takes one entry per drag, at mouse-up; the same snapshot is the autosave.
+  Scenario `site-preview` moves the hall 60 m, audits the 12 NPCs by site, ends the preview and checks the
+  saved hall is back at its x. Gotcha found while writing it: the planner selftest had the hall's heading
+  hard-coded (180); Chuck's relocation turned it to 215 — assert shape, not the current layout.
+- **2026-10-19 — Site planner, Chuck's first hands-on round (feedback branch `feature/phase2.12c-planner-fixes`).**
+  What a real user found in an hour, in order: double-click only worked on a placed shell (now any
+  building opens, read-only for stock); Firefox under WSLg does not deliver `dblclick` reliably (own
+  double-click from click timing) nor drop-down popups (every `<select>` is an inline list / button
+  row now); the point-in-rectangle test assumed one winding, so rectangles were never "inside"
+  (winding-agnostic test, ported to the Lua builder and lotsurvey too); an `id` shared by the place
+  dropdown and the Place button made clicking the dropdown place a shell; buttons keep focus so Enter
+  re-fired the last one (buttons blur after a click, Enter in the area fields loads); region
+  `RECTANGLE`s are two corners, not centre + size (Theed loaded off-centre). Then the asks: stock
+  NPCs per building (city files + snapshot cells), snapshot objects inside cells and parented to
+  buildings, **server-spawned child objects** from each building template's `childObjects` (travel
+  terminals, ticket collectors, the bank's four terminals — these are in no snapshot), a Layers box,
+  planet buttons + place list (region tables + travel points), floor levels from room heights, real
+  outlines (exterior floor meshes; the **RADR** radar shape in `.lod` files for solid shells —
+  IDTL VERT/INDX, 60-byte-free flat triangles — drawn as boundary-edge silhouettes), drag/rotate of
+  existing sites with a rotate knob at the entrance arrow, terrain under the footprint via a new
+  `terrainHeights` oracle (the planner shells out to `swg cmd`), and clashes against the neighbours'
+  real silhouettes with a 3 m gap. First real use: Chuck dragged the Trade Hall to a clear lot the
+  circle rule accepted; the lab's `lot_is_flat` then failed (porch end 3.1 m below the centre) and he
+  confirmed in game that the hall was not flush — the terrain line in the lot report exists because
+  of that. Checker note: my structure check strips strings before comments, so an apostrophe inside a
+  `//` comment reports a false mismatch — avoid them in the planner's script comments.
 - **2026-10-19 — Windows → WSL TCP loopback does not work on Chuck's PC.** Opening the planner from the
   Windows browser times out (so does the game's TCP status port 44455); the game's UDP passes. Evidence:
   `curl.exe` from Windows (via interop) times out on localhost / 127.0.0.1 / [::1] / the LAN address;

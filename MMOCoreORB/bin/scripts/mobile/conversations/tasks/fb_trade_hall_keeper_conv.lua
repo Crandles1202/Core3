@@ -9,7 +9,7 @@ fbTradeHallKeeperConvoTemplate = ConvoTemplate:new {
 
 intro = ConvoScreen:new {
 	id = "intro",
-	customDialogText = "Looking for the traders? They're out of the sun now. The Mos Eisley Trade Hall is the big commerce house just east of here, between this square and the starport. Armour, weapons, medicine, parts, schematics, pets, property, droids — all under one roof.",
+	customDialogText = "Looking for the traders? They're out of the sun now. The Mos Eisley Trade Hall is the big commerce house north of this square, up past the hospital. Armour, weapons, medicine, parts, schematics, pets, property, droids — all under one roof.",
 	stopConversation = "false",
 	options = {
 		{"Mark it on my map.",        "do_waypoint"},

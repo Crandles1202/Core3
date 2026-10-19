@@ -475,16 +475,21 @@ def cmd_lots(a):
         return [(gx + x * c + y * s, gy - x * s + y * c) for x, y in pts]
 
     def dist(px, py, poly):
-        inside, best = True, 1e9
+        # distance from a point to a convex polygon, 0 inside; winding-agnostic
+        pos = neg = 0
+        best = 1e9
         for i in range(len(poly)):
             ax, ay = poly[i]
             bx, by = poly[(i + 1) % len(poly)]
             ex, ey = bx - ax, by - ay
             t = max(0, min(1, ((px - ax) * ex + (py - ay) * ey) / (ex * ex + ey * ey)))
             best = min(best, math.hypot(px - (ax + t * ex), py - (ay + t * ey)))
-            if ex * (py - ay) - ey * (px - ax) > 0:
-                inside = False
-        return 0 if inside else best
+            cross = ex * (py - ay) - ey * (px - ax)
+            if cross > 0:
+                pos += 1
+            elif cross < 0:
+                neg += 1
+        return 0 if (pos == 0 or neg == 0) else best
 
     reach = max(half_w, back, front)
     cands = []

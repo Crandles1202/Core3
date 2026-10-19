@@ -2009,3 +2009,58 @@ function FbLabTests:siteDiscard(charName)
 	return "ok"
 end
 
+-- terrainHeights:<planet>:<x1>,<y1>;<x2>,<y2>;… → one INFO line per point with the terrain height (the site
+-- planner's lot report asks for a building's corners this way; "x,y|x,y" also accepted)
+function FbLabTests:terrainHeights(planet, pts)
+	local n = 0
+	for pair in tostring(pts or ""):gmatch("[^;|]+") do
+		local x, y = pair:match("^%s*(-?[%d%.]+)%s*,%s*(-?[%d%.]+)%s*$")
+		if x ~= nil then
+			n = n + 1
+			print(string.format("INFO terrain x=%s y=%s z=%.2f", x, y, getTerrainHeightAt(planet, tonumber(x), tonumber(y))))
+		end
+	end
+	return tostring(n)
+end
+
+-- ---------------------------------------------------------------- site preview (2.12d: the planner's game loop)
+
+-- sitePreview:<file> → spawn sites/.preview/<file>.lua in place of the live site of the same name
+function FbLabTests:sitePreview(file)
+	if FbSites == nil then print("ERROR FbSites not loaded"); return "none" end
+	local site, pBuilding = FbSites:preview(file or "preview")
+	if site == nil then print("ERROR sitePreview " .. tostring(pBuilding)); return "none" end
+	local placed = 0
+	for _ in tostring(getQuestStatus("FbSites." .. site.name .. ".npcs") or ""):gmatch("[^,]+") do placed = placed + 1 end
+	print(string.format("INFO sitePreview name=%s building=%d x=%.1f y=%.1f heading=%.0f cells=%d npcs=%d of %d", site.name,
+		SceneObject(pBuilding):getObjectID(), site.x, site.y, site.heading or 0, BuildingObject(pBuilding):getTotalCellNumber(), placed, #site.tenants + #site.outside))
+	if placed < #site.tenants + #site.outside then print(string.format("FAIL sitePreview %d NPC(s) did not spawn (unknown room or template?)", #site.tenants + #site.outside - placed)) end
+	return site.name
+end
+
+-- sitePreviewEnd → remove the preview, rebuild the saved site of that name if there is one
+function FbLabTests:sitePreviewEnd()
+	if FbSites == nil then print("ERROR FbSites not loaded"); return "none" end
+	local name, gone, restored = FbSites:previewEnd()
+	if name == nil then print("INFO sitePreviewEnd nothing was previewed"); return "none" end
+	print(string.format("INFO sitePreviewEnd name=%s removed=%d restored=%s", name, gone, tostring(restored)))
+	return name
+end
+
+-- sitePlacement:<name> → the placement audit (line of sight, floor, drift) of every NPC a site spawned
+function FbLabTests:sitePlacement(name)
+	local fails, warns, n = 0, 0, 0
+	for oid in tostring(getQuestStatus("FbSites." .. tostring(name) .. ".npcs") or ""):gmatch("[^,]+") do
+		for _, e in ipairs(FbLabTests.liveSpawns(oid)) do
+			n = n + 1
+			local f = FbLabTests.placementOf(e)
+			print(string.format("INFO placement %s los=%s/8 floor=%s verdict=%s why=%s", f.line, tostring(f.los), f.floor and string.format("%.1f", f.floor) or "-", f.verdict, (table.concat(f.reasons, ";"):gsub(" ", "_"))))
+			if f.verdict == "fail" then fails = fails + 1; print("FAIL placement " .. e.name .. " (" .. e.oid .. "): " .. table.concat(f.reasons, "; "))
+			elseif f.verdict == "warn" then warns = warns + 1; print("WARN placement " .. e.name .. " (" .. e.oid .. "): " .. table.concat(f.reasons, "; ")) end
+		end
+	end
+	if n == 0 then print("INFO placement summary spawns=0 — site " .. tostring(name) .. " is not standing (spawn the preview first)") end
+	print(string.format("INFO placement summary spawns=%d fail=%d warn=%d", n, fails, warns))
+	return tostring(fails)
+end
+
