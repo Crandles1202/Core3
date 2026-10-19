@@ -244,7 +244,7 @@ function lotReport(d) {
     const sh = b.fp ? shellFor(b.name) : null;
     const tris = sh && sh.exterior && sh.exterior.length ? sh.exterior : (b.radar && b.radar.length ? b.radar : null);
     if (tris) {
-      // the neighbour's real silhouette, in world coordinates
+      // the real silhouette of the neighbour, in world coordinates
       const map = p => toWorld(b.x, b.y, b.heading, p[0], p[1]);
       const hit = tris.some(t => polysTouch(polyG, t.map(map)));
       if (hit) clashes.push(`${b.short} at ${b.x},${b.y} (its outline is within ${GAP} m of the footprint)`);
