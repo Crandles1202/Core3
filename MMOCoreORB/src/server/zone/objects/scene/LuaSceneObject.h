@@ -115,6 +115,7 @@ namespace scene {
 		int getContainerOwnerID(lua_State* L);
 		int info(lua_State* L);
 		int getPlayersInRange(lua_State* L);
+		int getStructuresInRange(lua_State* L);   // Final Boss: buildings / static shells around this object (site builder lot check)
 		int isInNavMesh(lua_State* L);
 		int checkInConversationRange(lua_State* L);
 

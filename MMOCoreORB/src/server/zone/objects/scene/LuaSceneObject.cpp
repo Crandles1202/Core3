@@ -103,6 +103,7 @@ Luna<LuaSceneObject>::RegType LuaSceneObject::Register[] = {
 		{ "getContainerOwnerID", &LuaSceneObject::getContainerOwnerID },
 		{ "info", &LuaSceneObject::info },
 		{ "getPlayersInRange", &LuaSceneObject::getPlayersInRange },
+		{ "getStructuresInRange", &LuaSceneObject::getStructuresInRange },
 		{ "isInNavMesh", &LuaSceneObject::isInNavMesh },
 		{ "checkInConversationRange", &LuaSceneObject::checkInConversationRange },
 
@@ -1045,6 +1046,44 @@ int LuaSceneObject::getPlayersInRange(lua_State *L) {
 		numPlayers++;
 		lua_pushlightuserdata(L, object);
 		lua_rawseti(L, -2, numPlayers);
+	}
+
+	return 1;
+}
+
+// Final Boss (Phase 2.12b): every building or static structure within range of this object, as a Lua
+// array of light userdata — the stock city shells come from the world snapshot and have no Lua-side
+// listing otherwise. Used by the site builder to keep a new building off its neighbours.
+int LuaSceneObject::getStructuresInRange(lua_State* L) {
+	float range = lua_tonumber(L, -1);
+
+	Zone* thisZone = realObject->getZone();
+
+	if (thisZone == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	lua_newtable(L);
+
+	Vector3 worldPos = realObject->getWorldPosition();
+
+	SortedVector<ManagedReference<TreeEntry*> > objects;
+	thisZone->getInRangeObjects(worldPos.getX(), worldPos.getZ(), worldPos.getY(), range, &objects, true, true);
+
+	int n = 0;
+
+	for (int i = 0; i < objects.size(); ++i) {
+		SceneObject* object = cast<SceneObject*>(objects.get(i).get());
+
+		if (object == nullptr || object == realObject)
+			continue;
+
+		if (!object->isBuildingObject() && !object->isStaticObjectClass())
+			continue;
+
+		lua_pushlightuserdata(L, object);
+		lua_rawseti(L, -2, ++n);
 	}
 
 	return 1;

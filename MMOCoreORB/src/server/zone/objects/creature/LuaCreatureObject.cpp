@@ -65,6 +65,7 @@ Luna<LuaCreatureObject>::RegType LuaCreatureObject::Register[] = {
 		{ "getParentID", &LuaSceneObject::getParentID },
 		{ "isInRangeWithObject", &LuaSceneObject::isInRangeWithObject },
 		{ "isInRangeWithObject3d", &LuaSceneObject::isInRangeWithObject3d },
+		{ "getStructuresInRange", &LuaSceneObject::getStructuresInRange },
 		{ "getDistanceTo", &LuaSceneObject::getDistanceTo },
 		{ "getDistanceToPosition", &LuaSceneObject::getDistanceToPosition },
 		{ "getDistanceTo3d", &LuaSceneObject::getDistanceTo3d },

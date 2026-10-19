@@ -710,14 +710,17 @@ function FbLabTests.checkTradeHall()
 	local st = FbTradeHall:status()
 	check("tradehall.open", st:find("open=1", 1, true) ~= nil, st)
 	check("tradehall.nine_cells", st:find("cells=9", 1, true) ~= nil, st)
+	local site = FbSites ~= nil and FbSites:get(FbTradeHall.site) or nil
+	check("tradehall.site_defined", site ~= nil, "tasks/sites/mos_eisley_trade_hall.lua not loaded by FbSites")
+	if site == nil then return end
 	local inside, names = 0, {}
-	for _, e in ipairs(FbLabTests.liveSpawns("fb_trade_hall")) do
+	for _, e in ipairs(FbLabTests.liveSpawns("fb_sites")) do
 		if e.cell ~= 0 and SceneObject(e.pObj):getParentID() ~= 0 then inside = inside + 1 end
 		names[e.template] = true
 	end
-	check("tradehall.tenants_inside", inside >= #FbTradeHall.tenants, inside .. " of " .. #FbTradeHall.tenants .. " tenants in a cell")
-	for _, t in ipairs(FbTradeHall.tenants) do
-		check("tradehall.tenant." .. t.template, names[t.template] == true, "not spawned by fb_trade_hall")
+	check("tradehall.tenants_inside", inside >= #site.tenants, inside .. " of " .. #site.tenants .. " tenants in a cell")
+	for _, t in ipairs(site.tenants) do
+		check("tradehall.tenant." .. t.template, names[t.template] == true, "not spawned by the site loader")
 	end
 	check("tradehall.keeper_on_square", #FbLabTests.liveSpawns("fb_trade_hall_keeper") >= 1)
 end
@@ -1911,5 +1914,98 @@ function FbLabTests:giveRemote(charName)
 	local oid = FbLabRemote:give(pPlayer)
 	print(string.format("INFO giveRemote char=%s oid=%d allowed=%s", charName, oid, tostring(FbLabRemote:allowed(pPlayer))))
 	return tostring(oid)
+end
+
+-- ---------------------------------------------------------------- site builder (lab)
+
+-- structuresNear:<char>[:<range>] → the server's buildings/static shells around the character, with the
+-- footprint radius FbWorldData knows for each (what the site builder's lot check uses)
+function FbLabTests:structuresNear(charName, range)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local list = SceneObject(pPlayer):getStructuresInRange(tonumber(range) or 100) or {}
+	for _, p in ipairs(list) do
+		local tmpl = SceneObject(p):getTemplateObjectPath()
+		print(string.format("INFO structure oid=%d template=%s x=%.1f y=%.1f radius=%s", SceneObject(p):getObjectID(), tmpl,
+			SceneObject(p):getWorldPositionX(), SceneObject(p):getWorldPositionY(), tostring(FbWorldData and FbWorldData.footprints[tmpl] or "?")))
+	end
+	print("INFO structures count=" .. #list)
+	return tostring(#list)
+end
+
+-- siteNew:<char>:<template>:<heading|look|face>[:<name>] → preview a shell at the character's position
+function FbLabTests:siteNew(charName, template, heading, name)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local h = tonumber(heading)
+	if heading == "look" then h = math.deg(SceneObject(pPlayer):getDirectionAngle()) % 360 end
+	local d, verdict, lines = FbSiteBuilder:newSite(pPlayer, template, h, name)
+	if d == nil then print("ERROR no preview"); return "none" end
+	for _, l in ipairs(lines) do print("INFO lot " .. l) end
+	print(string.format("INFO site name=%s preview=%d x=%.1f y=%.1f heading=%.0f verdict=%s", d.name, d.preview, d.x, d.y, d.heading, verdict))
+	return verdict
+end
+
+-- siteNudge:<char>:<op>[:<amount>]
+function FbLabTests:siteNudge(charName, op, amount)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local d, verdict, lines = FbSiteBuilder:nudge(pPlayer, op, amount)
+	if d == nil then print("ERROR nudge failed"); return "none" end
+	print(string.format("INFO site name=%s preview=%d x=%.1f y=%.1f heading=%.0f verdict=%s", d.name, d.preview, d.x, d.y, d.heading, verdict))
+	return verdict
+end
+
+-- siteTenant:<char>:<template>[:<label>] / siteOutside:<char>:<template>
+function FbLabTests:siteTenant(charName, template, label)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local t, verdict, why = FbSiteBuilder:addTenant(pPlayer, template, label)
+	if t == nil then print("ERROR tenant not placed"); return "none" end
+	print(string.format("INFO tenant template=%s room=%s x=%.2f z=%.2f y=%.2f dir=%.0f oid=%d furniture=%s why=%s", t.template, t.room, t.x, t.z, t.y, t.dir, t.oid, verdict, (why:gsub(" ", "_"))))
+	return verdict
+end
+
+function FbLabTests:siteOutside(charName, template)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local o = FbSiteBuilder:addOutside(pPlayer, template)
+	if o == nil then print("ERROR not placed"); return "none" end
+	print(string.format("INFO outside template=%s x=%.1f y=%.1f dir=%.0f oid=%d", o.template, o.x, o.y, o.dir, o.oid))
+	return "ok"
+end
+
+-- siteDraft:<char> → the draft's state; siteText:<char> → the site file text (one INFO line per file line)
+function FbLabTests:siteDraft(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local d = FbSiteBuilder:draft(pPlayer)
+	if d == nil then print("INFO site none"); return "none" end
+	print(string.format("INFO site name=%s template=%s x=%.1f y=%.1f heading=%.0f preview=%d tenants=%d outside=%d", d.name, d.template, d.x, d.y, d.heading, d.preview, #d.tenants, #d.outside))
+	return d.name
+end
+
+function FbLabTests:siteText(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local d = FbSiteBuilder:draft(pPlayer)
+	if d == nil then print("ERROR no draft"); return "none" end
+	for _, l in ipairs(FbSiteBuilder:siteText(d)) do print("INFO sitefile " .. l) end
+	return d.name
+end
+
+function FbLabTests:siteRename(charName, name)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	FbSiteBuilder:rename(pPlayer, name)
+	return FbLabTests:siteDraft(charName)
+end
+
+function FbLabTests:siteDiscard(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	FbSiteBuilder:discard(pPlayer)
+	print("INFO site discarded")
+	return "ok"
 end
 

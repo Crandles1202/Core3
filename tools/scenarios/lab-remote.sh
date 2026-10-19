@@ -21,6 +21,7 @@ bot --wait 3 \
 	--radial "$REMOTE" 20 --sui "Where am I (world + room coordinates)" --sui-match "Lab Remote" --wait 1 --sui 0 --sui-match "Where am I" \
 	--radial "$REMOTE" 20 --sui "Find NPC" --sui-match "Lab Remote" --sui "Tamsin" --sui-match "Find NPC" --sui 0 --sui-match "Find NPC: Tamsin" --sui "Teleport me to it" --sui-match "Tamsin" --wait 2 \
 	--radial "$REMOTE" 20 --sui "Trade Hall status" --sui-match "Lab Remote" --sui 0 --sui-match "Trade Hall" \
+	--radial "$REMOTE" 20 --sui "Site builder" --sui-match "Lab Remote" --sui 0 --sui-cancel --sui-match "Site builder" \
 	--keep-going
 check_eq "console_windows_answered" "$(bot_action_count sui failed)" "0" "$(bot_action_count sui ok) sui actions ok, $(bot_action_count sui failed) failed"
 check "main_window_opened" "$(grep -aq "title='Final Boss Lab Remote'" "$BOTLOG" && echo 1 || echo 0)"
@@ -28,6 +29,7 @@ check "where_am_i_in_chat" "$(grep -aq '\[lab\] planet tatooine' "$BOTLOG" && ec
 check "where_am_i_outdoors" "$(grep -aq '\[lab\] outdoors (cell 0)' "$BOTLOG" && echo 1 || echo 0)"
 check "find_listed_tamsin" "$(grep -aq "title='Find NPC: Tamsin'" "$BOTLOG" && echo 1 || echo 0)"
 check "trade_hall_window" "$(grep -aq "title='Trade Hall'" "$BOTLOG" && echo 1 || echo 0)"
+check "site_builder_window" "$(grep -aq "title='Site builder'" "$BOTLOG" && echo 1 || echo 0)"
 WHERE=$(lab "where:$CHAR")
 check "teleported_into_the_hall" "$(grep -q 'cell=[1-9]' <<<"$WHERE" && echo 1 || echo 0)" "$WHERE"
 DIST=$(lab "npc:fb_parts_dealer:$CHAR" | grep -a 'cell=' | sed -n 's/.*dist=\([0-9.]*\).*/\1/p' | sort -n | head -n1)

@@ -186,6 +186,50 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-18/19 (night) — Phase 2.12b site builder + data-driven sites.** Chuck: "a tool that helps me
+  translate where I'd like to put a building, what direction it faces, what vendors are in it and where".
+  Pieces: (1) `tools/lotsurvey export` writes `custom_scripts/fb_world_data.lua` (239 stock footprints,
+  147 shells with rooms; 200 KB, loaded in every state) and `fb_world_furniture.lua` (12k props, 700 KB,
+  `FbWorldData.loadFurniture()` on demand) — the furniture is client-only, this is how the server learns
+  it; `.flr` versions 0003/0005 have no vertex count prefix (0006 does), detect by chunk size. (2) A
+  C++ Lua binding `SceneObject:getStructuresInRange(range)` (buildings + static shells via
+  `Zone::getInRangeObjects(…, includeBuildingObjects=true)`; `isStaticObjectClass()`), so the lot check
+  uses the server's own snapshot objects plus the exported footprint radii. (3) `FbSites` loader:
+  `tasks/sites/*.lua` (`io.popen("ls")` + `includeFile`) each `FbSites:add {…}`; building by `spawnSceneObject`,
+  tenants by cell name, outdoor NPCs; the Trade Hall became the first site file and `FbTradeHall` a
+  wrapper (keeper handler and scenarios unchanged). (4) `FbSiteBuilder` (architect mode on the remote):
+  draft in quest status (`FbSiteDraft.<oid>.site|tenants|outside`), preview = real building spawned at
+  the player's position with a chosen heading, `lotReport` (neighbours' footprint circles vs the
+  shell's rotated footprint rectangle, +3 m; terrain corners), `nudge` respawns preview + draft NPCs,
+  `addTenant` converts the player's cell-local position + heading and grades it against the furniture
+  (`spotReport`, the Python `prop_clearance` ported), `siteText` emits the site file; `swg site save
+  <char> <name>` pulls it through `FbLabTests:siteText` into `tasks/sites/`. Gotchas: the game data names
+  shells `…/shared_x.iff` but the server spawns `…/x.iff` (`clientForm`/`serverForm`; the first preview
+  silently returned nil); the lot check must ignore the draft's own preview; a destroyed building still
+  resolves through `getSceneObject` with an empty zone name (test liveness by zone, not by cells);
+  player houses have no interior layout, so their furniture verdict is "no data". Scenario
+  `site-builder` (23 checks, admin bot via oracles: preview clear in the desert, nudge respawn, tenant from
+  inside, outdoor NPC, site text, `swg site save` round trip, the starport apron reported as a clash on
+  the square, discard leaves nothing) and a Site builder window in `lab-remote`.
+- **2026-10-18 (night) — Phase 2.12a Lab Remote.** Chuck: "is it possible to have in-game commands that
+  serve this info up?" A new slash command is out (the client rejects commands missing from its own
+  command table unless we ship a patched datatable in the TRE), so the lab became an **item**: the old
+  magic-8-ball "field probe" turned into the Lab Remote (`clientTemplateFileName` lets a server template
+  borrow a stock client appearance — the camp-remote radio — while binding our `objectMenuComponent`;
+  the probe's template path stays registered as an alias so old items keep working). Radial → SUI
+  windows (`SuiListBox`/`SuiInputBox`/`SuiMessageBox` from `screenplays/sui/`, callbacks
+  `(pPlayer, pSui, eventIndex, args)`, list rows are 0-based in `args`, input text arrives in `args`).
+  Two Lua-state lessons made it work: (1) radial and window callbacks run on whichever thread handles
+  the packet, so the remote keeps per-player state (the found-NPC list, the picked oid) in quest status,
+  not in Lua tables; (2) the per-state `FbLabTests.spawns` registry misses spawns made elsewhere (the
+  Trade Hall tenants, seat churn, the merchant's moves — the admin bot's Lua run failed on
+  `fb_traveling_merchant.spawned 0/1` for exactly that reason), so the `spawnMobile` wrapper now also
+  writes a quest-status registry (`FbLabSpawns.<template>` = `oid|zone|cell|x|y|z|src;` records, pruned
+  on read) that `liveSpawns` and `checkNpc` merge in. `FbLabTests.capture(fn, …)` swaps `print` for
+  the call so the remote can show what an oracle prints. Admin login hands a remote out
+  (`FBLogin.onLogin`); `swg test bot --user claude-admin` creates a privileged bot character and the
+  `lab-remote` scenario drives the windows with `--radial <oid> 20` and `--sui <row|text> --sui-match
+  <title>`.
 - **2026-10-18 (late) — Phase 2.11 Mos Eisley Trade Hall (server-placed building, proof of concept).**
   Chuck asked for a mall to put the vendors in. Facts: cities' buildings come from `snapshot/<planet>.ws`
   (client and server read it), but a building is also just an object — `spawnSceneObject` with a
