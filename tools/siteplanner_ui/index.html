@@ -37,7 +37,7 @@
   <label>Planet</label>
   <select id="planet"><option>tatooine</option><option>naboo</option><option>corellia</option><option>talus</option><option>rori</option><option>dantooine</option><option>lok</option><option>yavin4</option><option>endor</option><option>dathomir</option></select>
   <label>City / point of interest / shuttle</label>
-  <select id="place"><option value="">— pick a place —</option></select>
+  <select id="placeSel"><option value="">— pick a place —</option></select>
   <div class="row"><div><label>Centre x</label><input id="cx" type="number" value="3520"></div><div><label>Centre y</label><input id="cy" type="number" value="-4810"></div><div><label>Radius m</label><input id="radius" type="number" value="250"></div></div>
   <button id="load" class="primary">Load area</button>
   <button id="live">Overlay live NPCs (needs the server)</button>
@@ -544,7 +544,7 @@ $("load").onclick = loadArea;
 document.addEventListener("click", e => { if (e.target.tagName === "BUTTON") e.target.blur(); });
 for (const id of ["cx", "cy", "radius"]) $(id).addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); loadArea(); } });
 async function loadPlaces(jumpToFirstCity) {
-  const sel = $("place"); sel.innerHTML = "<option value=''>— pick a place —</option>";
+  const sel = $("placeSel"); sel.innerHTML = "<option value=''>— pick a place —</option>";
   try {
     const pl = await api("/api/places?planet=" + encodeURIComponent($("planet").value));
     if (jumpToFirstCity && pl.length) { const c = pl.find(p => p.kind === "city") || pl[0]; $("cx").value = c.x; $("cy").value = c.y; $("radius").value = c.r; }
@@ -558,7 +558,7 @@ async function loadPlaces(jumpToFirstCity) {
   } catch (e) { status(/not found/i.test(e.message) ? "The planner server is older than the page: restart tools/siteplanner serve" : "No places for this planet: " + e.message, "warn"); }
 }
 $("planet").onchange = () => { fillShells(); loadPlaces(true); };
-$("place").onchange = () => { if (!$("place").value) return; const [x, y, r] = JSON.parse($("place").value); $("cx").value = x; $("cy").value = y; $("radius").value = r; loadArea(); };
+$("placeSel").onchange = () => { if (!$("placeSel").value) return; const [x, y, r] = JSON.parse($("placeSel").value); $("cx").value = x; $("cy").value = y; $("radius").value = r; loadArea(); };
 $("allPlanets").onchange = fillShells;
 for (const id of ["L_furniture", "L_usables", "L_objects", "L_stock", "L_live", "L_labels"]) $(id).onchange = draw;
 const L = id => $(id).checked;
