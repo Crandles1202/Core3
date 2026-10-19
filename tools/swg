@@ -19,6 +19,7 @@
 #                                    only) the way the login server does, keeping the N newest (4);
 #                                    test bot runs it when the account is at the 10-character cap
 #   swg tre build|install|status [--client DIR]
+#   swg site save <char> <name> | site list   # write an in-game site draft into tasks/sites/
 #                                    tools/tre: pack tre-src/ into finalboss.tre and install it for the
 #                                    server (TrePath) and the client (DIR, remembered in ~/.swg-lab/).
 #                                    start/test unit do build+install themselves; start adds the
@@ -683,6 +684,32 @@ cmd_account() {
 
 # ---------------------------------------------------------------- main
 
+# swg site save <char> <name> [--force]  → write the character's exported site draft (Lab Remote → Site
+# builder → Export) into screenplays/tasks/sites/<name>.lua; the next start builds it. Review + commit as usual.
+cmd_site() {
+	local sub=${1:-}; shift || true
+	case "$sub" in
+		save)
+			local char=${1:-} name=${2:-} force=0
+			[ -n "$char" ] && [ -n "$name" ] || die "usage: swg site save <char> <name> [--force]"
+			[ "${3:-}" = "--force" ] && force=1
+			name=$(printf '%s' "$name" | tr -c 'a-z0-9_\n' '_')
+			local out="$REPO/MMOCoreORB/bin/scripts/screenplays/tasks/sites/$name.lua"
+			if [ -f "$out" ] && [ "$force" != 1 ]; then die "$out exists (use --force to replace it)"; fi
+			require_running
+			local text
+			text=$("$0" cmd "runLuaFunction FbLabTests:siteText:$char" --timeout 10 | sed -n 's/^INFO sitefile //p')
+			grep -q '^FbSites:add {' <<<"$text" || die "no draft text for $char (export it from the remote's Site builder first)"
+			mkdir -p "$(dirname "$out")"
+			printf '%s\n' "$text" | sed "s/name = \"[^\"]*\"/name = \"$name\"/" > "$out"
+			say "wrote $out ($(wc -l < "$out") lines). Restart (swg restart / test all) to build it; then review and commit."
+			;;
+		list)
+			ls -1 "$REPO/MMOCoreORB/bin/scripts/screenplays/tasks/sites/" 2>/dev/null | sed 's/\.lua$//' ;;
+		*) die "usage: swg site save <char> <name> [--force] | swg site list" ;;
+	esac
+}
+
 cmd_tre() {
 	[ -x "$TRE" ] || die "$TRE missing"
 	case "${1:-}" in
@@ -705,6 +732,7 @@ case "${1:-}" in
 	snap)    shift; cmd_snap "$@" ;;
 	account) shift; cmd_account "$@" ;;
 	tre)     shift; cmd_tre "$@" ;;
+	site)    shift; cmd_site "$@" ;;
 	-h|--help|help|"") usage ;;
 	*) die "unknown command '$1' (swg --help)" ;;
 esac

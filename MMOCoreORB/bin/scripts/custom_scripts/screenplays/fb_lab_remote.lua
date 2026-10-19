@@ -113,6 +113,7 @@ FbLabRemote.mainItems = {
 	{ "Find NPC…", "find" },
 	{ "Audit NPCs within 50 m", "auditnear" },
 	{ "Lab actions…", "actions" },
+	{ "Site builder…", "sites" },
 	{ "Trade Hall status", "tradehall" },
 	{ "Territory", "territory" },
 	{ "Galaxy news pool", "news" },
@@ -136,6 +137,7 @@ function FbLabRemote:onMain(pPlayer, pSui, eventIndex, args)
 	elseif what == "find" then self:askFind(pPlayer)
 	elseif what == "auditnear" then self:auditNear(pPlayer, 50)
 	elseif what == "actions" then self:showActions(pPlayer)
+	elseif what == "sites" then FbSiteBuilder:showMenu(pPlayer)
 	elseif what == "tradehall" then messageBox(pPlayer, "Trade Hall", captured("tradeHall"))
 	elseif what == "territory" then messageBox(pPlayer, "Territory", captured("territory"))
 	elseif what == "news" then messageBox(pPlayer, "Galaxy news pool", captured("galaxyNews"))
