@@ -269,9 +269,15 @@ def places(planet, cache={}):
     for m in REGION_RE.finditer(text):
         raw, x, y, shape, a, b, flags = m.group(1), float(m.group(2)), float(m.group(3)), m.group(4), float(m.group(5)), m.group(6), m.group(7)
         name = raw.split(":", 1)[1] if ":" in raw else raw
-        r = a if shape != "RECTANGLE" else max(abs(a - x), abs(float(b) - y)) if b else a
-        if shape == "RING" and b:
+        if shape == "RECTANGLE" and b is not None:
+            # a rectangle is given by two corners (x, y) and (x2, y2), not a centre
+            x2, y2 = float(a), float(b)
+            x, y = (x + x2) / 2, (y + y2) / 2
+            r = max(abs(x2 - x), abs(y2 - y))
+        elif shape == "RING" and b is not None:
             r = float(b)
+        else:
+            r = a
         kind = None
         if "CITY" in flags.split() or "CITY" in flags.replace("+", " ").split():
             kind = "city"
@@ -280,7 +286,7 @@ def places(planet, cache={}):
                 kind = "poi"
         if kind and name not in seen:
             seen.add(name)
-            out.append(dict(name=name, kind=kind, x=round(x), y=round(y), r=int(min(max(r, 120), 700))))
+            out.append(dict(name=name, kind=kind, x=round(x), y=round(y), r=int(min(max(r, 120), 1600))))
     try:
         with open(os.path.join(REGIONS_DIR, "planet_manager.lua"), encoding="utf-8", errors="replace") as fh:
             pm = fh.read()
@@ -524,6 +530,8 @@ def cmd_selftest(a):
     pl = places("tatooine")
     assert any(p["name"] == "mos_eisley" and p["kind"] == "city" for p in pl), "mos eisley in places"
     assert any(p["name"] == "fort_tusken" for p in pl) and any(p["kind"] == "travel" for p in pl), "poi + travel places"
+    th = next((p for p in places("naboo") if p["name"] == "theed"), None)
+    assert th and abs(th["x"] + 5320) < 5 and abs(th["y"] - 4368) < 5 and th["r"] >= 800, "theed rectangle centre %r" % th
     npcs = npc_templates()
     assert any(n["template"] == "fb_parts_dealer" for n in npcs), "npc list"
     assert os.path.exists(os.path.join(UI_DIR, "index.html")), "ui page"

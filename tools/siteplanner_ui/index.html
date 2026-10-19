@@ -535,6 +535,7 @@ async function loadArea() {
   status("Loading area…");
   try {
     S.view.cx = +$("cx").value; S.view.cy = +$("cy").value;
+    S.view.ppm = Math.max(0.2, Math.min(80, Math.min(W(), H()) / (2.3 * (+$("radius").value || 250))));   // fit the area
     S.area = await api(`/api/area?planet=${encodeURIComponent($("planet").value)}&x=${$("cx").value}&y=${$("cy").value}&r=${$("radius").value}`);
     S.sites = await api("/api/sites");
     const sel = $("sites"); sel.innerHTML = "<option value=''>—</option>"; for (const s of S.sites) { const o = document.createElement("option"); o.value = s.file; o.textContent = `${s.name} (${s.planet})`; sel.appendChild(o); }
