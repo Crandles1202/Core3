@@ -158,6 +158,24 @@ function furnitureClearance(shell, room, x, y) {
   if (best < MARGIN) return { verdict: "warn", text: best.toFixed(2) + " m from " + name };
   return { verdict: "ok", text: best.toFixed(1) + " m from " + name };
 }
+// silhouette of a triangle list: edges that belong to exactly one triangle (cached per list)
+const _edgeCache = new WeakMap();
+function boundaryEdges(tris) {
+  if (_edgeCache.has(tris)) return _edgeCache.get(tris);
+  const count = new Map(), seg = new Map();
+  for (const t of tris) for (let i = 0; i < 3; i++) {
+    const a = t[i], b = t[(i + 1) % 3];
+    const k = a[0] < b[0] || (a[0] === b[0] && a[1] <= b[1]) ? `${a[0]},${a[1]}|${b[0]},${b[1]}` : `${b[0]},${b[1]}|${a[0]},${a[1]}`;
+    count.set(k, (count.get(k) || 0) + 1); seg.set(k, [a, b]);
+  }
+  const out = []; for (const [k, n] of count) if (n === 1) out.push(seg.get(k));
+  _edgeCache.set(tris, out); return out;
+}
+function strokeOutline(tris, map, toScreen, color, width) {
+  ctx.strokeStyle = color; ctx.lineWidth = width || 1; ctx.beginPath();
+  for (const [a, b] of boundaryEdges(tris)) { const pa = map(a), pb = map(b); const [ax, ay] = toScreen(pa[0], pa[1]), [bx, by] = toScreen(pb[0], pb[1]); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); }
+  ctx.stroke(); ctx.lineWidth = 1;
+}
 function shellFor(template) { return S.shells.find(x => x.server === template || x.template === template) || null; }
 function buildingAt(wx, wy) {
   const d = S.draft;
@@ -266,12 +284,13 @@ function drawMap() {
       const map = p => toWorld(b.x, b.y, b.heading, p[0], p[1]);
       if (sh && sh.exterior && sh.exterior.length) {
         // the real outline: the exterior floor mesh (porch, steps, apron), with the rooms faint inside when zoomed in
-        for (const t of sh.exterior) poly(t.map(map), w2s, "rgba(150,160,180,0.16)", null);
+        for (const t of sh.exterior) poly(t.map(map), w2s, "rgba(150,160,180,0.14)", null);
+        strokeOutline(sh.exterior, map, w2s, "#7f8ca0");
         if (S.view.ppm > 1.6) drawShellRooms(sh, b.x, b.y, b.heading, w2s, false, true);
-        poly(rectPoly(b.x, b.y, b.heading, b.fp), w2s, null, "rgba(91,102,120,0.5)");
       } else if (b.radar && b.radar.length) {
         // the radar outline the game itself draws for this building on the in-game map
-        for (const t of b.radar) poly(t.map(map), w2s, "rgba(150,160,180,0.2)", null);
+        for (const t of b.radar) poly(t.map(map), w2s, "rgba(150,160,180,0.14)", null);
+        strokeOutline(b.radar, map, w2s, "#7f8ca0");
       } else if (b.fp) poly(rectPoly(b.x, b.y, b.heading, b.fp), w2s, "rgba(150,160,180,0.12)", "#5b6678");
       else if (b.box) poly(rectPoly(b.x, b.y, b.heading, b.box), w2s, "rgba(150,160,180,0.14)", "#5b6678");
       else { const [sx, sy] = w2s(b.x, b.y); ctx.beginPath(); ctx.arc(sx, sy, b.radius * S.view.ppm, 0, Math.PI * 2); ctx.fillStyle = "rgba(150,160,180,0.08)"; ctx.fill(); ctx.strokeStyle = "#444d5b"; ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]); }
@@ -283,7 +302,9 @@ function drawMap() {
     const sh = S.shells.find(x => x.server === s.template || x.template === s.template);
     if (!sh || S.loadedFile === s.file) continue;
     const outlineS = sh.exterior && sh.exterior.length ? sh.exterior : (sh.radar || []);
-    for (const t of outlineS) poly(t.map(p => toWorld(s.x, s.y, s.heading, p[0], p[1])), w2s, "rgba(197,140,255,0.18)", null);
+    const mapS = p => toWorld(s.x, s.y, s.heading, p[0], p[1]);
+    for (const t of outlineS) poly(t.map(mapS), w2s, "rgba(197,140,255,0.18)", null);
+    if (outlineS.length) strokeOutline(outlineS, mapS, w2s, "#c58cff");
     poly(rectPoly(s.x, s.y, s.heading, sh.fp), w2s, sh.exterior && sh.exterior.length ? null : "rgba(197,140,255,0.15)", "#c58cff");
     if (S.view.ppm > 1.6) drawShellRooms(sh, s.x, s.y, s.heading, w2s, false, true);
     const [sx, sy] = w2s(s.x, s.y); ctx.fillStyle = "#c58cff"; ctx.fillText("site " + s.name, sx + 3, sy - 3);
@@ -302,7 +323,9 @@ function drawMap() {
   if (d) {
     const lot = S.lot; const col = !lot ? "#4cc3ff" : lot.verdict === "ok" ? "#44d17a" : lot.verdict === "warn" ? "#f0b429" : "#ff5c5c";
     const outlineD = d.shell.exterior && d.shell.exterior.length ? d.shell.exterior : (d.shell.radar || []);
-    for (const t of outlineD) poly(t.map(p => toWorld(d.x, d.y, d.heading, p[0], p[1])), w2s, col + "33", null);
+    const mapD = p => toWorld(d.x, d.y, d.heading, p[0], p[1]);
+    for (const t of outlineD) poly(t.map(mapD), w2s, col + "33", null);
+    if (outlineD.length) strokeOutline(outlineD, mapD, w2s, col, 2);
     poly(rectPoly(d.x, d.y, d.heading, d.shell.fp), w2s, d.shell.exterior && d.shell.exterior.length ? null : col + "33", col);   // hex + alpha: translucent fill
     drawShellRooms(d.shell, d.x, d.y, d.heading, w2s, false);
     const [sx, sy] = w2s(d.x, d.y); const [ex, ey] = toWorld(d.x, d.y, d.heading, 0, d.shell.fp.y1 + 3); const [tx, ty] = w2s(ex, ey);
