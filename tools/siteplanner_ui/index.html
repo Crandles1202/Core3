@@ -106,14 +106,16 @@ function toWorld(bx, by, h, lx, ly) { const a = rad(h); return [bx + lx * Math.c
 function toLocal(bx, by, h, wx, wy) { const a = rad(h), dx = wx - bx, dy = wy - by; return [dx * Math.cos(a) - dy * Math.sin(a), dx * Math.sin(a) + dy * Math.cos(a)]; }
 function rectPoly(cx, cy, h, fp) { return [[fp.x0, fp.y0], [fp.x1, fp.y0], [fp.x1, fp.y1], [fp.x0, fp.y1]].map(p => toWorld(cx, cy, h, p[0], p[1])); }
 function distPointPoly(px, py, poly) {
-  let inside = true, best = 1e9;
+  // distance from a point to a convex polygon, 0 inside — winding-agnostic (the cross products must all share a sign)
+  let pos = 0, neg = 0, best = 1e9;
   for (let i = 0; i < poly.length; i++) {
     const [ax, ay] = poly[i], [bx, by] = poly[(i + 1) % poly.length], ex = bx - ax, ey = by - ay;
     const t = Math.max(0, Math.min(1, ((px - ax) * ex + (py - ay) * ey) / (ex * ex + ey * ey)));
     best = Math.min(best, Math.hypot(px - (ax + t * ex), py - (ay + t * ey)));
-    if (ex * (py - ay) - ey * (px - ax) > 0) inside = false;
+    const cross = ex * (py - ay) - ey * (px - ax);
+    if (cross > 0) pos++; else if (cross < 0) neg++;
   }
-  return inside ? 0 : best;
+  return (pos === 0 || neg === 0) ? 0 : best;
 }
 function pointInTri(p, a, b, c) {
   const s = (a[0] - c[0]) * (p[1] - c[1]) - (a[1] - c[1]) * (p[0] - c[0]);
