@@ -464,7 +464,7 @@ function personAt(sx, sy) {
   return null;
 }
 window.addEventListener("keydown", e => {
-  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
+  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT" || e.target.tagName === "BUTTON" || e.target.tagName === "A") return;
   if (e.key === "Enter") { if (S.mode === "inside") { S.mode = "map"; S.inspect = null; S.floor = null; $("floorsBox").style.display = "none"; draw(); } else if (S.selB) openInside(S.selB); else if (S.draft) openInside({ kind: "draft", obj: S.draft, shell: S.draft.shell }); e.preventDefault(); return; }
   if (e.key === "Escape" && S.mode === "inside") { S.mode = "map"; S.inspect = null; S.floor = null; $("floorsBox").style.display = "none"; draw(); return; }
   const d = S.draft; if (!d) return;
@@ -540,19 +540,24 @@ async function loadArea() {
   } catch (e) { status("Load failed: " + e.message, "bad"); }
 }
 $("load").onclick = loadArea;
-async function loadPlaces() {
+// buttons keep keyboard focus after a click, so a later Enter would re-fire them: drop it
+document.addEventListener("click", e => { if (e.target.tagName === "BUTTON") e.target.blur(); });
+for (const id of ["cx", "cy", "radius"]) $(id).addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); loadArea(); } });
+async function loadPlaces(jumpToFirstCity) {
   const sel = $("place"); sel.innerHTML = "<option value=''>— pick a place —</option>";
   try {
     const pl = await api("/api/places?planet=" + encodeURIComponent($("planet").value));
+    if (jumpToFirstCity && pl.length) { const c = pl.find(p => p.kind === "city") || pl[0]; $("cx").value = c.x; $("cy").value = c.y; $("radius").value = c.r; }
     let group = null;
     for (const p of pl) {
       if (p.kind !== group) { group = p.kind; const og = document.createElement("optgroup"); og.label = p.kind === "city" ? "Cities" : p.kind === "travel" ? "Shuttles & starports" : "Points of interest"; og.id = "pg_" + p.kind; sel.appendChild(og); }
       const o = document.createElement("option"); o.value = JSON.stringify([p.x, p.y, p.r]); o.textContent = p.name.replace(/_/g, " ");
       document.getElementById("pg_" + p.kind).appendChild(o);
     }
-  } catch (e) { status("No places for this planet: " + e.message, "warn"); }
+    if (jumpToFirstCity && pl.length) { const c = pl.find(p => p.kind === "city") || pl[0]; sel.value = JSON.stringify([c.x, c.y, c.r]); await loadArea(); }
+  } catch (e) { status(/not found/i.test(e.message) ? "The planner server is older than the page: restart tools/siteplanner serve" : "No places for this planet: " + e.message, "warn"); }
 }
-$("planet").onchange = () => { loadPlaces(); fillShells(); };
+$("planet").onchange = () => { fillShells(); loadPlaces(true); };
 $("place").onchange = () => { if (!$("place").value) return; const [x, y, r] = JSON.parse($("place").value); $("cx").value = x; $("cy").value = y; $("radius").value = r; loadArea(); };
 $("allPlanets").onchange = fillShells;
 for (const id of ["L_furniture", "L_usables", "L_objects", "L_stock", "L_live", "L_labels"]) $(id).onchange = draw;
