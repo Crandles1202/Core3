@@ -186,6 +186,14 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-19 — the sandstorm scenario's `client_saw_the_storm` flake, explained.** `WeatherManager::sendWeatherTo`
+  computes `map.getWeatherAt(x, y) + baseWeather` and upstream set anything above 4 to **0**. `setZoneWeather(4)`
+  therefore showed *clear* to any player standing where the local map was above 0 — the scenario passed only
+  when the bot happened to stand on a map cell at 0 (and in game Chuck's "sky goes dark" check could have failed
+  the same way). Clamped to 4 instead (one line, `WeatherManagerImplementation.cpp`). The bot log is the
+  tell: `Weather id=…` lines without a 4 while `storm` says `weather=4`. Players receive weather on their own
+  periodic tick (`PlayerObjectImplementation`, also at login), which is why a forced change takes a few
+  seconds to arrive.
 - **2026-10-19 — 2.12g, world edits (moving the stock world).** Chuck asked whether the filler blocks could be
   moved or added. They can, because the client and the server read the same `snapshot/<planet>.ws` and our
   archive wins on both sides (`searchTree_00_26=finalboss.tre` in the client cfg, first in `Core3.TreFiles`).
