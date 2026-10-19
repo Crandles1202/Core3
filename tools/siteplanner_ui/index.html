@@ -199,7 +199,7 @@ function showInfo(sel) {
   const openLink = sh ? `<button id="openLayout" class="primary">Open layout (Enter)</button>` : `<div class="warn">no portal layout: a solid shell, nothing to show inside</div>`;
   const occupants = sel.kind === "stock" && o.npcs && o.npcs.length ? `<br>stock NPCs: ${o.npcs.map(n => n.template + " (" + n.room + ")").join(", ")}` : "";
   const usables = sel.kind === "stock" && o.objects ? o.objects.filter(x => ["terminal", "station", "vendor", "elevator"].includes(x.kind)) : [];
-  const kids = (sh && sh.children || []).filter(c => ["terminal", "station", "vendor", "elevator"].includes(c.kind) || /ticket/.test(c.template));
+  const kids = ((sel.kind === "stock" && o.children) || (sh && sh.children) || []).filter(c => ["terminal", "station", "vendor", "elevator"].includes(c.kind) || /ticket/.test(c.template));
   const usableText = (usables.length || kids.length) ? `<br>usable: ${usables.concat(kids).map(u => u.short + " (" + u.room + ")").join(", ")}` : "";
   if (sel.kind === "stock") el.innerHTML = `<div><b>${o.short}</b> <small>(stock building)</small></div><small>${o.name}<br>at ${o.x}, ${o.y} · heading ${o.heading}${o.fp ? ` · ${(o.fp.x1 - o.fp.x0).toFixed(0)}×${(o.fp.y1 - o.fp.y0).toFixed(0)} m` : ""}<br>rooms: ${rooms}${occupants}${usableText}</small>${openLink}`;
   else if (sel.kind === "site") el.innerHTML = `<div><b>site ${o.name}</b></div><small>${o.template}<br>at ${o.x}, ${o.y} · heading ${o.heading} · ${o.tenants.length} tenant(s)<br>rooms: ${rooms}</small>${openLink}<button id="editSite">Edit this site</button>`;
@@ -297,6 +297,14 @@ function drawMap() {
       else { const [sx, sy] = w2s(b.x, b.y); ctx.beginPath(); ctx.arc(sx, sy, b.radius * S.view.ppm, 0, Math.PI * 2); ctx.fillStyle = "rgba(150,160,180,0.08)"; ctx.fill(); ctx.strokeStyle = "#444d5b"; ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]); }
       const [sx, sy] = w2s(b.x, b.y); if (L("L_labels")) { ctx.fillStyle = "#8a94a6"; ctx.font = "10px system-ui"; ctx.fillText(b.short, sx + 3, sy - 3); }
       if (b.fp) { const [ex, ey] = toWorld(b.x, b.y, b.heading, 0, b.fp.y1); const [tx, ty] = w2s(ex, ey); ctx.strokeStyle = "#8a94a6"; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(tx, ty); ctx.stroke(); }
+      // what the server spawns with this building (bank terminals, travel terminals, ticket collectors)
+      for (const c of b.children || []) {
+        const usable = ["terminal", "station", "vendor", "elevator"].includes(c.kind) || /ticket/.test(c.template);
+        if (usable ? !L("L_usables") : !L("L_objects")) continue;
+        const [wx, wy] = map([c.x, c.y]); const [cx, cy] = w2s(wx, wy); const col = /ticket/.test(c.template) ? "#ffd166" : (KIND_COLOR[c.kind] || "#6c7a8f"); const sz = usable ? Math.max(3, Math.min(6, S.view.ppm * 1.2)) : 1.5;
+        ctx.save(); ctx.translate(cx, cy); ctx.rotate(-rad(b.heading + c.heading)); ctx.fillStyle = col; ctx.fillRect(-sz, -sz, 2 * sz, 2 * sz); if (usable) { ctx.strokeStyle = "#fff"; ctx.strokeRect(-sz, -sz, 2 * sz, 2 * sz); } ctx.restore();
+        if (usable && L("L_labels") && S.view.ppm > 2.2) { ctx.fillStyle = col; ctx.font = "9px system-ui"; ctx.fillText(c.short.replace(/^terminal_/, ""), cx + sz + 2, cy + 3); }
+      }
     }
   }
   for (const s of S.sites) {

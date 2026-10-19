@@ -182,11 +182,13 @@ class Data:
         for n in nodes:
             if n["parent"] != 0 and n["parent"] in top and "object/cell/" in n["name"]:
                 cell_of[n["oid"]] = (n["parent"], n["cell"])
-        objects_in = {}   # building oid -> [objects inside its cells]
+        objects_in = {}   # building oid -> [objects inside its cells, or parented to the building itself]
         for n in nodes:
             if n["parent"] in cell_of:
                 b, idx = cell_of[n["parent"]]
                 objects_in.setdefault(b, []).append(dict(n, cellIndex=idx))
+            elif n["parent"] in top and "object/building" in top[n["parent"]]["name"] and "object/cell/" not in n["name"]:
+                objects_in.setdefault(n["parent"], []).append(dict(n, cellIndex=0))
         spawns = city_spawns(planet)
         by_building = {}
         outdoor = []
@@ -224,6 +226,8 @@ class Data:
                 rooms_by_index = {rm["cell"]: rm["name"] for rm in sh["rooms"]} if sh else {}
                 entry["npcs"] = [dict(template=sp["template"], x=round(sp["x"], 2), z=round(sp["z"], 2), y=round(sp["y"], 2), heading=round(sp["heading"]),
                                       cell=sp["cell"], room=rooms_by_index.get(sp["cellIndex"], "cell%d" % sp["cellIndex"])) for sp in by_building.get(n["oid"], [])]
+                server = re.sub(r"/shared_([^/]+)$", r"/\1", name)
+                entry["children"] = [dict(c, room=rooms_by_index.get(c["cell"], "outside" if c["cell"] <= 0 else "cell%d" % c["cell"])) for c in child_objects(server)]
                 entry["objects"] = [dict(name=o["name"], short=o["name"].rsplit("/", 1)[-1].replace("shared_", "").replace(".iff", ""), kind=object_kind(o["name"]),
                                          x=round(o["x"], 2), y=round(o["y"], 2), z=round(o["z"], 2), heading=round(o["heading"]), oid=o["oid"],
                                          room=rooms_by_index.get(o["cellIndex"], "cell%d" % o["cellIndex"])) for o in objects_in.get(n["oid"], [])]
@@ -593,6 +597,8 @@ def cmd_selftest(a):
     hall_b = next((b for b in area["buildings"] if b["short"] == "guild_commerce_tatooine_style_01"), None)
     assert hall_b and any(n["template"] == "trainer_artisan" and n["room"] == "meetingd" for n in hall_b["npcs"]), "stock npc -> room mapping"
     assert len(area["npcs"]) > 20, "outdoor stock npcs"
+    bank = next((b for b in area["buildings"] if b["short"] == "bank_tatooine"), None)
+    assert bank and sum(1 for c in bank["children"] if "terminal_bank" in c["template"]) == 4, "bank terminals from the template's childObjects"
     sp = next((b for b in area["buildings"] if b["short"] == "starport_tatooine"), None)
     assert sp and any(o["kind"] == "terminal" for o in sp["objects"]), "starport terminals from the snapshot"
     spsh = next((x for x in shells if x["short"] == "starport_tatooine"), None)
