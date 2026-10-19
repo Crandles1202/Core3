@@ -16,6 +16,10 @@ Endpoints (all JSON):
   GET  /api/live?filter=…                                live NPC positions from the running server (tools/swg), best effort
   GET  /api/terrain?planet=&pts=x,y;x,y                   terrain heights from the running server (the lot report's slope check)
   POST /api/save  {name, lua, force}                     write screenplays/tasks/sites/<name>.lua
+  POST /api/preview {lua, template}                      spawn the draft in the running game (FbSites:preview), audit it
+  POST /api/preview/end                                   tear the preview down, put the saved site back
+  POST /api/check {lua, template}                        furniture check (offline) + placement audit of the spawned preview
+  POST /api/teleport {char, planet, x, y}                move an online character there (FbLabTests:travel)
 """
 import argparse, importlib.machinery, importlib.util, json, os, re, socket, struct, subprocess, sys, urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -473,6 +477,81 @@ def terrain_heights(planet, pts):
     return out
 
 
+# ---------------------------------------------------------------- the game loop (2.12d): preview, checks, teleport
+
+PREVIEW_DIR = os.path.join(SITES_DIR, ".preview")   # outside the loader's *.lua glob; git-ignored
+
+
+def swg_lua(call, timeout=8):
+    """Lines a lab oracle printed (runLuaFunction FbLabTests:<call>) on the running server; [] when it is down."""
+    try:
+        res = subprocess.run([os.path.join(HERE, "swg"), "cmd", "runLuaFunction FbLabTests:" + call, "--timeout", str(timeout)],
+                             capture_output=True, text=True, timeout=timeout + 25)
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    return [l for l in res.stdout.splitlines() if re.match(r"(INFO|ERROR|FAIL|WARN|PASS) ", l)]
+
+
+def write_preview(lua):
+    if not re.search(r"^FbSites:add \{", lua or "", re.M):
+        return None, "not a site file"
+    os.makedirs(PREVIEW_DIR, exist_ok=True)
+    out = os.path.join(PREVIEW_DIR, "preview.lua")
+    with open(out, "w", encoding="utf-8") as fh:
+        fh.write(lua if lua.endswith("\n") else lua + "\n")
+    return out, None
+
+
+def furniture_check(template, path):
+    """tools/lotsurvey check: every tenant spot in the file against the client-only furniture."""
+    try:
+        res = subprocess.run([os.path.join(HERE, "lotsurvey"), "check", template, "--lua", path], capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return ["ERROR furniture check did not run: %s" % e]
+    return [l for l in res.stdout.splitlines() if re.match(r"(FAIL|WARN|summary|OK)", l)] or [l for l in res.stderr.splitlines()[-3:]]
+
+
+def preview_site(lua, template):
+    """Push the draft into the running server (FbSites:preview via the lab), then audit it."""
+    path, err = write_preview(lua)
+    if err:
+        return dict(ok=False, lines=["ERROR " + err])
+    lines = swg_lua("sitePreview:preview", 20)
+    if not lines:
+        return dict(ok=False, lines=["ERROR the game server did not answer (tools/swg status)"])
+    m = re.search(r'name = "([a-z0-9_]+)"', lua)
+    if m and any(l.startswith("INFO sitePreview") for l in lines):
+        lines += swg_lua("sitePlacement:" + m.group(1), 20)
+    if template:
+        lines += furniture_check(template, path)
+    ok = any(l.startswith("INFO sitePreview") for l in lines) and not any(l.startswith(("ERROR", "FAIL")) for l in lines)
+    return dict(ok=ok, lines=lines)
+
+
+def check_site(lua, template):
+    """Lab checks without spawning: furniture (offline) plus, when the preview of this site is up, its placement audit."""
+    path, err = write_preview(lua)
+    if err:
+        return dict(ok=False, lines=["ERROR " + err])
+    lines = furniture_check(template, path) if template else []
+    m = re.search(r'name = "([a-z0-9_]+)"', lua)
+    if m:
+        lines += swg_lua("sitePlacement:" + m.group(1), 20) or ["INFO placement: the game server is not up, or this site is not spawned (Spawn preview first)"]
+    ok = not any(l.startswith(("ERROR", "FAIL")) for l in lines)
+    return dict(ok=ok, lines=lines)
+
+
+def teleport(char, planet, x, y):
+    if not re.fullmatch(r"[A-Za-z][A-Za-z' -]{0,39}", char or "") or not re.fullmatch(r"[a-z0-9_]{1,20}", planet or ""):
+        return dict(ok=False, lines=["ERROR give your character's first name (Site panel) and a planet"])
+    try:
+        x, y = float(x), float(y)
+    except (TypeError, ValueError):
+        return dict(ok=False, lines=["ERROR bad coordinates"])
+    lines = swg_lua("travel:%s:%s:%.1f:%.1f" % (char, planet, x, y), 10)
+    return dict(ok=any(l.startswith("INFO travel") for l in lines), lines=lines or ["ERROR the game server did not answer, or %s is not online" % char])
+
+
 def save_site(name, lua, force):
     name = re.sub(r"[^a-z0-9_]", "_", name.lower())
     if not name:
@@ -552,6 +631,15 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/save":
             ok, msg = save_site(body.get("name", ""), body.get("lua", ""), bool(body.get("force")))
             self._json(dict(ok=ok, message=msg), 200 if ok else 400)
+        elif u.path == "/api/preview":
+            self._json(preview_site(body.get("lua", ""), body.get("template", "")))
+        elif u.path == "/api/preview/end":
+            lines = swg_lua("sitePreviewEnd", 20)
+            self._json(dict(ok=bool(lines) and not any(l.startswith("ERROR") for l in lines), lines=lines or ["ERROR the game server did not answer"]))
+        elif u.path == "/api/check":
+            self._json(check_site(body.get("lua", ""), body.get("template", "")))
+        elif u.path == "/api/teleport":
+            self._json(teleport(body.get("char", ""), body.get("planet", ""), body.get("x"), body.get("y")))
         else:
             self._json(dict(error="not found"), 404)
 
@@ -613,12 +701,15 @@ def cmd_selftest(a):
     assert any(f["room"] == "meetingb" and "dining" in f["name"] for f in hall["furniture"]), "dining table"
     sites = load_sites()
     th = next((s for s in sites if s["name"] == "mos_eisley_trade_hall"), None)
-    assert th and len(th["tenants"]) == 11 and th["heading"] == 180, "trade hall site parse"
+    assert th and len(th["tenants"]) == 11 and 0 <= th["heading"] < 360 and th["planet"] == "tatooine", "trade hall site parse"
     hall_b = next((b for b in area["buildings"] if b["short"] == "guild_commerce_tatooine_style_01"), None)
     assert hall_b and any(n["template"] == "trainer_artisan" and n["room"] == "meetingd" for n in hall_b["npcs"]), "stock npc -> room mapping"
     assert len(area["npcs"]) > 20, "outdoor stock npcs"
     bank = next((b for b in area["buildings"] if b["short"] == "bank_tatooine"), None)
     assert bank and sum(1 for c in bank["children"] if "terminal_bank" in c["template"]) == 4, "bank terminals from the template's childObjects"
+    pth, err = write_preview(open(os.path.join(SITES_DIR, "mos_eisley_trade_hall.lua")).read())
+    assert pth and not err and os.path.exists(pth) and all(".preview" not in s["file"] for s in load_sites()), "preview file outside the site list"
+    assert any(l.startswith("summary spots=11 fail=0") for l in furniture_check("object/building/tatooine/shared_guild_commerce_tatooine_style_01.iff", pth)), "furniture check through the planner"
     sp = next((b for b in area["buildings"] if b["short"] == "starport_tatooine"), None)
     assert sp and any(o["kind"] == "terminal" for o in sp["objects"]), "starport terminals from the snapshot"
     spsh = next((x for x in shells if x["short"] == "starport_tatooine"), None)

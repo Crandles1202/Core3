@@ -186,6 +186,19 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-19 — 2.12d, the planner's game loop.** Design: the planner never talks to the server directly;
+  it writes the draft as a real site file into `tasks/sites/.preview/` (a dot-directory, so the boot loader's
+  `ls …/sites/*.lua` never sees it; git-ignored) and asks the lab (`swg cmd runLuaFunction FbLabTests:sitePreview:preview`)
+  to build it. `FbSites:build` now records every NPC oid it spawns in quest status (`FbSites.<name>.npcs`), which
+  is what makes a teardown possible at all — nothing else remembers which stock-looking NPC belongs to which
+  site. A preview *replaces* the live site of the same name (so dragging the Trade Hall and previewing shows
+  one hall, not two); `previewEnd` rebuilds the boot-time table. The site file is parsed in a sandbox
+  (`loadfile(path, "t", env)` with a stub `FbSites.add` that captures the table) so previewing never registers
+  anything. Teleport reuses `travel` (3 m outside the door offset). Undo keeps serialized drafts (shell by
+  server template name) and takes one entry per drag, at mouse-up; the same snapshot is the autosave.
+  Scenario `site-preview` moves the hall 60 m, audits the 12 NPCs by site, ends the preview and checks the
+  saved hall is back at its x. Gotcha found while writing it: the planner selftest had the hall's heading
+  hard-coded (180); Chuck's relocation turned it to 215 — assert shape, not the current layout.
 - **2026-10-19 — Site planner, Chuck's first hands-on round (feedback branch `feature/phase2.12c-planner-fixes`).**
   What a real user found in an hour, in order: double-click only worked on a placed shell (now any
   building opens, read-only for stock); Firefox under WSLg does not deliver `dblclick` reliably (own

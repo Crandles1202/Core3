@@ -26,7 +26,8 @@
   ul { list-style:none; padding:0; margin:0; } li { padding:4px 6px; border-bottom:1px solid var(--line); display:flex; gap:6px; align-items:center; }
   li.sel { background:#223042; } li span.grow { flex:1; } li button { width:auto; margin:0; padding:2px 6px; }
   textarea { height:220px; font:11px/1.3 ui-monospace, monospace; white-space:pre; }
-  #status { color:var(--dim); margin-top:6px; min-height:1.2em; }
+  #checkOut { font-size: 11px; margin-top: 6px; max-height: 220px; overflow: auto; white-space: pre-wrap; }
+#status { color:var(--dim); margin-top:6px; min-height:1.2em; }
   small { color:var(--dim); }
 </style>
 </head>
@@ -73,12 +74,21 @@
   <button id="save" class="primary">Save to repo (tasks/sites)</button>
   <button id="download">Download .lua</button>
   <button id="clear">Clear the draft</button>
+  <small>Ctrl+Z undo · Ctrl+Y redo · the draft autosaves in this browser.</small>
+
+  <h2>In game</h2>
+  <label>Your character (first name)</label><input id="char" placeholder="Vafau">
+  <button id="preview" class="primary">Spawn preview now (no restart)</button>
+  <button id="previewEnd">End the preview (saved site comes back)</button>
+  <button id="teleport">Teleport me to the door</button>
+  <button id="checks">Run lab checks on the draft</button>
+  <div id="checkOut"></div>
   <div id="status"></div>
 </aside>
 
 <main>
   <canvas id="c"></canvas>
-  <div id="help">drag: pan · wheel: zoom · click a building: details · double-click any building: inside view · drag a purple site or your placed shell to move it · drag the entrance knob to rotate<br>
+  <div id="help">drag: pan · wheel: zoom · click a building: details · double-click any building: inside view · drag a purple site or your placed shell to move it · drag the entrance knob to rotate · Ctrl+Z undo<br>
     <span style="color:#8a94a6">▲ stock building: real outline, rooms faint when zoomed (line = entrance side)</span> · <span style="color:#8a94a6">▲ solid shell: the game's radar outline</span> · <span style="color:#c58cff">■ our site</span> · <span style="color:#44d17a">■ your placed shell</span> (amber/red = lot problem) · <span style="color:#fff">□ selected</span> · <span style="color:#f0b429">● live NPC</span> · <span style="color:#7fb0d0">● stock NPC</span> · <span style="color:#4cc3ff">▣ terminal</span> · <span style="color:#58e0c8">▣ crafting station</span> · <span style="color:#ffd166">▣ vendor / ticket</span> (white edge = server-spawned with the building)</div>
   <div id="hud"></div>
 </main>
@@ -109,6 +119,7 @@ const S = {
   drag: null, lot: null, loadedFile: null,
   floor: null,                                     // inside view: selected floor level index (null = all)
   terrain: null,                                   // last terrain answer for the draft: { worst, centre, corners } | { unknown }
+  hist: [], histAt: -1,                            // undo history: serialized drafts
   selB: null,                                      // selected map building: { kind: "stock"|"site"|"draft", obj, shell }
   inspect: null,                                   // inside view of something that is not the draft: { shell, tenants, title }
 };
@@ -497,6 +508,7 @@ canvas.addEventListener("mousemove", e => {
 window.addEventListener("mouseup", e => {
   if (!down) return;
   const wasClick = !down.moved && !down.person && !down.building && !down.rotate;
+  if (down.person || down.building || down.rotate) { const was = down; down = null; remember(S.draft); down = was; }
   const r = canvas.getBoundingClientRect(); const sx = e.clientX - r.left, sy = e.clientY - r.top;
   down = null;
   if (!wasClick) return;
@@ -569,6 +581,7 @@ window.addEventListener("keydown", e => {
   if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT" || e.target.tagName === "BUTTON" || e.target.tagName === "A") return;
   if (e.key === "Enter") { if (S.mode === "inside") { S.mode = "map"; S.inspect = null; S.floor = null; $("floorsBox").style.display = "none"; draw(); } else if (S.selB) openInside(S.selB); else if (S.draft) openInside({ kind: "draft", obj: S.draft, shell: S.draft.shell }); e.preventDefault(); return; }
   if (e.key === "Escape" && S.mode === "inside") { S.mode = "map"; S.inspect = null; S.floor = null; $("floorsBox").style.display = "none"; draw(); return; }
+  if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z" || e.key === "y")) { undo(e.key === "y" || (e.key === "Z" && e.shiftKey) ? 1 : -1); e.preventDefault(); return; }
   const d = S.draft; if (!d) return;
   const step = e.shiftKey ? 5 : 1;
   if (S.sel) {
@@ -603,10 +616,30 @@ function siteLua(d) {
 
 // ---------------------------------------------------------------- panels
 function status(t, cls) { const s = $("status"); s.textContent = t; s.className = cls || ""; }
+// ---------------------------------------------------------------- undo and autosave
+function serializeDraft(d) { return d ? { server: d.shell.server, x: d.x, y: d.y, heading: d.heading, tenants: d.tenants.map(t => ({ ...t })), outside: d.outside.map(o => ({ ...o })), name: d.name, label: d.label } : null; }
+function restoreDraft(j) {
+  if (!j) return null;
+  const sh = S.shells.find(x => x.server === j.server); if (!sh) return null;
+  return { shell: sh, x: j.x, y: j.y, heading: j.heading, tenants: j.tenants.map(t => ({ ...t })), outside: j.outside.map(o => ({ ...o })), name: j.name, label: j.label };
+}
+function dragging() { return !!(down && (down.building || down.rotate || down.person)); }
+function remember(d) {
+  const key = JSON.stringify(serializeDraft(d));
+  if (dragging()) return;                                   // one history entry per drag, taken at mouse-up
+  if (S.hist[S.histAt] === key) return;
+  S.hist.length = S.histAt + 1; S.hist.push(key); if (S.hist.length > 200) S.hist.shift(); S.histAt = S.hist.length - 1;
+  try { localStorage.setItem("fbPlannerDraft", JSON.stringify({ draft: serializeDraft(d), planet: $("planet").value, name: $("name").value, ddx: $("ddx").value, ddy: $("ddy").value, loadedFile: S.loadedFile })); } catch (e) {}
+}
+function undo(dir) {
+  const at = S.histAt + dir; if (at < 0 || at >= S.hist.length) { status(dir < 0 ? "Nothing to undo." : "Nothing to redo.", "warn"); return; }
+  S.histAt = at; S.draft = restoreDraft(JSON.parse(S.hist[at])); S.sel = null; refresh();
+}
 function refresh(askTerrain) {
   const d = S.draft;
   if (d) { $("heading").value = d.heading; $("bx").value = d.x; $("by").value = d.y; if (askTerrain !== false) requestTerrain(d); S.lot = lotReport(d); }
   else { S.lot = null; S.terrain = null; }
+  remember(d);
   const lotEl = $("lot");
   if (S.lot) {
     const cls = S.lot.verdict === "ok" ? "ok" : S.lot.verdict === "warn" ? "warn" : "bad";
@@ -701,7 +734,43 @@ $("save").onclick = async () => {
   try { const r = await api("/api/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, lua, force: S.loadedFile === name + ".lua" }) }); status("Saved: " + r.message + " — tell Claude to restart, test and commit.", "ok"); S.loadedFile = name + ".lua"; S.sites = await api("/api/sites"); draw(); }
   catch (e) { if (/exists/.test(e.message) && confirm(e.message + "\nOverwrite?")) { try { const r = await api("/api/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, lua, force: true }) }); status("Saved: " + r.message, "ok"); S.loadedFile = name + ".lua"; } catch (e2) { status("Save failed: " + e2.message, "bad"); } } else status("Save failed: " + e.message, "bad"); }
 };
-$("clear").onclick = () => { S.draft = null; S.sel = null; S.loadedFile = null; S.mode = "map"; refresh(); };
+$("clear").onclick = () => { S.draft = null; S.sel = null; S.loadedFile = null; S.mode = "map"; refresh(); try { localStorage.removeItem("fbPlannerDraft"); } catch (e) {} };
+
+// ---------------------------------------------------------------- in game (2.12d)
+function showChecks(r, headline) {
+  const box = $("checkOut"); box.innerHTML = "";
+  const h = document.createElement("div"); h.className = r.ok ? "ok" : "bad"; h.innerHTML = `<b>${headline}: ${r.ok ? "OK" : "PROBLEMS"}</b>`; box.appendChild(h);
+  for (const l of r.lines || []) { const div = document.createElement("div"); div.className = /^(ERROR|FAIL)/.test(l) ? "bad" : /^WARN/.test(l) ? "warn" : ""; div.textContent = l.replace(/^INFO /, ""); box.appendChild(div); }
+}
+function charName() { const c = $("char").value.trim(); try { localStorage.setItem("fbPlannerChar", c); } catch (e) {} return c; }
+$("char").onchange = charName;
+$("preview").onclick = async () => {
+  if (!S.draft) { status("Place or load a site first.", "warn"); return; }
+  const name = ($("name").value || "").trim(); if (!name) { status("Give the site a name first (it becomes the preview's name).", "warn"); return; }
+  $("preview").disabled = true; status("Spawning the preview in the game (10–20 s)…");
+  try { const r = await api("/api/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lua: siteLua(S.draft), template: S.draft.shell.template }) }); showChecks(r, "Preview"); status(r.ok ? "Preview is standing in the game. Teleport to it, then Save when it is right." : "Preview had problems (see the list).", r.ok ? "ok" : "bad"); if (L("L_live")) $("live").onclick(); }
+  catch (e) { status("Preview failed: " + e.message, "bad"); }
+  $("preview").disabled = false;
+};
+$("previewEnd").onclick = async () => {
+  status("Taking the preview down…");
+  try { const r = await api("/api/preview/end", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }); showChecks(r, "End preview"); status(r.ok ? "Preview removed; the saved site (if any) is back on its lot." : "Could not end the preview.", r.ok ? "ok" : "bad"); if (L("L_live")) $("live").onclick(); }
+  catch (e) { status("Failed: " + e.message, "bad"); }
+};
+$("teleport").onclick = async () => {
+  const c = charName(); if (!c) { status("Type your character's first name first.", "warn"); return; }
+  if (!S.draft) { status("Place or load a site first.", "warn"); return; }
+  const d = S.draft, [x, y] = toWorld(d.x, d.y, d.heading, +$("ddx").value || 0, (+$("ddy").value || 0) + 3);   // 3 m outside the door
+  status("Teleporting " + c + "…");
+  try { const r = await api("/api/teleport", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ char: c, planet: $("planet").value, x, y }) }); status(r.ok ? `${c} is at the door (${x.toFixed(0)}, ${y.toFixed(0)}).` : (r.lines || []).join(" "), r.ok ? "ok" : "bad"); }
+  catch (e) { status("Teleport failed: " + e.message, "bad"); }
+};
+$("checks").onclick = async () => {
+  if (!S.draft) { status("Place or load a site first.", "warn"); return; }
+  status("Running the lab checks…");
+  try { const r = await api("/api/check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lua: siteLua(S.draft), template: S.draft.shell.template }) }); showChecks(r, "Lab checks"); status(r.ok ? "Checks passed." : "Checks found problems (see the list).", r.ok ? "ok" : "bad"); }
+  catch (e) { status("Checks failed to run: " + e.message, "bad"); }
+};
 function loadSite(s, keepView) {
   const sh = S.shells.find(x => x.server === s.template || x.template === s.template); if (!sh) { status("Shell of that site is not in the catalogue: " + s.template, "bad"); return false; }
   S.draft = { shell: sh, x: s.x, y: s.y, heading: s.heading, tenants: s.tenants.map(t => ({ ...t })), outside: s.outside.map(o => ({ ...o })), name: s.name, label: s.label };
@@ -715,7 +784,15 @@ $("sites").onchange = () => { const s = S.sites.find(x => x.file === $("sites").
 (async () => {
   try { S.shells = await api("/api/shells"); S.npcs = await api("/api/npcs"); const sel = $("npc"); for (const n of S.npcs) { const o = document.createElement("option"); o.value = n.template; o.textContent = `${n.label}  (${n.template})`; sel.appendChild(o); } if (sel.options.length) sel.selectedIndex = 0; }
   catch (e) { status("Could not load the catalogue: " + e.message, "bad"); }
-  window.addEventListener("resize", resize); resize(); await loadPlaces(); await loadArea();
+  window.addEventListener("resize", resize); resize(); await loadPlaces();
+  try { $("char").value = localStorage.getItem("fbPlannerChar") || ""; } catch (e) {}
+  let saved = null; try { saved = JSON.parse(localStorage.getItem("fbPlannerDraft") || "null"); } catch (e) {}
+  if (saved && saved.draft) { $("planet").value = saved.planet || $("planet").value; renderPlanets(); $("cx").value = Math.round(saved.draft.x); $("cy").value = Math.round(saved.draft.y); }
+  await loadArea();
+  if (saved && saved.draft) {
+    const d = restoreDraft(saved.draft);
+    if (d) { S.draft = d; S.loadedFile = saved.loadedFile || null; $("name").value = saved.name || ""; $("ddx").value = saved.ddx || 0; $("ddy").value = saved.ddy || 0; refresh(); status("Restored the draft you were working on (Clear the draft forgets it).", "ok"); }
+  }
 })();
 })();
 </script>
