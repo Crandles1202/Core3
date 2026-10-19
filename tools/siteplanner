@@ -10,6 +10,7 @@ tools/lotsurvey / tools/tre) and reads and writes the site files the server buil
 Endpoints (all JSON):
   GET  /api/area?planet=tatooine&x=3520&y=-4810&r=250   stock buildings (footprint, heading) and props around a point
   GET  /api/shells                                       the shell catalogue: footprint, rooms (floor polygons), furniture
+  GET  /api/places?planet=tatooine                       cities, points of interest and travel points with centre + radius
   GET  /api/sites                                        the repo's site files, parsed
   GET  /api/npcs                                         the Final Boss NPC templates with their display names
   GET  /api/live?filter=…                                live NPC positions from the running server (tools/swg), best effort
@@ -216,7 +217,7 @@ class Data:
             try:
                 for pr, box in (ls.standing_props(self.vfs, ls.read_ilf(self.vfs, ilf)) if ilf else []):
                     b = box if box is not None else (-0.5, 0, -0.5, 0.5, 0, 0.5)
-                    furniture.append(dict(room=pr["cell"], x=round(pr["x"], 2), y=round(pr["z"], 2), yaw=round(pr["yaw"]),
+                    furniture.append(dict(room=pr["cell"], x=round(pr["x"], 2), y=round(pr["z"], 2), z=round(pr["h"], 2), yaw=round(pr["yaw"]),
                                           x0=round(b[0], 2), y0=round(b[2], 2), x1=round(b[3], 2), y1=round(b[5], 2),
                                           name=pr["template"].rsplit("/", 1)[-1].replace("shared_", "").replace(".iff", "")))
             except FileNotFoundError:
@@ -243,6 +244,58 @@ class Data:
             except FileNotFoundError:
                 pass
         return templates
+
+
+# ---------------------------------------------------------------- places (cities, points of interest, travel points)
+
+REGIONS_DIR = os.path.join(REPO, "MMOCoreORB", "bin", "scripts", "managers", "planet")
+REGION_RE = re.compile(r'^\s*\{\s*"([^"]+)"\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*\{\s*(CIRCLE|RECTANGLE|RING)\s*,\s*(-?[\d.]+)(?:\s*,\s*(-?[\d.]+))?\s*\}\s*,\s*([A-Z_ +]+)', re.M)
+TRAVEL_RE = re.compile(r'\{name\s*=\s*"([^"]+)"\s*,\s*x\s*=\s*(-?[\d.]+)\s*,\s*z\s*=\s*(-?[\d.]+)\s*,\s*y\s*=\s*(-?[\d.]+)')
+POI_WORDS = ("fort", "palace", "dungeon", "cave", "temple", "outpost", "bunker", "stronghold", "ruin", "lair", "village", "camp", "garrison", "hideout",
+             "facility", "mine", "tower", "base", "fortress", "estate", "lodge", "retreat", "shrine", "enclave", "crash", "poi", "sdungeon", "hq", "lab", "castle", "warren", "despot")
+
+
+def places(planet, cache={}):
+    """[{name, kind: city|poi|travel, x, y, r}] from <planet>_regions.lua (CITY regions, named regions and
+    dungeons) and planet_manager.lua's travel points for the planet."""
+    if planet in cache:
+        return cache[planet]
+    out, seen = [], set()
+    try:
+        with open(os.path.join(REGIONS_DIR, planet + "_regions.lua"), encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except OSError:
+        text = ""
+    for m in REGION_RE.finditer(text):
+        raw, x, y, shape, a, b, flags = m.group(1), float(m.group(2)), float(m.group(3)), m.group(4), float(m.group(5)), m.group(6), m.group(7)
+        name = raw.split(":", 1)[1] if ":" in raw else raw
+        r = a if shape != "RECTANGLE" else max(abs(a - x), abs(float(b) - y)) if b else a
+        if shape == "RING" and b:
+            r = float(b)
+        kind = None
+        if "CITY" in flags.split() or "CITY" in flags.replace("+", " ").split():
+            kind = "city"
+        elif "NAMEDREGION" in flags or any(w in name for w in POI_WORDS):
+            if not any(bad in name for bad in ("nobuild", "newbie", "spawn", "world_", "edge_", "_quest_", "medium", "easy", "hard", "stormtrooper", "wild")) and r <= 1500:
+                kind = "poi"
+        if kind and name not in seen:
+            seen.add(name)
+            out.append(dict(name=name, kind=kind, x=round(x), y=round(y), r=int(min(max(r, 120), 700))))
+    try:
+        with open(os.path.join(REGIONS_DIR, "planet_manager.lua"), encoding="utf-8", errors="replace") as fh:
+            pm = fh.read()
+        block = re.search(r"\b%s\s*=\s*\{(.*?)\n\t\}" % planet, pm, re.S)
+        for m in TRAVEL_RE.finditer(block.group(1) if block else ""):
+            nm = m.group(1)
+            if nm not in seen:
+                seen.add(nm)
+                out.append(dict(name=nm, kind="travel", x=round(float(m.group(2))), y=round(float(m.group(4))), r=250))
+    except OSError:
+        pass
+    order = {"city": 0, "travel": 1, "poi": 2}
+    out.sort(key=lambda p: (order[p["kind"]], p["name"]))
+    cache[planet] = out
+    return out
 
 
 # ---------------------------------------------------------------- stock NPC spawns (city screenplays)
@@ -392,6 +445,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(self.data.area(q.get("planet", "tatooine"), float(q.get("x", 3520)), float(q.get("y", -4810)), float(q.get("r", 250))))
             elif u.path == "/api/shells":
                 self._json(self.data.shells())
+            elif u.path == "/api/places":
+                self._json(places(q.get("planet", "tatooine")))
             elif u.path == "/api/sites":
                 self._json(load_sites())
             elif u.path == "/api/npcs":
@@ -466,6 +521,9 @@ def cmd_selftest(a):
     assert sp and any(o["kind"] == "terminal" for o in sp["objects"]), "starport terminals from the snapshot"
     spsh = next((x for x in shells if x["short"] == "starport_tatooine"), None)
     assert spsh and any("terminal_travel" in c["template"] for c in spsh["children"]), "starport travel terminal from the server template's childObjects"
+    pl = places("tatooine")
+    assert any(p["name"] == "mos_eisley" and p["kind"] == "city" for p in pl), "mos eisley in places"
+    assert any(p["name"] == "fort_tusken" for p in pl) and any(p["kind"] == "travel" for p in pl), "poi + travel places"
     npcs = npc_templates()
     assert any(n["template"] == "fb_parts_dealer" for n in npcs), "npc list"
     assert os.path.exists(os.path.join(UI_DIR, "index.html")), "ui page"

@@ -34,8 +34,11 @@
 <aside>
   <h1>Final Boss Site Planner</h1>
   <h2>Area</h2>
-  <div class="row"><div><label>Planet</label><input id="planet" value="tatooine"></div><div><label>Radius m</label><input id="radius" type="number" value="250"></div></div>
-  <div class="row"><div><label>Centre x</label><input id="cx" type="number" value="3520"></div><div><label>Centre y</label><input id="cy" type="number" value="-4810"></div></div>
+  <label>Planet</label>
+  <select id="planet"><option>tatooine</option><option>naboo</option><option>corellia</option><option>talus</option><option>rori</option><option>dantooine</option><option>lok</option><option>yavin4</option><option>endor</option><option>dathomir</option></select>
+  <label>City / point of interest / shuttle</label>
+  <select id="place"><option value="">— pick a place —</option></select>
+  <div class="row"><div><label>Centre x</label><input id="cx" type="number" value="3520"></div><div><label>Centre y</label><input id="cy" type="number" value="-4810"></div><div><label>Radius m</label><input id="radius" type="number" value="250"></div></div>
   <button id="load" class="primary">Load area</button>
   <button id="live">Overlay live NPCs (needs the server)</button>
   <h2>Layers</h2>
@@ -76,6 +79,7 @@
   <div id="help">drag: pan · wheel: zoom · click a building: details · double-click any building: inside view · drag your placed shell to move it<br>
     <span style="color:#8a94a6">■ stock building (line = entrance side)</span> · <span style="color:#5b6678">◌ stock shell, no interior data</span> · <span style="color:#c58cff">■ our site</span> · <span style="color:#44d17a">■ your placed shell</span> (amber/red = lot problem) · <span style="color:#fff">□ selected</span> · <span style="color:#f0b429">● live NPC</span> · <span style="color:#7fb0d0">● stock NPC</span> · <span style="color:#4cc3ff">▣ terminal</span> · <span style="color:#58e0c8">▣ crafting station</span> · <span style="color:#ffd166">▣ vendor / ticket</span> (white edge = server-spawned with the building)</div>
   <div id="hud"></div>
+  <div id="floors" style="position:absolute; left:10px; top:8px; display:none; gap:6px;"></div>
 </main>
 
 <aside class="right">
@@ -102,6 +106,7 @@ const S = {
   draft: null,                                     // { shell, x, y, heading, tenants:[], outside:[], name, door }
   sel: null,                                       // { kind: "tenant"|"outside", i }
   drag: null, lot: null, loadedFile: null,
+  floor: null,                                     // inside view: selected floor level index (null = all)
   selB: null,                                      // selected map building: { kind: "stock"|"site"|"draft", obj, shell }
   inspect: null,                                   // inside view of something that is not the draft: { shell, tenants, title }
 };
@@ -132,8 +137,9 @@ function pointInTri(p, a, b, c) {
   return d === 0 || (d < 0) === (s + t <= 0);
 }
 function roomAt(shell, lx, ly) {
-  for (const r of shell.rooms) for (const t of r.tris) if (pointInTri([lx, ly], t[0], t[1], t[2])) return r;
-  for (const r of shell.rooms) if (lx >= r.x0 && lx <= r.x1 && ly >= r.y0 && ly <= r.y1) return r;
+  const rooms = shell.rooms.filter(r => onLevel(shell, r.z, r.name));
+  for (const r of rooms) for (const t of r.tris) if (pointInTri([lx, ly], t[0], t[1], t[2])) return r;
+  for (const r of rooms) if (lx >= r.x0 && lx <= r.x1 && ly >= r.y0 && ly <= r.y1) return r;
   return null;
 }
 function furnitureClearance(shell, room, x, y) {
@@ -224,6 +230,7 @@ function drawShellRooms(shell, bx, by, h, toScreen, local) {
   // rooms as floor triangles (in building-local coordinates; mapped to world when not local)
   const map = local ? (p => p) : (p => toWorld(bx, by, h, p[0], p[1]));
   for (const r of shell.rooms) {
+    if (local && !onLevel(shell, r.z, r.name)) continue;
     for (const t of r.tris) poly(t.map(map), toScreen, "rgba(76,195,255,0.10)", null);
     if (!r.tris.length) poly([[r.x0, r.y0], [r.x1, r.y0], [r.x1, r.y1], [r.x0, r.y1]].map(map), toScreen, "rgba(76,195,255,0.10)", "rgba(76,195,255,0.3)");
     const c = map([(r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2]); const [sx, sy] = toScreen(c[0], c[1]);
@@ -288,14 +295,38 @@ function drawMap() {
   }
   $("hud").textContent = `${$("planet").value}  centre ${S.view.cx.toFixed(0)}, ${S.view.cy.toFixed(0)}  ·  ${S.view.ppm.toFixed(2)} px/m` + (d ? `  ·  draft at ${d.x.toFixed(1)}, ${d.y.toFixed(1)} heading ${d.heading}` : "");
 }
+// floor levels of a shell: distinct room floor heights more than 2 m apart
+function levelsOf(shell) {
+  const zs = [...new Set(shell.rooms.map(r => Math.round(r.z * 2) / 2))].sort((a, b) => a - b);
+  const levels = [];
+  for (const z of zs) { if (!levels.length || z - levels[levels.length - 1].z > 2) levels.push({ z, rooms: [] }); }
+  for (const r of shell.rooms) { let best = 0; levels.forEach((l, i) => { if (Math.abs(r.z - l.z) < Math.abs(r.z - levels[best].z)) best = i; }); levels[best].rooms.push(r.name); }
+  return levels;
+}
+function onLevel(shell, z, room) {
+  if (S.floor === null) return true;
+  const levels = levelsOf(shell); const lvl = levels[S.floor]; if (!lvl) return true;
+  if (room && lvl.rooms.includes(room)) return true;
+  if (typeof z === "number") { let best = 0; levels.forEach((l, i) => { if (Math.abs(z - l.z) < Math.abs(z - levels[best].z)) best = i; }); return best === S.floor; }
+  return !room;
+}
+function floorsStrip(shell) {
+  const el = $("floors"); const levels = levelsOf(shell);
+  if (S.mode !== "inside" || levels.length < 2) { el.style.display = "none"; return; }
+  el.style.display = "flex";
+  el.innerHTML = `<button style="width:auto" class="${S.floor === null ? "primary" : ""}" data-f="all">All floors</button>` + levels.map((l, i) => `<button style="width:auto" class="${S.floor === i ? "primary" : ""}" data-f="${i}">Level ${i + 1} · z ${l.z.toFixed(1)} · ${l.rooms.length} room(s)</button>`).join("");
+  for (const b of el.querySelectorAll("button")) b.onclick = () => { S.floor = b.dataset.f === "all" ? null : +b.dataset.f; draw(); };
+}
 function drawInside() {
   const t = S.inspect || (S.draft ? { shell: S.draft.shell, tenants: S.draft.tenants, title: "your draft", kind: "draft" } : null);
-  if (!t) { ctx.fillStyle = "#98a2b3"; ctx.fillText("Double-click a building on the map, or place one.", 20, 30); return; }
+  if (!t) { ctx.fillStyle = "#98a2b3"; ctx.fillText("Double-click a building on the map, or place one.", 20, 30); $("floors").style.display = "none"; return; }
   const d = { shell: t.shell, tenants: t.tenants, heading: S.draft && !S.inspect ? S.draft.heading : 0 };
+  floorsStrip(d.shell);
   grid(l2s, s2l, 5);
   poly([[d.shell.fp.x0, d.shell.fp.y0], [d.shell.fp.x1, d.shell.fp.y0], [d.shell.fp.x1, d.shell.fp.y1], [d.shell.fp.x0, d.shell.fp.y1]], l2s, null, "#5b6678");
   drawShellRooms(d.shell, 0, 0, 0, l2s, true);
   if (L("L_furniture")) for (const f of d.shell.furniture) {
+    if (!onLevel(d.shell, f.z, f.room)) continue;
     const pts = [[f.x0, f.y0], [f.x1, f.y0], [f.x1, f.y1], [f.x0, f.y1]].map(p => { const a = rad(f.yaw); return [f.x + p[0] * Math.cos(a) + p[1] * Math.sin(a), f.y - p[0] * Math.sin(a) + p[1] * Math.cos(a)]; });
     poly(pts, l2s, "rgba(240,180,41,0.25)", "#8a6a1c");
     if (L("L_labels") && S.ivw.ppm > 18) { const [sx, sy] = l2s(f.x, f.y); ctx.fillStyle = "#b08a30"; ctx.font = "9px system-ui"; ctx.fillText(f.name, sx + 2, sy); }
@@ -304,6 +335,7 @@ function drawInside() {
   for (const o of d.shell.children || []) {
     const usable = o.kind === "terminal" || o.kind === "station" || o.kind === "vendor" || o.kind === "elevator" || /ticket/.test(o.template);
     if (usable ? !L("L_usables") : !L("L_objects")) continue;
+    if (!onLevel(d.shell, o.z, o.room)) continue;
     const [sx, sy] = l2s(o.x, o.y); const col = /ticket/.test(o.template) ? "#ffd166" : (KIND_COLOR[o.kind] || "#6c7a8f"); const sz = usable ? 7 : 4;
     ctx.save(); ctx.translate(sx, sy); ctx.rotate(-rad(o.heading)); ctx.fillStyle = col; ctx.globalAlpha = usable ? 0.9 : 0.5; ctx.fillRect(-sz, -sz, 2 * sz, 2 * sz); ctx.globalAlpha = 1; ctx.strokeStyle = "#fff"; ctx.strokeRect(-sz, -sz, 2 * sz, 2 * sz); ctx.restore();
     if (L("L_labels") && (usable || S.ivw.ppm > 18)) { ctx.fillStyle = col; ctx.font = "10px system-ui"; ctx.fillText(o.short + "  (" + o.room + ", server-spawned)", sx + sz + 2, sy + 3); }
@@ -312,16 +344,18 @@ function drawInside() {
   if (S.inspect) for (const o of S.inspect.objects) {
     const usable = o.kind === "terminal" || o.kind === "station" || o.kind === "vendor" || o.kind === "elevator";
     if (usable ? !L("L_usables") : !L("L_objects")) continue;
+    if (!onLevel(d.shell, o.z, o.room)) continue;
     const [sx, sy] = l2s(o.x, o.y); const col = KIND_COLOR[o.kind] || "#6c7a8f"; const sz = usable ? 7 : 4;
     ctx.save(); ctx.translate(sx, sy); ctx.rotate(-rad(o.heading)); ctx.fillStyle = col; ctx.globalAlpha = usable ? 0.9 : 0.5; ctx.fillRect(-sz, -sz, 2 * sz, 2 * sz); ctx.globalAlpha = 1; ctx.strokeStyle = col; ctx.strokeRect(-sz, -sz, 2 * sz, 2 * sz); ctx.restore();
     if (L("L_labels") && (usable || S.ivw.ppm > 18)) { ctx.fillStyle = col; ctx.font = "10px system-ui"; ctx.fillText(o.short + "  (" + o.room + ")", sx + sz + 2, sy + 3); }
   }
   d.tenants.forEach((t, i) => {
+    if (!onLevel(d.shell, t.z, t.room)) return;
     const c = furnitureClearance(d.shell, t.room, t.x, t.y);
     const col = c.verdict === "ok" ? "#44d17a" : c.verdict === "warn" ? "#f0b429" : "#ff5c5c";
     drawPerson(t, l2s, p => p, col, !S.inspect && S.sel && S.sel.kind === "tenant" && S.sel.i === i, (t.label || t.template) + "  (" + t.room + ")");
   });
-  if (S.inspect && L("L_stock")) for (const n of S.inspect.stock) drawPerson({ x: n.x, y: n.y, dir: n.heading }, l2s, p => p, "#7fb0d0", false, L("L_labels") ? n.template + "  (" + n.room + ")" : "");
+  if (S.inspect && L("L_stock")) for (const n of S.inspect.stock) if (onLevel(d.shell, n.z, n.room)) drawPerson({ x: n.x, y: n.y, dir: n.heading }, l2s, p => p, "#7fb0d0", false, L("L_labels") ? n.template + "  (" + n.room + ")" : "");
   const pose = S.inspect ? S.inspect.pose : (S.draft ? { x: S.draft.x, y: S.draft.y, heading: S.draft.heading } : null);
   if (pose && L("L_live")) for (const n of liveInside(pose, d.shell.fp)) { const [sx, sy] = l2s(n.x, n.y); ctx.fillStyle = "#f0b429"; ctx.beginPath(); ctx.arc(sx, sy, 4, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#f0b429"; ctx.font = "11px system-ui"; ctx.fillText(n.name, sx + 7, sy + 4); }
   const [ex, ey] = l2s(0, d.shell.fp.y1 + 2); ctx.fillStyle = "#4cc3ff"; ctx.font = "12px system-ui"; ctx.fillText("▲ entrance side (local +y)", ex + 6, ey);
@@ -402,7 +436,7 @@ function openInside(target) {
       pose: { x: o.x, y: o.y, heading: o.heading }, title: target.kind === "site" ? "site " + o.name : o.short, kind: target.kind };
     status(`Inside ${S.inspect.title} (read-only): ${S.inspect.stock.length} stock NPC(s), ${S.inspect.tenants.length} tenant(s). Double-click anywhere to return to the map.`, "ok");
   }
-  S.mode = "inside"; S.sel = null; draw();
+  S.mode = "inside"; S.sel = null; S.floor = null; draw();
 }
 // live NPCs standing inside the building drawn in the inside view, converted to its local frame
 function liveInside(pose, fp) {
@@ -415,7 +449,7 @@ function liveInside(pose, fp) {
   return out;
 }
 function doubleClickAt(sx, sy) {
-  if (S.mode === "inside") { S.mode = "map"; S.inspect = null; status("Back on the map.", ""); draw(); return; }
+  if (S.mode === "inside") { S.mode = "map"; S.inspect = null; S.floor = null; $("floors").style.display = "none"; status("Back on the map.", ""); draw(); return; }
   const [wx, wy] = s2w(sx, sy);
   const target = buildingAt(wx, wy) || (S.draft ? { kind: "draft", obj: S.draft, shell: S.draft.shell } : null);
   if (!target) { status("Double-click on a building to open its layout.", "warn"); return; }
@@ -431,8 +465,8 @@ function personAt(sx, sy) {
 }
 window.addEventListener("keydown", e => {
   if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
-  if (e.key === "Enter") { if (S.mode === "inside") { S.mode = "map"; S.inspect = null; draw(); } else if (S.selB) openInside(S.selB); else if (S.draft) openInside({ kind: "draft", obj: S.draft, shell: S.draft.shell }); e.preventDefault(); return; }
-  if (e.key === "Escape" && S.mode === "inside") { S.mode = "map"; S.inspect = null; draw(); return; }
+  if (e.key === "Enter") { if (S.mode === "inside") { S.mode = "map"; S.inspect = null; S.floor = null; $("floors").style.display = "none"; draw(); } else if (S.selB) openInside(S.selB); else if (S.draft) openInside({ kind: "draft", obj: S.draft, shell: S.draft.shell }); e.preventDefault(); return; }
+  if (e.key === "Escape" && S.mode === "inside") { S.mode = "map"; S.inspect = null; S.floor = null; $("floors").style.display = "none"; draw(); return; }
   const d = S.draft; if (!d) return;
   const step = e.shiftKey ? 5 : 1;
   if (S.sel) {
@@ -506,6 +540,20 @@ async function loadArea() {
   } catch (e) { status("Load failed: " + e.message, "bad"); }
 }
 $("load").onclick = loadArea;
+async function loadPlaces() {
+  const sel = $("place"); sel.innerHTML = "<option value=''>— pick a place —</option>";
+  try {
+    const pl = await api("/api/places?planet=" + encodeURIComponent($("planet").value));
+    let group = null;
+    for (const p of pl) {
+      if (p.kind !== group) { group = p.kind; const og = document.createElement("optgroup"); og.label = p.kind === "city" ? "Cities" : p.kind === "travel" ? "Shuttles & starports" : "Points of interest"; og.id = "pg_" + p.kind; sel.appendChild(og); }
+      const o = document.createElement("option"); o.value = JSON.stringify([p.x, p.y, p.r]); o.textContent = p.name.replace(/_/g, " ");
+      document.getElementById("pg_" + p.kind).appendChild(o);
+    }
+  } catch (e) { status("No places for this planet: " + e.message, "warn"); }
+}
+$("planet").onchange = () => { loadPlaces(); fillShells(); };
+$("place").onchange = () => { if (!$("place").value) return; const [x, y, r] = JSON.parse($("place").value); $("cx").value = x; $("cy").value = y; $("radius").value = r; loadArea(); };
 $("allPlanets").onchange = fillShells;
 for (const id of ["L_furniture", "L_usables", "L_objects", "L_stock", "L_live", "L_labels"]) $(id).onchange = draw;
 const L = id => $(id).checked;
@@ -522,7 +570,7 @@ $("heading").onchange = () => { if (S.draft) { S.draft.heading = ((+$("heading")
 $("bx").onchange = () => { if (S.draft) { S.draft.x = +$("bx").value; refresh(); } };
 $("by").onchange = () => { if (S.draft) { S.draft.y = +$("by").value; refresh(); } };
 $("inside").onclick = () => {
-  if (S.mode === "inside") { S.mode = "map"; S.inspect = null; draw(); return; }
+  if (S.mode === "inside") { S.mode = "map"; S.inspect = null; S.floor = null; $("floors").style.display = "none"; draw(); return; }
   if (S.selB) openInside(S.selB); else if (S.draft) openInside({ kind: "draft", obj: S.draft, shell: S.draft.shell }); else status("Click a building on the map first (or place one).", "warn");
 };
 $("export").onclick = () => { if (S.draft) { $("lua").value = siteLua(S.draft); status("Site file built below. Save writes it into the repo for Claude to test and commit.", "ok"); } };
@@ -547,7 +595,7 @@ $("sites").onchange = () => {
 (async () => {
   try { S.shells = await api("/api/shells"); S.npcs = await api("/api/npcs"); const sel = $("npc"); for (const n of S.npcs) { const o = document.createElement("option"); o.value = n.template; o.textContent = `${n.label}  (${n.template})`; sel.appendChild(o); } }
   catch (e) { status("Could not load the catalogue: " + e.message, "bad"); }
-  window.addEventListener("resize", resize); resize(); await loadArea();
+  window.addEventListener("resize", resize); resize(); await loadPlaces(); await loadArea();
 })();
 })();
 </script>
