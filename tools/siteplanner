@@ -218,16 +218,20 @@ class Data:
     def catalog(self):
         """Every building template the stock world places somewhere (what an add can clone), with its outline."""
         if self._catalog is None:
-            counts = {}
+            counts, props = {}, {}
             for pl in we.PLANETS:
                 try:
                     for n in self.stock(pl):
-                        if n["parent"] == 0 and "object/building" in n["name"]:
+                        if n["parent"] != 0:
+                            continue
+                        if "object/building" in n["name"]:
                             counts[n["name"]] = counts.get(n["name"], 0) + 1
+                        elif object_kind(n["name"]) in ("terminal", "station", "vendor", "elevator"):
+                            props[n["name"]] = props.get(n["name"], 0) + 1
                 except FileNotFoundError:
                     pass
             shells = {sh["template"] for sh in self.shells()}
-            out = []
+            out = [dict(template=t, short=t.rsplit("/", 1)[-1].replace("shared_", "").replace(".iff", ""), count=c, interior=False, prop=True, kind=object_kind(t), radius=1, radar=[]) for t, c in sorted(props.items())]
             for t, c in sorted(counts.items()):
                 e = dict(template=t, short=t.rsplit("/", 1)[-1].replace("shared_", "").replace(".iff", ""), count=c, interior=t in shells, radar=radar_shape(self.vfs, t))
                 fp = ls.footprint(self.vfs, t)
@@ -275,7 +279,8 @@ class Data:
             if op["op"] == "delete":
                 g = next((m for m in self.stock(planet) if m["oid"] == int(op["oid"]) and m["parent"] == 0), None)
                 if g is not None and ((g["x"] - x) ** 2 + (g["y"] - y) ** 2) ** 0.5 <= r + 120:
-                    deleted.append(dict(oid=g["oid"], name=g["name"], short=g["name"].rsplit("/", 1)[-1].replace("shared_", "").replace(".iff", ""), x=round(g["x"], 1), y=round(g["y"], 1), heading=round(g["heading"]), radar=radar_shape(self.vfs, g["name"])))
+                    deleted.append(dict(oid=g["oid"], name=g["name"], short=g["name"].rsplit("/", 1)[-1].replace("shared_", "").replace(".iff", ""), x=round(g["x"], 1), y=round(g["y"], 1), heading=round(g["heading"]),
+                                        radar=radar_shape(self.vfs, g["name"]) if "object/building" in g["name"] else [], prop="object/building" not in g["name"]))
         for n in nodes:
             if n["parent"] != 0:
                 continue
@@ -311,7 +316,10 @@ class Data:
                                          room=rooms_by_index.get(o["cellIndex"], "cell%d" % o["cellIndex"])) for o in objects_in.get(n["oid"], [])]
                 buildings.append(entry)
             elif d <= r and "soundobject" not in name and "object/static" not in name:
-                props.append(dict(x=round(n["x"], 1), y=round(n["y"], 1), heading=round(n["heading"]), kind=object_kind(name), short=name.rsplit("/", 1)[-1].replace("shared_", "").replace(".iff", "")))
+                pe = dict(oid=n["oid"], name=name, x=round(n["x"], 1), y=round(n["y"], 1), z=round(n["z"], 2), heading=round(n["heading"]), kind=object_kind(name), short=name.rsplit("/", 1)[-1].replace("shared_", "").replace(".iff", ""), radius=1)
+                if n["oid"] in edit_of:
+                    pe["edit"] = edit_of[n["oid"]]
+                props.append(pe)
         return dict(planet=planet, x=x, y=y, r=r, buildings=buildings, props=props[:600], deleted=deleted,
                     npcs=[dict(template=sp["template"], x=round(sp["x"], 1), y=round(sp["y"], 1), heading=round(sp["heading"]), city=sp["city"]) for sp in outdoor][:800])
 
@@ -813,6 +821,8 @@ def cmd_selftest(a):
     assert edited[10000064]["name"].endswith("style_02.iff") and abs(edited[10000064]["heading"] - 45) < 0.5, "added filler"
     assert len(edited) == len(stock), "one deleted, one added: same node count"
     assert any(c["template"].endswith("shared_filler_building_block_64x16_style_01.iff") and c["count"] >= 20 for c in d.catalog()), "catalog lists the filler blocks"
+    assert any(c.get("prop") and "terminal_bazaar" in c["template"] for c in d.catalog()), "catalog lists the bazaar terminals"
+    assert all("oid" in p for p in area["props"]), "props carry their snapshot oid"
     pth, err = write_preview(open(os.path.join(SITES_DIR, "mos_eisley_trade_hall.lua")).read())
     assert pth and not err and os.path.exists(pth) and all(".preview" not in s["file"] for s in load_sites()), "preview file outside the site list"
     assert any(l.startswith("summary spots=11 fail=0") for l in furniture_check("object/building/tatooine/shared_guild_commerce_tatooine_style_01.iff", pth)), "furniture check through the planner"
