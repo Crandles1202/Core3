@@ -78,7 +78,7 @@
 
 <main>
   <canvas id="c"></canvas>
-  <div id="help">drag: pan · wheel: zoom · click a building: details · double-click any building: inside view · drag your placed shell to move it<br>
+  <div id="help">drag: pan · wheel: zoom · click a building: details · double-click any building: inside view · drag a purple site or your placed shell to move it · drag the entrance knob to rotate<br>
     <span style="color:#8a94a6">▲ stock building: real outline, rooms faint when zoomed (line = entrance side)</span> · <span style="color:#8a94a6">▲ solid shell: the game's radar outline</span> · <span style="color:#c58cff">■ our site</span> · <span style="color:#44d17a">■ your placed shell</span> (amber/red = lot problem) · <span style="color:#fff">□ selected</span> · <span style="color:#f0b429">● live NPC</span> · <span style="color:#7fb0d0">● stock NPC</span> · <span style="color:#4cc3ff">▣ terminal</span> · <span style="color:#58e0c8">▣ crafting station</span> · <span style="color:#ffd166">▣ vendor / ticket</span> (white edge = server-spawned with the building)</div>
   <div id="hud"></div>
 </main>
@@ -203,7 +203,7 @@ function showInfo(sel) {
   const usableText = (usables.length || kids.length) ? `<br>usable: ${usables.concat(kids).map(u => u.short + " (" + u.room + ")").join(", ")}` : "";
   if (sel.kind === "stock") el.innerHTML = `<div><b>${o.short}</b> <small>(stock building)</small></div><small>${o.name}<br>at ${o.x}, ${o.y} · heading ${o.heading}${o.fp ? ` · ${(o.fp.x1 - o.fp.x0).toFixed(0)}×${(o.fp.y1 - o.fp.y0).toFixed(0)} m` : ""}<br>rooms: ${rooms}${occupants}${usableText}</small>${openLink}`;
   else if (sel.kind === "site") el.innerHTML = `<div><b>site ${o.name}</b></div><small>${o.template}<br>at ${o.x}, ${o.y} · heading ${o.heading} · ${o.tenants.length} tenant(s)<br>rooms: ${rooms}</small>${openLink}<button id="editSite">Edit this site</button>`;
-  const a = document.getElementById("editSite"); if (a) a.onclick = () => { $("sites").value = o.file; $("sites").onchange(); };
+  const a = document.getElementById("editSite"); if (a) a.onclick = () => loadSite(o, true);
   const b = document.getElementById("openLayout"); if (b) b.onclick = () => openInside(sel);
 }
 function lotReport(d) {
@@ -339,7 +339,8 @@ function drawMap() {
     drawShellRooms(d.shell, d.x, d.y, d.heading, w2s, false);
     const [sx, sy] = w2s(d.x, d.y); const [ex, ey] = toWorld(d.x, d.y, d.heading, 0, d.shell.fp.y1 + 3); const [tx, ty] = w2s(ex, ey);
     ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(tx, ty); ctx.stroke(); ctx.lineWidth = 1;
-    ctx.fillStyle = col; ctx.font = "12px system-ui"; ctx.fillText("entrance →", tx + 4, ty);
+    ctx.beginPath(); ctx.arc(tx, ty, 7, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill(); ctx.strokeStyle = "#fff"; ctx.stroke();
+    ctx.fillStyle = col; ctx.font = "12px system-ui"; ctx.fillText("entrance · drag the knob to rotate (Alt = fine)", tx + 10, ty + 4);
     d.tenants.forEach((t, i) => drawPerson({ x: t.x, y: t.y, dir: (t.dir + d.heading) % 360 }, w2s, p => toWorld(d.x, d.y, d.heading, p[0], p[1]), "#44d17a", S.sel && S.sel.kind === "tenant" && S.sel.i === i, t.template.replace("fb_", "")));
     d.outside.forEach((o, i) => drawPerson(o, w2s, p => p, "#4cc3ff", S.sel && S.sel.kind === "outside" && S.sel.i === i, o.template.replace("fb_", "")));
   }
@@ -424,8 +425,16 @@ canvas.addEventListener("mousedown", e => {
     if (hit) { S.sel = hit; down.person = hit; draw(); return; }
     if (S.mode === "map") {
       const [wx, wy] = s2w(sx, sy);
+      // the entrance arrow's tip is the rotate handle
+      const [tx, ty] = toWorld(d.x, d.y, d.heading, 0, d.shell.fp.y1 + 3); const [tsx, tsy] = w2s(tx, ty);
+      if (Math.hypot(tsx - sx, tsy - sy) < 12) { down.rotate = true; return; }
       if (distPointPoly(wx, wy, rectPoly(d.x, d.y, d.heading, d.shell.fp)) === 0) { down.building = { x: d.x, y: d.y, wx, wy }; return; }
     }
+  }
+  // grabbing one of our sites on the map picks it up for editing
+  if (S.mode === "map") {
+    const [wx, wy] = s2w(sx, sy); const hit = buildingAt(wx, wy);
+    if (hit && hit.kind === "site" && loadSite(hit.obj, true)) { down.building = { x: S.draft.x, y: S.draft.y, wx, wy }; return; }
   }
 });
 canvas.addEventListener("mousemove", e => {
@@ -439,12 +448,13 @@ canvas.addEventListener("mousemove", e => {
     else if (S.mode === "map" && down.person.kind === "outside") { const [wx, wy] = s2w(sx, sy); p.x = +wx.toFixed(1); p.y = +wy.toFixed(1); }
     refresh(); return;
   }
+  if (down.rotate) { const [wx, wy] = s2w(sx, sy); let h = Math.round((Math.atan2(wx - S.draft.x, wy - S.draft.y) * 180 / Math.PI + 360) % 360); if (!e.altKey) h = Math.round(h / 5) * 5 % 360; S.draft.heading = h; refresh(); return; }
   if (down.building) { const [wx, wy] = s2w(sx, sy); S.draft.x = +(down.building.x + (wx - down.building.wx)).toFixed(1); S.draft.y = +(down.building.y + (wy - down.building.wy)).toFixed(1); refresh(); return; }
   v.cx = down.view.cx - dx / v.ppm; v.cy = down.view.cy + dy / v.ppm; draw();
 });
 window.addEventListener("mouseup", e => {
   if (!down) return;
-  const wasClick = !down.moved && !down.person && !down.building;
+  const wasClick = !down.moved && !down.person && !down.building && !down.rotate;
   const r = canvas.getBoundingClientRect(); const sx = e.clientX - r.left, sy = e.clientY - r.top;
   down = null;
   if (!wasClick) return;
@@ -647,13 +657,15 @@ $("save").onclick = async () => {
   catch (e) { if (/exists/.test(e.message) && confirm(e.message + "\nOverwrite?")) { try { const r = await api("/api/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, lua, force: true }) }); status("Saved: " + r.message, "ok"); S.loadedFile = name + ".lua"; } catch (e2) { status("Save failed: " + e2.message, "bad"); } } else status("Save failed: " + e.message, "bad"); }
 };
 $("clear").onclick = () => { S.draft = null; S.sel = null; S.loadedFile = null; S.mode = "map"; refresh(); };
-$("sites").onchange = () => {
-  const s = S.sites.find(x => x.file === $("sites").value); if (!s) return;
-  const sh = S.shells.find(x => x.server === s.template || x.template === s.template); if (!sh) { status("Shell of that site is not in the catalogue: " + s.template, "bad"); return; }
+function loadSite(s, keepView) {
+  const sh = S.shells.find(x => x.server === s.template || x.template === s.template); if (!sh) { status("Shell of that site is not in the catalogue: " + s.template, "bad"); return false; }
   S.draft = { shell: sh, x: s.x, y: s.y, heading: s.heading, tenants: s.tenants.map(t => ({ ...t })), outside: s.outside.map(o => ({ ...o })), name: s.name };
   S.loadedFile = s.file; $("name").value = s.name; $("ddx").value = s.door.dx; $("ddy").value = s.door.dy; $("planet").value = s.planet; renderPlanets();
-  S.view.cx = s.x; S.view.cy = s.y; S.mode = "map"; refresh(); status(`Loaded ${s.name}; Save overwrites its file.`, "ok");
-};
+  if (!keepView) { S.view.cx = s.x; S.view.cy = s.y; }
+  S.mode = "map"; S.selB = null; refresh(); status(`Editing ${s.name}: drag it, drag the entrance arrow tip to rotate, r / R / arrows too. Save overwrites its file.`, "ok");
+  return true;
+}
+$("sites").onchange = () => { const s = S.sites.find(x => x.file === $("sites").value); if (s) loadSite(s); };
 
 (async () => {
   try { S.shells = await api("/api/shells"); S.npcs = await api("/api/npcs"); const sel = $("npc"); for (const n of S.npcs) { const o = document.createElement("option"); o.value = n.template; o.textContent = `${n.label}  (${n.template})`; sel.appendChild(o); } if (sel.options.length) sel.selectedIndex = 0; }
