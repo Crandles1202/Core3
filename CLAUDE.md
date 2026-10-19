@@ -100,7 +100,7 @@ tools/swg cmd "<console cmd>"   # send a console command, print the log lines it
 tools/swg logs --errors         # ERROR/FATAL lines from the current run, minus known noise
 tools/swg test unit             # core3 runUnitTests (258 gtests, ~12 s; server must be stopped)
 tools/swg test lua [<char>]     # reloadscreenplays, then FbLabTests:runAll on the live server → PASS/FAIL lines
-tools/swg test bot              # core3client: claude-player creates a char, zones in, 30 s, logs out
+tools/swg test bot [--user claude-admin]  # core3client: the account creates a char, zones in, 30 s, logs out
 tools/swg test scenario <name>  # tools/scenarios/<name>.sh: bot acts + Lua oracle observes (gameplay tests)
 tools/swg test all              # stop if running → unit → start → lua → bot → scenarios (server left running)
 tools/swg build                 # ~/bin/build with the client on; prints only errors/warnings and timing
@@ -140,6 +140,7 @@ tools/swg tre build|install [--client DIR]|patchcfg FILE|status|strings … # fi
 
 | Phase | Change | Where |
 |---|---|---|
+| 2.12a | **Lab Remote** — the lab in game, for admins: an inventory item (`object/tangible/fb_lab_remote/fb_lab_remote.iff`, stock camp-remote look, handed to every privileged character at login by `FBLogin`; the old field probe's path is an alias) whose radial opens server UI windows: *Where am I* (world + room coordinates and a ready-to-paste tenant line, also echoed to chat), *Find NPC* (name / template / source file / oid → teleport me, waypoint, audit, move it to where I stand facing my way, make it face me), *Audit NPCs within 50 m*, *Lab actions* (convoy, invasion begin/assault, storm on/off here, story, merchant, HoloNet, ambient beat), Trade Hall / territory / news windows. Every window calls the FbLabTests oracles through `FbLabTests.capture`. Non-admins get a refusal. Spawn registry is now shared across Lua states through quest status (`FbLabSpawns.*`), so find/placement see respawns made on worker threads | `custom_scripts/screenplays/fb_lab_remote.lua`, `custom_scripts/object/tangible/fb_lab_remote/`, scenario `lab-remote` (bot as `claude-admin`) |
 | 2.11 | **Mos Eisley Trade Hall** — proof of concept for server-placed buildings: `FbTradeHall` spawns a stock Commerce Guild hall (9 cells) on a surveyed lot 150 m north of the starport square (3580, −4638, porch facing south) at every boot (stock prop pattern, not persisted; cell ids change per boot), spawns the 11 FB vendors into its rooms by cell *name* (room coordinates from the floor meshes), and a doorman "Hallkeeper Jyn Odaro" on the square who marks the hall on the map (`addWaypoint`) and lists the tenants; galaxy chatter mentions it. The vendors' plaza entries are commented out in their screenplays. Lot survey tooling: the world snapshot and portal-layout readers in the lab's scratch scripts (dev-notes) — the starport apron alone is 170 m across, which is why the hall is not on the square | `fb_trade_hall*.lua`, `fb_trade_hall_keeper*.lua`, scenario `trade-hall` |
 | 4.0 | Custom data archive: `tools/tre` packs `tre-src/` (string tables as `key = text` text files, anything else verbatim) into `finalboss.tre`, byte-identical on repack of stock archives; listed first in `Core3.TreFiles` (+ `Core3.TreManager.LatestTre`), installed into `/tre` by `swg start`/`swg test unit`, which also pass `reloadstrings` when it changed; client side via `swg tre install --client DIR` (copies + patches `swgemu_live.cfg`). Probe table `string/en/fb_lab.stf` for the tests. Prerequisite for every Phase 4 custom name/title/journal entry | `tools/tre`, `tre-src/`, `config.lua`, `src/tests/FbTreTest.cpp`, scenario `tre-strings` |
 | 0.5 | `custom-features.lua` git-ignored | `.gitignore` |
@@ -229,8 +230,10 @@ Persisted object fields (`containerVolumeLimit`, …) are only read from the tem
   84 m underground); the audit's terrain rule catches that. Stock commoner templates wander unless
   `AiAgent:addObjectFlag(AI_STATIC)` (+ `clearOptionBit(AIENABLED)` when not pvp-flagged).
 - Spawns made by server events (seat churn, respawns) are recorded in *that* Lua state's `FbLabTests.spawns`,
-  invisible to the console; the placement audit reaches them through the module's quest-status lookup
-  (`providedSpawns` in `fb_lab_tests.lua`) — add a provider when a module respawns things after `start()`.
+  invisible to the console; the shared registry in quest status (`FbLabTests.registryAdd/registryLive`, written
+  by the `spawnMobile` wrapper in every state) is the truth across states — `liveSpawns`, `checkNpc` and the
+  Lab Remote read it. Keep per-window state in quest status too: SUI callbacks run on whichever thread
+  handles the packet (pattern in `fb_lab_remote.lua`).
 - Screenplay table fields set in `start()` are not visible from the console or server-event Lua states;
   persist cross-call state with `setQuestStatus`/`getQuestStatus` (keys without `:`). `getTerrainHeight`
   needs a creature; use `getTerrainHeightAt(zone, x, y)` when there is none.
@@ -279,12 +282,12 @@ _Updated: 2026-10-18 (session 3: Phase 4 design settled with Chuck, 4.0 TRE tool
   clues, FRS rank trees as the ladder, Masters in the Yavin 4 enclaves, cosmetic colour crystals, fixer-paid
   bounties). 4.0 custom TRE tooling shipped and installed in Chuck's client (`/mnt/c/EMU/swg - Copy/SWGEmu`). **2.11 Mos Eisley Trade Hall** shipped the same night (server-placed stock building with the 11 square vendors inside, doorman on the square) — the pattern for every later shop/enclave. Next: 4a.1 attunement + Old Man on `feature/phase4a.1-*`; TRE object templates (custom building names) when a shop needs its own name.
 - Binaries: `bin/core3` and `bin/core3client` built 2026-10-17 from this tree (`swg build`).
-- Lab now: 261 unit, ~410 Lua checks (one placement check per live FB spawn), bot, 22 scenarios (+2 manual audits) (`trade-hall`, `npc-placement`, `tre-strings`, `stimpack-heals`, `npc-conversation`,
+- Lab now: 261 unit, ~420 Lua checks (one placement check per live FB spawn), bot, 23 scenarios (+2 manual audits) (`lab-remote`, `trade-hall`, `npc-placement`, `tre-strings`, `stimpack-heals`, `npc-conversation`,
   `inventory-100`, `mission-hints`, `entertainer-xp`, `schematic-broker`, `schematic-broker-ui` (real SUI path),
   `parts-dealer`, `bazaar-listings`, `traveling-merchant`, `ambient-cantina`, `galaxy-chatter`, `story-ticker`, `faction-patrols`, `holonet`, `convoy-ambush`, `sandstorm`, `invasion-bestine`, `territory`; manual: `merchant-stops`, `ambient-locations`). Oracle
   additions today: `inventoryLimit`, `setInventoryLimit`, `loginHook`, `spawnObjectNear`, `destroyObject`,
   `missions`, `xp`, `cash`, `buySchematic` / `buyPart` / `buyMerchant` (by item name), `hasSchematic`, `merchant`,
-  `merchantMove[:stop]`, `merchantStops`, `questStatus`, `travelCell`, `findNpc`, `gotoNpc`, `waypointTo`, `placement`, `spawnNpcAt`, `spawnBuildingAt`, `buildingInfo`, `tradeHall`, `ambient`, `ambientTick`, `ambientChurn`, `ambientLocations`, `galaxyNews`, `galaxyAddNews`, `story`, `storyFire`, `objectAlive`, `patrols`, `patrolStep`, `holonet`, `holonetSegment`, `holonetBroadcast`, `convoy`, `convoySpawn`, `killNpc`, `factionStanding`, `containerItems`, `weather`, `weatherSet`, `storm`, `stormTick`, `invasion`, `invasionBegin`, `invasionAssault`, `invasionEngage`, `invasionResolve`, `invasionSide`, `teleportObject`, `objectPos`, `territory`, `territorySet`, `territoryShift`, `patrolRespawn`, `stringId`, `systemMessage`. The
+  `merchantMove[:stop]`, `merchantStops`, `questStatus`, `travelCell`, `findNpc`, `gotoNpc`, `waypointTo`, `placement`, `spawnNpcAt`, `moveNpc`, `spawnBuildingAt`, `buildingInfo`, `tradeHall`, `giveRemote`, `capture`, `ambient`, `ambientTick`, `ambientChurn`, `ambientLocations`, `galaxyNews`, `galaxyAddNews`, `story`, `storyFire`, `objectAlive`, `patrols`, `patrolStep`, `holonet`, `holonetSegment`, `holonetBroadcast`, `convoy`, `convoySpawn`, `killNpc`, `factionStanding`, `containerItems`, `weather`, `weatherSet`, `storm`, `stormTick`, `invasion`, `invasionBegin`, `invasionAssault`, `invasionEngage`, `invasionResolve`, `invasionSide`, `teleportObject`, `objectPos`, `territory`, `territorySet`, `territoryShift`, `patrolRespawn`, `stringId`, `systemMessage`. The
   client now logs spatial chat (`SpatialChat from=<oid>: text`, last 50 kept in its var store). Bot
   additions: `--missions <terminalOid>`, `--command-nowait`, `--sell`/`--buy`/`--retrieve`, `--sui`, `--keep-going`, and an
   end-of-run `=> #N {...}` results dump that `bot_action_status`/`bot_action_count` read. Known gap: the client does not decode every
@@ -336,6 +339,10 @@ _Updated: 2026-10-18 (session 3: Phase 4 design settled with Chuck, 4.0 TRE tool
   waypoint, walk 150 m north into the Trade Hall: nine rooms, eleven vendors — buy something from each
   room you pass, check nobody stands in a desk, and say whether the walk is too far (the square itself is
   boxed in by the starport apron; a closer lot needs a smaller building). `gotoNpc:<You>:Tamsin` skips the walk.
+  (2.12a) log in as an admin character: a **Final Boss Lab Remote** lands in your inventory; right-click it →
+  *Lab console*: try *Where am I* indoors (the tenant line is what a screenplay needs), *Find NPC* → Tamsin →
+  *Teleport me to it*, *Audit NPCs within 50 m*, and *Lab actions* → *Convoy: spawn one now* (the convoy you
+  tabled). *Move it to where I stand* re-seats any NPC live — the quick way to try a spot before I write it down.
   Then `swg snap save phase1-quickwins` and tag `chuck-stable-20261017`.
 - [ ] Lab characters are followed by the new-player helper droid (R2-H4), which opens a SUI greeting every
   second (visible in every bot log). Harmless for the scenarios now that `--sui` scans all windows, but

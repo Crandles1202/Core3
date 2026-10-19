@@ -23,6 +23,11 @@ function FBLogin.onLogin(pPlayer)
 	if pPlayer == nil then return end
 	local ok, err = pcall(FBLogin.raiseInventoryLimit, pPlayer)
 	if not ok then printf("FBLogin.raiseInventoryLimit failed: %s\n", tostring(err)) end
+	-- Phase 2.12: every privileged character carries a Lab Remote (no-op for players and for admins who have one)
+	if FbLabRemote ~= nil then
+		local ok2, err2 = pcall(function() FbLabRemote:give(pPlayer) end)
+		if not ok2 then printf("FBLogin: lab remote hand-out failed: %s\n", tostring(err2)) end
+	end
 	printf("FBLogin: fix-ups applied for %s\n", CreatureObject(pPlayer):getFirstName())
 end
 
