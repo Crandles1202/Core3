@@ -85,6 +85,7 @@ const $ = id => document.getElementById(id);
 const canvas = $("c"), ctx = canvas.getContext("2d");
 const GAP = 3, BODY = 0.35, MARGIN = 0.8;
 
+window.addEventListener("error", e => { const el = document.getElementById("status"); if (el) { el.textContent = "Script error: " + e.message + " (line " + e.lineno + ")"; el.className = "bad"; } });
 const S = {
   area: null, shells: [], npcs: [], sites: [], live: [],
   view: { cx: 3520, cy: -4810, ppm: 2 },          // map view: centre and pixels per metre
@@ -316,10 +317,14 @@ window.addEventListener("mouseup", e => {
   const r = canvas.getBoundingClientRect(); const sx = e.clientX - r.left, sy = e.clientY - r.top;
   down = null;
   if (!wasClick) return;
+  // our own double-click: two clicks within 450 ms and 8 px (the dblclick event is unreliable through WSLg)
+  const now = performance.now();
+  if (S.lastClick && now - S.lastClick.t < 450 && Math.hypot(sx - S.lastClick.sx, sy - S.lastClick.sy) < 8) { S.lastClick = null; doubleClickAt(sx, sy); return; }
+  S.lastClick = { t: now, sx, sy };
   if (S.mode === "map") {
     // a single click selects the building under the cursor (details in the right panel)
     const [wx, wy] = s2w(sx, sy); const target = buildingAt(wx, wy);
-    if (target && target.kind !== "draft") { S.selB = target; showInfo(target); draw(); if ($("tool").value !== "outside") return; }
+    if (target && target.kind !== "draft") { S.selB = target; showInfo(target); status(`Selected ${target.kind === "site" ? "site " + target.obj.name : target.obj.short}. Double-click it, or press Inside view, to see the layout.`, ""); draw(); if ($("tool").value !== "outside") return; }
     else if (!target) { S.selB = null; if (S.draft) refresh(); }
   }
   if (S.inspect) { status("This building is read-only. Place your own shell to add tenants.", "warn"); return; }
@@ -347,12 +352,14 @@ function openInside(target) {
   else { S.inspect = { shell: target.shell, tenants: target.kind === "site" ? target.obj.tenants : [], title: target.kind === "site" ? "site " + target.obj.name : target.obj.short, kind: target.kind }; status(`Inside ${S.inspect.title} (read-only). Double-click anywhere to return to the map.`, "ok"); }
   S.mode = "inside"; S.sel = null; draw();
 }
-canvas.addEventListener("dblclick", e => {
-  if (S.mode === "inside") { S.mode = "map"; S.inspect = null; draw(); return; }
-  const r = canvas.getBoundingClientRect(); const [wx, wy] = s2w(e.clientX - r.left, e.clientY - r.top);
+function doubleClickAt(sx, sy) {
+  if (S.mode === "inside") { S.mode = "map"; S.inspect = null; status("Back on the map.", ""); draw(); return; }
+  const [wx, wy] = s2w(sx, sy);
   const target = buildingAt(wx, wy) || (S.draft ? { kind: "draft", obj: S.draft, shell: S.draft.shell } : null);
+  if (!target) { status("Double-click on a building to open its layout.", "warn"); return; }
   openInside(target);
-});
+}
+canvas.addEventListener("dblclick", e => { e.preventDefault(); });   // handled by the click timing in mouseup
 canvas.addEventListener("wheel", e => { e.preventDefault(); const v = S.mode === "map" ? S.view : S.ivw; const k = e.deltaY < 0 ? 1.15 : 1 / 1.15; v.ppm = Math.max(0.2, Math.min(80, v.ppm * k)); draw(); }, { passive: false });
 function personAt(sx, sy) {
   const d = S.draft; if (!d) return null;
