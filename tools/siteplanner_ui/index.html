@@ -270,7 +270,7 @@ function drawMap() {
         if (S.view.ppm > 1.6) drawShellRooms(sh, b.x, b.y, b.heading, w2s, false, true);
         poly(rectPoly(b.x, b.y, b.heading, b.fp), w2s, null, "rgba(91,102,120,0.5)");
       } else if (b.radar && b.radar.length) {
-        // the game's own radar outline (what the in-game map draws for this building)
+        // the radar outline the game itself draws for this building on the in-game map
         for (const t of b.radar) poly(t.map(map), w2s, "rgba(150,160,180,0.2)", null);
       } else if (b.fp) poly(rectPoly(b.x, b.y, b.heading, b.fp), w2s, "rgba(150,160,180,0.12)", "#5b6678");
       else if (b.box) poly(rectPoly(b.x, b.y, b.heading, b.box), w2s, "rgba(150,160,180,0.14)", "#5b6678");
