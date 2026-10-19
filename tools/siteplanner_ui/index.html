@@ -74,7 +74,7 @@
 <main>
   <canvas id="c"></canvas>
   <div id="help">drag: pan · wheel: zoom · click a building: details · double-click any building: inside view · drag your placed shell to move it<br>
-    <span style="color:#8a94a6">■ stock building (line = entrance side)</span> · <span style="color:#5b6678">◌ stock shell, no interior data</span> · <span style="color:#c58cff">■ our site</span> · <span style="color:#44d17a">■ your placed shell</span> (amber/red = lot problem) · <span style="color:#fff">□ selected</span> · <span style="color:#f0b429">● live NPC</span> · <span style="color:#7fb0d0">● stock NPC</span> · <span style="color:#4cc3ff">▣ terminal</span> · <span style="color:#58e0c8">▣ crafting station</span> · <span style="color:#ffd166">▣ vendor</span></div>
+    <span style="color:#8a94a6">■ stock building (line = entrance side)</span> · <span style="color:#5b6678">◌ stock shell, no interior data</span> · <span style="color:#c58cff">■ our site</span> · <span style="color:#44d17a">■ your placed shell</span> (amber/red = lot problem) · <span style="color:#fff">□ selected</span> · <span style="color:#f0b429">● live NPC</span> · <span style="color:#7fb0d0">● stock NPC</span> · <span style="color:#4cc3ff">▣ terminal</span> · <span style="color:#58e0c8">▣ crafting station</span> · <span style="color:#ffd166">▣ vendor / ticket</span> (white edge = server-spawned with the building)</div>
   <div id="hud"></div>
 </main>
 
@@ -174,7 +174,8 @@ function showInfo(sel) {
   const openLink = sh ? `<button id="openLayout" class="primary">Open layout (Enter)</button>` : `<div class="warn">no portal layout: a solid shell, nothing to show inside</div>`;
   const occupants = sel.kind === "stock" && o.npcs && o.npcs.length ? `<br>stock NPCs: ${o.npcs.map(n => n.template + " (" + n.room + ")").join(", ")}` : "";
   const usables = sel.kind === "stock" && o.objects ? o.objects.filter(x => ["terminal", "station", "vendor", "elevator"].includes(x.kind)) : [];
-  const usableText = usables.length ? `<br>usable: ${usables.map(u => u.short + " (" + u.room + ")").join(", ")}` : "";
+  const kids = (sh && sh.children || []).filter(c => ["terminal", "station", "vendor", "elevator"].includes(c.kind) || /ticket/.test(c.template));
+  const usableText = (usables.length || kids.length) ? `<br>usable: ${usables.concat(kids).map(u => u.short + " (" + u.room + ")").join(", ")}` : "";
   if (sel.kind === "stock") el.innerHTML = `<div><b>${o.short}</b> <small>(stock building)</small></div><small>${o.name}<br>at ${o.x}, ${o.y} · heading ${o.heading}${o.fp ? ` · ${(o.fp.x1 - o.fp.x0).toFixed(0)}×${(o.fp.y1 - o.fp.y0).toFixed(0)} m` : ""}<br>rooms: ${rooms}${occupants}${usableText}</small>${openLink}`;
   else if (sel.kind === "site") el.innerHTML = `<div><b>site ${o.name}</b></div><small>${o.template}<br>at ${o.x}, ${o.y} · heading ${o.heading} · ${o.tenants.length} tenant(s)<br>rooms: ${rooms}</small>${openLink}<button id="editSite">Edit this site</button>`;
   const a = document.getElementById("editSite"); if (a) a.onclick = () => { $("sites").value = o.file; $("sites").onchange(); };
@@ -298,6 +299,14 @@ function drawInside() {
     const pts = [[f.x0, f.y0], [f.x1, f.y0], [f.x1, f.y1], [f.x0, f.y1]].map(p => { const a = rad(f.yaw); return [f.x + p[0] * Math.cos(a) + p[1] * Math.sin(a), f.y - p[0] * Math.sin(a) + p[1] * Math.cos(a)]; });
     poly(pts, l2s, "rgba(240,180,41,0.25)", "#8a6a1c");
     if (L("L_labels") && S.ivw.ppm > 18) { const [sx, sy] = l2s(f.x, f.y); ctx.fillStyle = "#b08a30"; ctx.font = "9px system-ui"; ctx.fillText(f.name, sx + 2, sy); }
+  }
+  // what the server spawns in every instance of this building type (travel terminals, ticket collectors…)
+  for (const o of d.shell.children || []) {
+    const usable = o.kind === "terminal" || o.kind === "station" || o.kind === "vendor" || o.kind === "elevator" || /ticket/.test(o.template);
+    if (usable ? !L("L_usables") : !L("L_objects")) continue;
+    const [sx, sy] = l2s(o.x, o.y); const col = /ticket/.test(o.template) ? "#ffd166" : (KIND_COLOR[o.kind] || "#6c7a8f"); const sz = usable ? 7 : 4;
+    ctx.save(); ctx.translate(sx, sy); ctx.rotate(-rad(o.heading)); ctx.fillStyle = col; ctx.globalAlpha = usable ? 0.9 : 0.5; ctx.fillRect(-sz, -sz, 2 * sz, 2 * sz); ctx.globalAlpha = 1; ctx.strokeStyle = "#fff"; ctx.strokeRect(-sz, -sz, 2 * sz, 2 * sz); ctx.restore();
+    if (L("L_labels") && (usable || S.ivw.ppm > 18)) { ctx.fillStyle = col; ctx.font = "10px system-ui"; ctx.fillText(o.short + "  (" + o.room + ", server-spawned)", sx + sz + 2, sy + 3); }
   }
   // objects the server knows about inside the building (world snapshot): terminals, stations, décor
   if (S.inspect) for (const o of S.inspect.objects) {

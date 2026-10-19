@@ -92,6 +92,36 @@ def object_kind(name):
     return "other"
 
 
+# ---------------------------------------------------------------- child objects of a building type (server template)
+
+OBJECT_DIR = os.path.join(REPO, "MMOCoreORB", "bin", "scripts", "object")
+CHILD_RE = re.compile(r'\{\s*templateFile\s*=\s*"([^"]+)"\s*,\s*x\s*=\s*(-?[\d.]+)\s*,\s*z\s*=\s*(-?[\d.]+)\s*,\s*y\s*=\s*(-?[\d.]+)\s*,\s*ox\s*=\s*(-?[\d.]+)\s*,\s*oy\s*=\s*(-?[\d.]+)\s*,\s*oz\s*=\s*(-?[\d.]+)\s*,\s*ow\s*=\s*(-?[\d.]+)\s*,\s*cellid\s*=\s*(-?\d+)')
+
+
+def child_objects(server_template, cache={}):
+    """What the server spawns inside every instance of this building type (childObjects in its template
+    Lua): travel terminals, ticket collectors, elevators… [{template, short, kind, x, y, z, heading, cell}]
+    with x/y building-local (cell -1 = outside the cells, still building-local)."""
+    if server_template in cache:
+        return cache[server_template]
+    out = []
+    path = os.path.join(OBJECT_DIR, server_template.replace("object/", "", 1)[:-4] + ".lua")
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except OSError:
+        cache[server_template] = out
+        return out
+    import math
+    for m in CHILD_RE.finditer(text):
+        t = m.group(1)
+        ox, oy, oz, ow = (float(m.group(i)) for i in (5, 6, 7, 8))
+        out.append(dict(template=t, short=t.rsplit("/", 1)[-1].replace(".iff", ""), kind=object_kind(t), x=round(float(m.group(2)), 2), z=round(float(m.group(3)), 2),
+                        y=round(float(m.group(4)), 2), heading=round(math.degrees(2 * math.atan2(oy, ow)) % 360), cell=int(m.group(9))))
+    cache[server_template] = out
+    return out
+
+
 # ---------------------------------------------------------------- data for the page
 
 class Data:
@@ -192,10 +222,14 @@ class Data:
             except FileNotFoundError:
                 pass
             e = fp[1]
-            out.append(dict(template=t, server=re.sub(r"/shared_([^/]+)$", r"/\1", t), short=t.rsplit("/", 1)[-1].replace("shared_", "").replace(".iff", ""),
+            server = re.sub(r"/shared_([^/]+)$", r"/\1", t)
+            rooms_by_index = {rm["cell"]: rm["name"] for rm in rooms}
+            children = [dict(c, room=rooms_by_index.get(c["cell"], "outside" if c["cell"] <= 0 else "cell%d" % c["cell"])) for c in child_objects(server)]
+            out.append(dict(template=t, server=server, children=children, short=t.rsplit("/", 1)[-1].replace("shared_", "").replace(".iff", ""),
                             planet=(re.search(r"object/building/([a-z0-9_]+)/", t) or [None, ""])[1],
                             fp=dict(x0=round(e["x0"], 1), x1=round(e["x1"], 1), y0=round(e["z0"], 1), y1=round(e["z1"], 1)), radius=round(fp[0], 1),
                             rooms=rooms, furniture=furniture))
+            out[-1]["server"] = server
         self._shells = out
         return out
 
@@ -430,6 +464,8 @@ def cmd_selftest(a):
     assert len(area["npcs"]) > 20, "outdoor stock npcs"
     sp = next((b for b in area["buildings"] if b["short"] == "starport_tatooine"), None)
     assert sp and any(o["kind"] == "terminal" for o in sp["objects"]), "starport terminals from the snapshot"
+    spsh = next((x for x in shells if x["short"] == "starport_tatooine"), None)
+    assert spsh and any("terminal_travel" in c["template"] for c in spsh["children"]), "starport travel terminal from the server template's childObjects"
     npcs = npc_templates()
     assert any(n["template"] == "fb_parts_dealer" for n in npcs), "npc list"
     assert os.path.exists(os.path.join(UI_DIR, "index.html")), "ui page"
