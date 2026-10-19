@@ -28,6 +28,7 @@ runs and tests. Host: WSL2 Debian 12.
 | MySQL | `127.0.0.1:3306`, db `swgemu`, user `swgemu`; `mysql swgemu` works via `~/.my.cnf` |
 | Logs | `bin/screenlog.0` (console of the current run), `bin/log/core3.log`, `bin/log/lua.log`, `bin/log/player.log` |
 | TRE client files | `/tre` (`TrePath`); `/tre/finalboss.tre` is ours, installed by `tools/swg tre install` from the build output `MMOCoreORB/bin/tre/finalboss.tre` (ignored). Chuck's game client: `/mnt/c/EMU/swg - Copy/SWGEmu` (remembered in `~/.swg-lab/client-dir`; `/mnt/c/SWGDev/SWG_Game/swg - Copy/SWGEmu` is a stale duplicate still pointing at nova.swgemu.com) |
+| Lot / room survey | `tools/lotsurvey near|cells|footprint|rooms|lots …` reads the stock snapshot, portal layouts and floor meshes through the server's archives: where buildings stand, a template's footprint and rooms (cell-local coordinates for `spawnMobile`), and free lots for a building near a point. Used to place the 2.11 Trade Hall |
 | Custom client/server data (strings, templates) | `tre-src/` → packed by `tools/tre` (stdlib Python; `build/list/extract/strings/verify/roundtrip/install/status/crc`). `string/en/fb_*.stf.txt` = `key = text` lines → `@fb_*:key` |
 | Wrapper scripts | `~/bin/build`, `~/bin/run` (both `source ~/.env`) |
 | Unit tests (gtest) | `MMOCoreORB/src/tests/*.cpp` |
@@ -139,6 +140,7 @@ tools/swg tre build|install [--client DIR]|patchcfg FILE|status|strings … # fi
 
 | Phase | Change | Where |
 |---|---|---|
+| 2.11 | **Mos Eisley Trade Hall** — proof of concept for server-placed buildings: `FbTradeHall` spawns a stock Commerce Guild hall (9 cells) on a surveyed lot 150 m north of the starport square (3580, −4638, porch facing south) at every boot (stock prop pattern, not persisted; cell ids change per boot), spawns the 11 FB vendors into its rooms by cell *name* (room coordinates from the floor meshes), and a doorman "Hallkeeper Jyn Odaro" on the square who marks the hall on the map (`addWaypoint`) and lists the tenants; galaxy chatter mentions it. The vendors' plaza entries are commented out in their screenplays. Lot survey tooling: the world snapshot and portal-layout readers in the lab's scratch scripts (dev-notes) — the starport apron alone is 170 m across, which is why the hall is not on the square | `fb_trade_hall*.lua`, `fb_trade_hall_keeper*.lua`, scenario `trade-hall` |
 | 4.0 | Custom data archive: `tools/tre` packs `tre-src/` (string tables as `key = text` text files, anything else verbatim) into `finalboss.tre`, byte-identical on repack of stock archives; listed first in `Core3.TreFiles` (+ `Core3.TreManager.LatestTre`), installed into `/tre` by `swg start`/`swg test unit`, which also pass `reloadstrings` when it changed; client side via `swg tre install --client DIR` (copies + patches `swgemu_live.cfg`). Probe table `string/en/fb_lab.stf` for the tests. Prerequisite for every Phase 4 custom name/title/journal entry | `tools/tre`, `tre-src/`, `config.lua`, `src/tests/FbTreTest.cpp`, scenario `tre-strings` |
 | 0.5 | `custom-features.lua` git-ignored | `.gitignore` |
 | 1.3 | Starter gear: CDEF pistol, shirt, pants, stimpack added to `commonStartingItems` | `managers/player_creation_manager.lua` |
@@ -205,6 +207,14 @@ Persisted object fields (`containerVolumeLimit`, …) are only read from the tem
   use the lab's `weatherSet` (Lua `setZoneWeather`) to force weather without stopping it.
 - An AI agent leashes back to its spawn point when sent or teleported far away; move its home too
   (`AiAgent:setHomeLocation(x, z, y, nil)`) before long walks. Short legs (patrols, convoy) are fine.
+- **Placing a building** (2.11 pattern): `spawnSceneObject(zone, "object/building/…iff", x, z, y, 0, cos(h/2), 0, sin(h/2), 0)`
+  creates the structure *and* its cells (not persisted: spawn at every boot, find cells by name with
+  `BuildingObject:getCellName(i)`, never store cell ids). Room coordinates: cell-local x = floor-mesh x,
+  cell-local y = floor-mesh z, cell-local z = the floor height (`appearance/collision/<pob>_r<N>_<room>_collision_floor.flr`,
+  VERT chunk, little-endian floats). Footprint = the `r0` exterior floor's extents — check the lot against
+  every stock footprint from `snapshot/<planet>.ws` (WSNP/NODS/NODE DATA, payload little-endian) before
+  choosing it — `tools/lotsurvey lots <planet> <x> <y> --template <building iff>` does exactly that and
+  `lotsurvey rooms <iff>` prints the rooms; the lab's `spawnBuildingAt`/`buildingInfo` oracles spawn and measure a candidate.
 - Starting a conversation needs same cell, ≤ 5 m and line of sight to the NPC, and fails silently otherwise.
   **Before trusting an NPC spot:** `swg cmd "runLuaFunction FbLabTests:placement:<name>"` (line of sight to
   probes 3 m around, height above terrain, drift; `checkPlacement` runs it for every FB spawn in `swg test lua`),
@@ -262,14 +272,14 @@ _Updated: 2026-10-18 (session 3: Phase 4 design settled with Chuck, 4.0 TRE tool
   day length, only `Zone::getGalacticTime()`), 3.11 escort mode. **Phase 4 (Jedi/Sith): design decided 2026-10-18** — the decisions
   block at the top of the roadmap's Phase 4 section is the spec (attunement score with capped sources, Force-ghost
   clues, FRS rank trees as the ladder, Masters in the Yavin 4 enclaves, cosmetic colour crystals, fixer-paid
-  bounties). 4.0 custom TRE tooling shipped and installed in Chuck's client (`/mnt/c/EMU/swg - Copy/SWGEmu`); next: 4a.1 attunement + Old Man on `feature/phase4a.1-*`.
+  bounties). 4.0 custom TRE tooling shipped and installed in Chuck's client (`/mnt/c/EMU/swg - Copy/SWGEmu`). **2.11 Mos Eisley Trade Hall** shipped the same night (server-placed stock building with the 11 square vendors inside, doorman on the square) — the pattern for every later shop/enclave. Next: 4a.1 attunement + Old Man on `feature/phase4a.1-*`; TRE object templates (custom building names) when a shop needs its own name.
 - Binaries: `bin/core3` and `bin/core3client` built 2026-10-17 from this tree (`swg build`).
-- Lab now: 261 unit, ~390 Lua checks (one placement check per live FB spawn), bot, 21 scenarios (+2 manual audits) (`npc-placement`, `tre-strings`, `stimpack-heals`, `npc-conversation`,
+- Lab now: 261 unit, ~410 Lua checks (one placement check per live FB spawn), bot, 22 scenarios (+2 manual audits) (`trade-hall`, `npc-placement`, `tre-strings`, `stimpack-heals`, `npc-conversation`,
   `inventory-100`, `mission-hints`, `entertainer-xp`, `schematic-broker`, `schematic-broker-ui` (real SUI path),
   `parts-dealer`, `bazaar-listings`, `traveling-merchant`, `ambient-cantina`, `galaxy-chatter`, `story-ticker`, `faction-patrols`, `holonet`, `convoy-ambush`, `sandstorm`, `invasion-bestine`, `territory`; manual: `merchant-stops`, `ambient-locations`). Oracle
   additions today: `inventoryLimit`, `setInventoryLimit`, `loginHook`, `spawnObjectNear`, `destroyObject`,
   `missions`, `xp`, `cash`, `buySchematic` / `buyPart` / `buyMerchant` (by item name), `hasSchematic`, `merchant`,
-  `merchantMove[:stop]`, `merchantStops`, `questStatus`, `travelCell`, `findNpc`, `gotoNpc`, `waypointTo`, `placement`, `spawnNpcAt`, `ambient`, `ambientTick`, `ambientChurn`, `ambientLocations`, `galaxyNews`, `galaxyAddNews`, `story`, `storyFire`, `objectAlive`, `patrols`, `patrolStep`, `holonet`, `holonetSegment`, `holonetBroadcast`, `convoy`, `convoySpawn`, `killNpc`, `factionStanding`, `containerItems`, `weather`, `weatherSet`, `storm`, `stormTick`, `invasion`, `invasionBegin`, `invasionAssault`, `invasionEngage`, `invasionResolve`, `invasionSide`, `teleportObject`, `objectPos`, `territory`, `territorySet`, `territoryShift`, `patrolRespawn`, `stringId`, `systemMessage`. The
+  `merchantMove[:stop]`, `merchantStops`, `questStatus`, `travelCell`, `findNpc`, `gotoNpc`, `waypointTo`, `placement`, `spawnNpcAt`, `spawnBuildingAt`, `buildingInfo`, `tradeHall`, `ambient`, `ambientTick`, `ambientChurn`, `ambientLocations`, `galaxyNews`, `galaxyAddNews`, `story`, `storyFire`, `objectAlive`, `patrols`, `patrolStep`, `holonet`, `holonetSegment`, `holonetBroadcast`, `convoy`, `convoySpawn`, `killNpc`, `factionStanding`, `containerItems`, `weather`, `weatherSet`, `storm`, `stormTick`, `invasion`, `invasionBegin`, `invasionAssault`, `invasionEngage`, `invasionResolve`, `invasionSide`, `teleportObject`, `objectPos`, `territory`, `territorySet`, `territoryShift`, `patrolRespawn`, `stringId`, `systemMessage`. The
   client now logs spatial chat (`SpatialChat from=<oid>: text`, last 50 kept in its var store). Bot
   additions: `--missions <terminalOid>`, `--command-nowait`, `--sell`/`--buy`/`--retrieve`, `--sui`, `--keep-going`, and an
   end-of-run `=> #N {...}` results dump that `bot_action_status`/`bot_action_count` read. Known gap: the client does not decode every
@@ -317,6 +327,10 @@ _Updated: 2026-10-18 (session 3: Phase 4 design settled with Chuck, 4.0 TRE tool
   (4.0) **verified 2026-10-18**: Chuck's client rendered `@fb_lab:probe_first` as "Final Boss TRE probe: first"
   (`swg cmd "runLuaFunction FbLabTests:systemMessage:<YourChar>:fb_lab:probe_first"` is the probe). The untouched
   duplicate `/mnt/c/SWGDev/SWG_Game/swg - Copy/SWGEmu` (2.8 GB, still pointing at nova.swgemu.com) is his to delete.
+  (2.11) talk to Hallkeeper Jyn Odaro on the starport square (where the vendor row stood), take the
+  waypoint, walk 150 m north into the Trade Hall: nine rooms, eleven vendors — buy something from each
+  room you pass, check nobody stands in a desk, and say whether the walk is too far (the square itself is
+  boxed in by the starport apron; a closer lot needs a smaller building). `gotoNpc:<You>:Tamsin` skips the walk.
   Then `swg snap save phase1-quickwins` and tag `chuck-stable-20261017`.
 - [ ] Lab characters are followed by the new-player helper droid (R2-H4), which opens a SUI greeting every
   second (visible in every bot log). Harmless for the scenarios now that `--sui` scans all windows, but

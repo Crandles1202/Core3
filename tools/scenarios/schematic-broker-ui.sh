@@ -19,7 +19,7 @@ check "broker_spawned" "$( [ -n "$OID" ] && echo 1 || echo 0 )" "oid=$OID"
 # --- stage: stand next to the broker with the skill and a known inventory count -----------------
 bot_bg --wait 15
 wait_online || die "$CHAR never came online"
-lab "travel:$CHAR:$ZONE:$((NX - 2)):$NY" >/dev/null
+lab "gotoNpc:$CHAR:$OID" >/dev/null   # 2 m in front of the NPC, inside the Trade Hall (Phase 2.11)
 check_eq "skill_for_item" "$(lab_kv "skill:$CHAR:$SKILL" has)" "true"
 CASH0=$(lab_kv "cash:$CHAR" cash)
 BEFORE=$(lab "inventory:$CHAR" | grep -c "$ITEM_TEMPLATE")
