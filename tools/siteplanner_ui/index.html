@@ -86,10 +86,10 @@
   <div id="checkOut"></div>
 
   <h2>World edits <small>(stock buildings)</small></h2>
-  <small>Click a stock building on the map, then:</small>
-  <button id="wMove">Move / rotate the selected building</button>
-  <button id="wDelete">Delete the selected building</button>
-  <label>Add a stock building <small>(type to filter, click to pick)</small></label><input id="catFilter" placeholder="filler">
+  <small>Click a stock building, or a terminal / station / vendor (with its layer on), then:</small>
+  <button id="wMove">Move / rotate the selected building or prop</button>
+  <button id="wDelete">Delete the selected building or prop</button>
+  <label>Add a stock building or terminal <small>(type to filter, click to pick)</small></label><input id="catFilter" placeholder="filler, bank, bazaar…">
   <select id="catalog" size="6"></select>
   <button id="wAdd">Place it at the map centre</button>
   <button id="wApply" class="primary">Apply this world edit (saves to repo)</button>
@@ -210,9 +210,26 @@ function buildingAt(wx, wy) {
     const sh = shellFor(s.template); if (!sh) continue;
     if (distPointPoly(wx, wy, rectPoly(s.x, s.y, s.heading, sh.fp)) === 0) return { kind: "site", obj: s, shell: sh };
   }
+  if (S.area) {
+    // props first: small targets that often stand inside a building footprint (a terminal by a wall)
+    const reach = Math.max(1.2, 7 / S.view.ppm);
+    let best = null, bd = reach;
+    for (const p of S.area.props) {
+      const usable = ["terminal", "station", "vendor", "elevator"].includes(p.kind);
+      if (usable ? !L("L_usables") : !L("L_objects")) continue;
+      const dd = Math.hypot(wx - p.x, wy - p.y); if (dd < bd) { bd = dd; best = p; }
+    }
+    if (best) return { kind: "prop", obj: best, shell: null };
+  }
   if (S.area) for (const b of S.area.buildings) {
-    const inside = b.fp ? distPointPoly(wx, wy, rectPoly(b.x, b.y, b.heading, b.fp)) === 0 : Math.hypot(wx - b.x, wy - b.y) <= b.radius;
-    if (inside) return { kind: "stock", obj: b, shell: shellFor(b.name) };
+    const sh = b.fp ? shellFor(b.name) : null;
+    const map = q => toWorld(b.x, b.y, b.heading, q[0], q[1]);
+    let inside;
+    if (sh && sh.exterior && sh.exterior.length) inside = sh.exterior.some(t => { const w = t.map(map); return pointInTri([wx, wy], w[0], w[1], w[2]); });
+    else if (b.radar && b.radar.length) inside = b.radar.some(t => { const w = t.map(map); return pointInTri([wx, wy], w[0], w[1], w[2]); });
+    else if (b.fp || b.box) inside = distPointPoly(wx, wy, rectPoly(b.x, b.y, b.heading, b.fp || b.box)) === 0;
+    else inside = Math.hypot(wx - b.x, wy - b.y) <= b.radius;
+    if (inside) return { kind: "stock", obj: b, shell: sh };
   }
   return null;
 }
@@ -227,6 +244,7 @@ function showInfo(sel) {
   const kids = ((sel.kind === "stock" && o.children) || (sh && sh.children) || []).filter(c => ["terminal", "station", "vendor", "elevator"].includes(c.kind) || /ticket/.test(c.template));
   const usableText = (usables.length || kids.length) ? `<br>usable: ${usables.concat(kids).map(u => u.short + " (" + u.room + ")").join(", ")}` : "";
   if (sel.kind === "stock") el.innerHTML = `<div><b>${o.short}</b> <small>(stock building${o.edit ? ", " + (o.edit === "add" ? "added" : "moved") + " by a world edit" : ""})</small></div><small>${o.name}<br>oid ${o.oid} · at ${o.x}, ${o.y} · heading ${o.heading}${o.fp ? ` · ${(o.fp.x1 - o.fp.x0).toFixed(0)}×${(o.fp.y1 - o.fp.y0).toFixed(0)} m` : ""}<br>rooms: ${rooms}${occupants}${usableText}</small>${openLink}<button id="editStock">Move / rotate it (world edit)</button>`;
+  else if (sel.kind === "prop") el.innerHTML = `<div><b>${o.short}</b> <small>(stock ${o.kind || "prop"}${o.edit ? ", " + (o.edit === "add" ? "added" : "moved") + " by a world edit" : ""})</small></div><small>${o.name}<br>oid ${o.oid} · at ${o.x}, ${o.y} · heading ${o.heading}</small><button id="editStock">Move / rotate it (world edit)</button>`;
   else if (sel.kind === "site") el.innerHTML = `<div><b>site ${o.name}</b></div><small>${o.template}<br>at ${o.x}, ${o.y} · heading ${o.heading} · ${o.tenants.length} tenant(s)<br>rooms: ${rooms}</small>${openLink}<button id="editSite">Edit this site</button>`;
   const a = document.getElementById("editSite"); if (a) a.onclick = () => loadSite(o, true);
   const m = document.getElementById("editStock"); if (m) m.onclick = () => startWorldDraft("move", o);
@@ -259,6 +277,7 @@ function polysTouch(rect, tri) {
 }
 function lotReport(d) {
   if (!S.area) return null;
+  if (d.isProp) return { verdict: "ok", clashes: [], propHits: 0, terrain: S.terrain, prop: true };   // a terminal belongs next to a wall
   const poly = rectPoly(d.x, d.y, d.heading, d.shell.fp);
   const fpG = { x0: d.shell.fp.x0 - GAP, x1: d.shell.fp.x1 + GAP, y0: d.shell.fp.y0 - GAP, y1: d.shell.fp.y1 + GAP };
   const polyG = rectPoly(d.x, d.y, d.heading, fpG);   // our footprint plus the gap we want to keep
@@ -344,7 +363,7 @@ function drawMap() {
     for (const p of S.area.props) {
       const usable = p.kind === "terminal" || p.kind === "station" || p.kind === "vendor" || p.kind === "elevator";
       if (usable ? !L("L_usables") : !L("L_objects")) continue;
-      const [sx, sy] = w2s(p.x, p.y); const col = usable ? (KIND_COLOR[p.kind] || "#4cc3ff") : "#3a4250"; const sz = usable ? Math.max(3, Math.min(6, S.view.ppm * 1.2)) : 1.5;
+      const [sx, sy] = w2s(p.x, p.y); const col = p.edit ? "#ff9f43" : usable ? (KIND_COLOR[p.kind] || "#4cc3ff") : "#3a4250"; const sz = usable || p.edit ? Math.max(3, Math.min(6, S.view.ppm * 1.2)) : 1.5;
       ctx.save(); ctx.translate(sx, sy); ctx.rotate(-rad(p.heading || 0)); ctx.fillStyle = col; ctx.fillRect(-sz, -sz, 2 * sz, 2 * sz); if (usable) { ctx.strokeStyle = "#0b0d11"; ctx.strokeRect(-sz, -sz, 2 * sz, 2 * sz); } ctx.restore();
       if (usable && L("L_labels") && S.view.ppm > 2.2) { ctx.fillStyle = col; ctx.font = "9px system-ui"; ctx.fillText(p.short.replace(/^terminal_/, "").replace(/^public_/, ""), sx + sz + 2, sy + 3); }
     }
@@ -380,7 +399,7 @@ function drawMap() {
     // a stock building a world edit removed: its ghost, so the lot it freed stays readable
     const mapG = p => toWorld(g.x, g.y, g.heading, p[0], p[1]);
     ctx.setLineDash([5, 4]);
-    if (g.radar && g.radar.length) strokeOutline(g.radar, mapG, w2s, "#ff5c5c"); else { const [sx, sy] = w2s(g.x, g.y); ctx.beginPath(); ctx.arc(sx, sy, 8 * S.view.ppm, 0, Math.PI * 2); ctx.strokeStyle = "#ff5c5c"; ctx.stroke(); }
+    if (g.radar && g.radar.length) strokeOutline(g.radar, mapG, w2s, "#ff5c5c"); else { const [sx, sy] = w2s(g.x, g.y); const rr = g.prop ? 5 : 8 * S.view.ppm; ctx.strokeStyle = "#ff5c5c"; ctx.beginPath(); ctx.moveTo(sx - rr, sy - rr); ctx.lineTo(sx + rr, sy + rr); ctx.moveTo(sx + rr, sy - rr); ctx.lineTo(sx - rr, sy + rr); ctx.stroke(); }
     ctx.setLineDash([]);
     const [gx, gy] = w2s(g.x, g.y); ctx.fillStyle = "#ff5c5c"; ctx.font = "10px system-ui"; ctx.fillText(g.short + "  (deleted)", gx + 3, gy - 3);
   }
@@ -397,10 +416,14 @@ function drawMap() {
     for (const o of s.outside) drawPerson(o, w2s, p => p, "#c58cff", false, o.template);
   }
   if (S.selB && S.selB.kind !== "draft") {
-    const o = S.selB.obj; const fp = S.selB.kind === "stock" ? o.fp : (S.selB.shell && S.selB.shell.fp);
+    const o = S.selB.obj, sel = S.selB; const sh = sel.shell;
+    const mapO = q => toWorld(o.x, o.y, o.heading, q[0], q[1]);
     ctx.lineWidth = 3;
-    if (fp) poly(rectPoly(o.x, o.y, o.heading, fp), w2s, "rgba(76,195,255,0.25)", "#4cc3ff");
-    else { const [sx, sy] = w2s(o.x, o.y); ctx.beginPath(); ctx.arc(sx, sy, (o.radius || 20) * S.view.ppm, 0, Math.PI * 2); ctx.fillStyle = "rgba(76,195,255,0.18)"; ctx.fill(); ctx.strokeStyle = "#4cc3ff"; ctx.stroke(); }
+    if (sel.kind === "prop") { const [sx, sy] = w2s(o.x, o.y); const r = Math.max(8, 1.5 * S.view.ppm); ctx.strokeStyle = "#4cc3ff"; ctx.strokeRect(sx - r, sy - r, 2 * r, 2 * r); }
+    else if (sh && sh.exterior && sh.exterior.length) strokeOutline(sh.exterior, mapO, w2s, "#4cc3ff", 3);
+    else if (o.radar && o.radar.length) strokeOutline(o.radar, mapO, w2s, "#4cc3ff", 3);
+    else if (o.fp || o.box || (sh && sh.fp)) poly(rectPoly(o.x, o.y, o.heading, o.fp || o.box || sh.fp), w2s, null, "#4cc3ff");
+    else { const [sx, sy] = w2s(o.x, o.y); ctx.beginPath(); ctx.arc(sx, sy, (o.radius || 20) * S.view.ppm, 0, Math.PI * 2); ctx.strokeStyle = "#4cc3ff"; ctx.stroke(); }
     ctx.lineWidth = 1;
   }
   if (S.area && L("L_stock")) for (const n of S.area.npcs || []) { const [sx, sy] = w2s(n.x, n.y); ctx.fillStyle = "#7fb0d0"; ctx.beginPath(); ctx.arc(sx, sy, 2.5, 0, Math.PI * 2); ctx.fill(); if (L("L_labels") && S.view.ppm > 3) { ctx.font = "10px system-ui"; ctx.fillText(n.template, sx + 4, sy + 3); } }
@@ -543,7 +566,7 @@ window.addEventListener("mouseup", e => {
   if (S.mode === "map") {
     // a single click selects the building under the cursor (details in the right panel)
     const [wx, wy] = s2w(sx, sy); const target = buildingAt(wx, wy);
-    if (target && target.kind !== "draft") { S.selB = target; showInfo(target); status(`Selected ${target.kind === "site" ? "site " + target.obj.name : target.obj.short}. Double-click it, or press Inside view, to see the layout.`, ""); draw(); if ($("tool").value !== "outside") return; }
+    if (target && target.kind !== "draft") { S.selB = target; showInfo(target); status(target.kind === "prop" ? `Selected ${target.obj.short} (a stock prop): move or delete it from the World edits panel.` : `Selected ${target.kind === "site" ? "site " + target.obj.name : target.obj.short}. Double-click it, or press Inside view, to see the layout.`, ""); draw(); if ($("tool").value !== "outside") return; }
     else if (!target) { S.selB = null; if (S.draft) refresh(); }
   }
   if (S.inspect) { status("This building is read-only. Place your own shell to add tenants.", "warn"); return; }
@@ -672,6 +695,7 @@ function refresh(askTerrain) {
     const t = S.lot.terrain;
     const terrainText = !t ? "<div><small>terrain: asking the server…</small></div>" : t.unknown ? "<div class='warn'>terrain: unknown (game server not running)</div>"
       : `<div class="${t.worst > 3 ? "bad" : t.worst > 1.5 ? "warn" : "ok"}">terrain: corners ${t.corners.map(c => (c >= 0 ? "+" : "") + c.toFixed(1)).join(" / ")} m from the centre height (worst ${t.worst.toFixed(1)} m${t.worst > 3 ? ", the building would hang over the slope" : t.worst > 1.5 ? ", a step at one corner" : ""})</div>`;
+    if (S.lot.prop) { lotEl.innerHTML = `<div class="ok"><b>PROP</b></div><div><small>no lot rules for a prop: put it where it reads well</small></div>` + terrainText; return; }
     lotEl.innerHTML = `<div class="${cls}"><b>${S.lot.verdict.toUpperCase()}</b></div>` + (S.lot.clashes.length ? "<ul>" + S.lot.clashes.map(c => `<li class="bad">${c}</li>`).join("") + "</ul>" : "<div class='ok'>clear of every stock footprint (+3 m)</div>") + (S.lot.propHits ? `<div class="warn">${S.lot.propHits} prop(s) inside the footprint (terminals, lamps…)</div>` : "") + terrainText;
   }
   const ul = $("people"); ul.innerHTML = "";
@@ -805,13 +829,14 @@ $("checks").onclick = async () => {
 // ---------------------------------------------------------------- world edits (2.12g: stock buildings)
 function pseudoShell(e) {
   // a drawable stand-in for a stock building template that has no interior: the real shell when there is one
-  const real = shellFor(e.template || e.name); if (real) return real;
+  const real = e.prop ? null : shellFor(e.template || e.name); if (real) return real;
   const r = e.radius || 10, fp = e.fp || e.box || { x0: -r, x1: r, y0: -r, y1: r };
   return { template: e.template || e.name, server: (e.template || e.name).replace(/\/shared_([^/]+)$/, "/$1"), short: e.short, fp, radar: e.radar || [], exterior: [], rooms: [], furniture: [], children: [] };
 }
 function startWorldDraft(op, src) {
-  if (op === "move") S.draft = { kind: "world", op, oid: src.oid, template: src.name, shell: pseudoShell(src), x: src.x, y: src.y, heading: src.heading, z: src.z, tenants: [], outside: [], name: src.short };
-  else S.draft = { kind: "world", op: "add", template: src.template, shell: pseudoShell(src), x: S.view.cx, y: S.view.cy, heading: 0, tenants: [], outside: [], name: src.short };
+  const isProp = !!(src.prop || (src.name || src.template || "").indexOf("object/building") < 0);
+  if (op === "move") S.draft = { kind: "world", op, oid: src.oid, template: src.name, shell: pseudoShell({ ...src, prop: isProp }), x: src.x, y: src.y, heading: src.heading, z: src.z, tenants: [], outside: [], name: src.short, isProp };
+  else S.draft = { kind: "world", op: "add", template: src.template, shell: pseudoShell({ ...src, prop: isProp }), x: S.view.cx, y: S.view.cy, heading: 0, tenants: [], outside: [], name: src.short, isProp };
   S.sel = null; S.selB = null; S.loadedFile = null; S.mode = "map"; refresh();
   status(op === "move" ? `Moving ${src.short}: drag it, drag the knob to rotate, then Apply this world edit.` : `New ${src.short} at the centre: drag it into place, then Apply this world edit.`, "ok");
 }
@@ -836,9 +861,9 @@ async function saveWorld(ops) {
     status(r.message + (r.ok ? " — in game after a server restart with the rebuilt archive (and a client restart): tell Claude." : ""), r.ok ? "ok" : "bad");
   } catch (e) { status("World edit failed: " + e.message, "bad"); }
 }
-$("wMove").onclick = () => { if (S.selB && S.selB.kind === "stock") startWorldDraft("move", S.selB.obj); else status("Click a stock building on the map first.", "warn"); };
+$("wMove").onclick = () => { if (S.selB && (S.selB.kind === "stock" || S.selB.kind === "prop")) startWorldDraft("move", S.selB.obj); else status("Click a stock building or prop on the map first.", "warn"); };
 $("wDelete").onclick = () => {
-  if (!(S.selB && S.selB.kind === "stock")) { status("Click a stock building on the map first.", "warn"); return; }
+  if (!(S.selB && (S.selB.kind === "stock" || S.selB.kind === "prop"))) { status("Click a stock building or prop on the map first.", "warn"); return; }
   const o = S.selB.obj; if (o.edit === "add") { status("That building is itself a world edit: undo its add in the list instead.", "warn"); return; }
   if (!confirm(`Delete ${o.short} (oid ${o.oid}) from the world?`)) return;
   saveWorld(S.world.ops.filter(x => !(x.oid === o.oid)).concat([{ op: "delete", oid: o.oid, note: o.short }]));
@@ -854,7 +879,7 @@ $("wApply").onclick = () => {
 };
 function fillCatalog() {
   const f = $("catFilter").value.trim().toLowerCase(), sel = $("catalog"); sel.innerHTML = "";
-  for (const c of S.catalog) { if (f && !c.short.includes(f)) continue; const o = document.createElement("option"); o.value = c.template; o.textContent = `${c.short}  (${c.count}×${c.interior ? ", interior" : ""})`; sel.appendChild(o); if (sel.options.length >= 400) break; }
+  for (const c of S.catalog) { if (f && !c.short.includes(f)) continue; const o = document.createElement("option"); o.value = c.template; o.textContent = `${c.short}  (${c.count}×${c.interior ? ", interior" : c.prop ? ", " + c.kind : ""})`; sel.appendChild(o); if (sel.options.length >= 400) break; }
 }
 $("catFilter").oninput = fillCatalog;
 $("wAdd").onclick = () => { const c = S.catalog.find(x => x.template === $("catalog").value); if (!c) { status("Pick a building in the catalogue first.", "warn"); return; } startWorldDraft("add", c); };
