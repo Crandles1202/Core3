@@ -253,8 +253,14 @@ New-NetFirewallHyperVRule -Name 'FB-SitePlanner' -DisplayName 'Final Boss site p
 ```
 
 The id is WSL's fixed VM-creator id. `-LoopbackEnabled True` (the word, not `$True`) is the general
-switch for Windows → WSL localhost; the rule is per port (add one per new tool). "Access is denied"
-means the window is not elevated. Done 2026-10-19.
+switch for Windows → WSL localhost; the rule is per port. "Access is denied" means the window is not
+elevated. **On this PC none of it helped** (2026-10-19; see dev-notes): Windows → WSL TCP simply does
+not arrive. What works: a browser inside WSL, shown on the Windows desktop by WSLg —
+
+```bash
+sudo apt-get install firefox-esr        # once
+tools/siteplanner serve --browser       # serves and opens the page
+```
 
 ### Launch the client
 

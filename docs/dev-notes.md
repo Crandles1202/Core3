@@ -186,6 +186,17 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-19 — Windows → WSL TCP loopback does not work on Chuck's PC.** Opening the planner from the
+  Windows browser times out (so does the game's TCP status port 44455); the game's UDP passes. Evidence:
+  `curl.exe` from Windows (via interop) times out on localhost / 127.0.0.1 / [::1] / the LAN address;
+  tcpdump inside WSL on eth0, lo and any sees no SYN; a 127.0.0.1-only bind gets "refused" instead of a
+  timeout (so Windows does mirror ports bound on all interfaces, the steered packets just never arrive).
+  Tried, each with no effect: Hyper-V firewall `LoopbackEnabled True`, `DefaultInboundAction Allow`, a
+  Hyper-V rule for TCP 8765, a Defender inbound rule, `wsl --shutdown` after all of that, and
+  `[wsl2] firewall=false` (reverted). No third-party adapter filters. Parked; the workaround is a browser
+  inside WSL: `sudo apt-get install firefox-esr`, `tools/siteplanner serve --browser` (WSLg puts the window
+  on the Windows desktop). Note for the future: `wsl --shutdown` with the game server running is an
+  unclean stop (Chuck did one tonight; the ODB came back with 0 errors, but stop the server first).
 - **2026-10-19 — Phase 2.12c site planner (web UI).** Chuck: "a top view of the buildings that I can click
   and drag around, view the layout of the building and show where vendors should go". `tools/siteplanner`
   is a stdlib `ThreadingHTTPServer` serving `tools/siteplanner_ui/index.html` (vanilla JS canvas, no

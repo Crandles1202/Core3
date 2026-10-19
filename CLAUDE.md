@@ -354,16 +354,19 @@ _Updated: 2026-10-18 (session 3: Phase 4 design settled with Chuck, 4.0 TRE tool
   lot report, walk in, *Nudge / rotate* until it sits right, go inside and *Add tenant here* for a vendor or two
   (the furniture verdict is in the chat line), *Name the site*, *Export*. Then tell me `swg site save <You> <name>`
   and I'll restart, test and commit it. A restart without saving clears the draft.
-  (2.12c) out of game: `tools/swg` is not needed — run `tools/siteplanner serve` in a WSL terminal and open
-  `http://localhost:8765/` in your Windows browser. Load the Mos Eisley area, place a shell, drag and rotate it, double-click
-  it for the inside view, click in rooms to add vendors, *Save to repo*, then tell me the site name.
+  (2.12c) out of game: run `tools/siteplanner serve --browser` in a WSL terminal — a Firefox window from inside
+  WSL opens on your desktop (the Windows browser cannot reach WSL over TCP on this PC, see the to-do below).
+  Load the Mos Eisley area, place a shell, drag and rotate it, double-click it for the inside view, click in
+  rooms to add vendors, *Save to repo*, then tell me the site name.
   Then `swg snap save phase1-quickwins` and tag `chuck-stable-20261017`.
 - [ ] **Windows → WSL TCP loopback blocked** (2026-10-19): `localhost:8765` (and the game's TCP status port 44455)
   time out from Windows under mirrored networking; tcpdump in WSL sees no SYN on eth0/lo/any. Done so far (admin
   PowerShell): `Set-NetFirewallHyperVVMSetting … -LoopbackEnabled True -DefaultInboundAction Allow`, a Hyper-V
-  rule and a Defender rule for TCP 8765 — no change. Untested: `wsl --shutdown` after those settings (vSwitch port
-  policy may apply only to new ports), `[wsl2] firewall=false` in `.wslconfig`. Workaround in use: WSLg Firefox
-  inside WSL (`tools/siteplanner serve --browser`).
+  rule and a Defender rule for TCP 8765 — no change; also no change after `wsl --shutdown` with those settings,
+  nor with `[wsl2] firewall=false` (tried and reverted; `.wslconfig` is mirrored-only again). No third-party network
+  filters on the adapters (Docker Desktop installed but stopped). Windows `netstat` lists none of WSL's ports.
+  Verdict: Windows → WSL TCP steering does not work on this PC; park it. Workaround in use: WSLg Firefox inside
+  WSL (`tools/siteplanner serve --browser`; firefox-esr installed 2026-10-19).
 - [ ] Lab characters are followed by the new-player helper droid (R2-H4), which opens a SUI greeting every
   second (visible in every bot log). Harmless for the scenarios now that `--sui` scans all windows, but
   noisy; fix by letting lab accounts skip the tutorial or by finishing it once per character.
