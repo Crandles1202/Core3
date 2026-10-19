@@ -48,6 +48,7 @@
   <label><input type="checkbox" id="L_stock" checked style="width:auto"> stock NPCs (city files)</label>
   <label><input type="checkbox" id="L_live" checked style="width:auto"> live NPCs (server overlay)</label>
   <label><input type="checkbox" id="L_labels" checked style="width:auto"> labels</label>
+  <div id="floorsBox" style="display:none"><h2>Floors</h2><div id="floors" style="display:flex; flex-direction:column; gap:4px;"></div><small>Only this building's levels are shown; pick one to work on a single floor.</small></div>
 
   <h2>Building</h2>
   <label>Shell</label><select id="shell"></select>
@@ -79,7 +80,6 @@
   <div id="help">drag: pan · wheel: zoom · click a building: details · double-click any building: inside view · drag your placed shell to move it<br>
     <span style="color:#8a94a6">■ stock building (line = entrance side)</span> · <span style="color:#5b6678">◌ stock shell, no interior data</span> · <span style="color:#c58cff">■ our site</span> · <span style="color:#44d17a">■ your placed shell</span> (amber/red = lot problem) · <span style="color:#fff">□ selected</span> · <span style="color:#f0b429">● live NPC</span> · <span style="color:#7fb0d0">● stock NPC</span> · <span style="color:#4cc3ff">▣ terminal</span> · <span style="color:#58e0c8">▣ crafting station</span> · <span style="color:#ffd166">▣ vendor / ticket</span> (white edge = server-spawned with the building)</div>
   <div id="hud"></div>
-  <div id="floors" style="position:absolute; left:10px; top:8px; display:none; gap:6px;"></div>
 </main>
 
 <aside class="right">
@@ -311,15 +311,15 @@ function onLevel(shell, z, room) {
   return !room;
 }
 function floorsStrip(shell) {
-  const el = $("floors"); const levels = levelsOf(shell);
-  if (S.mode !== "inside" || levels.length < 2) { el.style.display = "none"; return; }
-  el.style.display = "flex";
-  el.innerHTML = `<button style="width:auto" class="${S.floor === null ? "primary" : ""}" data-f="all">All floors</button>` + levels.map((l, i) => `<button style="width:auto" class="${S.floor === i ? "primary" : ""}" data-f="${i}">Level ${i + 1} · z ${l.z.toFixed(1)} · ${l.rooms.length} room(s)</button>`).join("");
+  const box = $("floorsBox"), el = $("floors"); const levels = levelsOf(shell);
+  if (S.mode !== "inside" || levels.length < 2) { box.style.display = "none"; return; }
+  box.style.display = "block";
+  el.innerHTML = `<button class="${S.floor === null ? "primary" : ""}" data-f="all">All floors</button>` + levels.map((l, i) => `<button class="${S.floor === i ? "primary" : ""}" data-f="${i}">Level ${i + 1} — height ${l.z.toFixed(1)} m — ${l.rooms.length} room(s)</button>`).join("");
   for (const b of el.querySelectorAll("button")) b.onclick = () => { S.floor = b.dataset.f === "all" ? null : +b.dataset.f; draw(); };
 }
 function drawInside() {
   const t = S.inspect || (S.draft ? { shell: S.draft.shell, tenants: S.draft.tenants, title: "your draft", kind: "draft" } : null);
-  if (!t) { ctx.fillStyle = "#98a2b3"; ctx.fillText("Double-click a building on the map, or place one.", 20, 30); $("floors").style.display = "none"; return; }
+  if (!t) { ctx.fillStyle = "#98a2b3"; ctx.fillText("Double-click a building on the map, or place one.", 20, 30); $("floorsBox").style.display = "none"; return; }
   const d = { shell: t.shell, tenants: t.tenants, heading: S.draft && !S.inspect ? S.draft.heading : 0 };
   floorsStrip(d.shell);
   grid(l2s, s2l, 5);
@@ -449,7 +449,7 @@ function liveInside(pose, fp) {
   return out;
 }
 function doubleClickAt(sx, sy) {
-  if (S.mode === "inside") { S.mode = "map"; S.inspect = null; S.floor = null; $("floors").style.display = "none"; status("Back on the map.", ""); draw(); return; }
+  if (S.mode === "inside") { S.mode = "map"; S.inspect = null; S.floor = null; $("floorsBox").style.display = "none"; status("Back on the map.", ""); draw(); return; }
   const [wx, wy] = s2w(sx, sy);
   const target = buildingAt(wx, wy) || (S.draft ? { kind: "draft", obj: S.draft, shell: S.draft.shell } : null);
   if (!target) { status("Double-click on a building to open its layout.", "warn"); return; }
@@ -465,8 +465,8 @@ function personAt(sx, sy) {
 }
 window.addEventListener("keydown", e => {
   if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
-  if (e.key === "Enter") { if (S.mode === "inside") { S.mode = "map"; S.inspect = null; S.floor = null; $("floors").style.display = "none"; draw(); } else if (S.selB) openInside(S.selB); else if (S.draft) openInside({ kind: "draft", obj: S.draft, shell: S.draft.shell }); e.preventDefault(); return; }
-  if (e.key === "Escape" && S.mode === "inside") { S.mode = "map"; S.inspect = null; S.floor = null; $("floors").style.display = "none"; draw(); return; }
+  if (e.key === "Enter") { if (S.mode === "inside") { S.mode = "map"; S.inspect = null; S.floor = null; $("floorsBox").style.display = "none"; draw(); } else if (S.selB) openInside(S.selB); else if (S.draft) openInside({ kind: "draft", obj: S.draft, shell: S.draft.shell }); e.preventDefault(); return; }
+  if (e.key === "Escape" && S.mode === "inside") { S.mode = "map"; S.inspect = null; S.floor = null; $("floorsBox").style.display = "none"; draw(); return; }
   const d = S.draft; if (!d) return;
   const step = e.shiftKey ? 5 : 1;
   if (S.sel) {
@@ -570,7 +570,7 @@ $("heading").onchange = () => { if (S.draft) { S.draft.heading = ((+$("heading")
 $("bx").onchange = () => { if (S.draft) { S.draft.x = +$("bx").value; refresh(); } };
 $("by").onchange = () => { if (S.draft) { S.draft.y = +$("by").value; refresh(); } };
 $("inside").onclick = () => {
-  if (S.mode === "inside") { S.mode = "map"; S.inspect = null; S.floor = null; $("floors").style.display = "none"; draw(); return; }
+  if (S.mode === "inside") { S.mode = "map"; S.inspect = null; S.floor = null; $("floorsBox").style.display = "none"; draw(); return; }
   if (S.selB) openInside(S.selB); else if (S.draft) openInside({ kind: "draft", obj: S.draft, shell: S.draft.shell }); else status("Click a building on the map first (or place one).", "warn");
 };
 $("export").onclick = () => { if (S.draft) { $("lua").value = siteLua(S.draft); status("Site file built below. Save writes it into the repo for Claude to test and commit.", "ok"); } };
