@@ -38,6 +38,7 @@
   <div class="row"><div><label>Centre x</label><input id="cx" type="number" value="3520"></div><div><label>Centre y</label><input id="cy" type="number" value="-4810"></div></div>
   <button id="load" class="primary">Load area</button>
   <button id="live">Overlay live NPCs (needs the server)</button>
+  <label><input type="checkbox" id="stockNpcs" checked style="width:auto"> show stock NPCs (from the city files)</label>
 
   <h2>Building</h2>
   <label>Shell</label><select id="shell"></select>
@@ -67,7 +68,7 @@
 <main>
   <canvas id="c"></canvas>
   <div id="help">drag: pan · wheel: zoom · click a building: details · double-click any building: inside view · drag your placed shell to move it<br>
-    <span style="color:#8a94a6">■ stock building (line = entrance side)</span> · <span style="color:#5b6678">◌ stock shell, no interior data</span> · <span style="color:#c58cff">■ our site</span> · <span style="color:#44d17a">■ your placed shell</span> (amber/red = lot problem) · <span style="color:#fff">□ selected</span> · <span style="color:#f0b429">● live NPC</span></div>
+    <span style="color:#8a94a6">■ stock building (line = entrance side)</span> · <span style="color:#5b6678">◌ stock shell, no interior data</span> · <span style="color:#c58cff">■ our site</span> · <span style="color:#44d17a">■ your placed shell</span> (amber/red = lot problem) · <span style="color:#fff">□ selected</span> · <span style="color:#f0b429">● live NPC</span> · <span style="color:#7fb0d0">● stock NPC</span></div>
   <div id="hud"></div>
 </main>
 
@@ -165,7 +166,8 @@ function showInfo(sel) {
   const o = sel.obj, sh = sel.shell;
   const rooms = sh ? sh.rooms.map(r => r.name).join(", ") : "no interior data";
   const openLink = sh ? `<button id="openLayout" class="primary">Open layout (Enter)</button>` : `<div class="warn">no portal layout: a solid shell, nothing to show inside</div>`;
-  if (sel.kind === "stock") el.innerHTML = `<div><b>${o.short}</b> <small>(stock building)</small></div><small>${o.name}<br>at ${o.x}, ${o.y} · heading ${o.heading}${o.fp ? ` · ${(o.fp.x1 - o.fp.x0).toFixed(0)}×${(o.fp.y1 - o.fp.y0).toFixed(0)} m` : ""}<br>rooms: ${rooms}</small>${openLink}`;
+  const occupants = sel.kind === "stock" && o.npcs && o.npcs.length ? `<br>stock NPCs: ${o.npcs.map(n => n.template + " (" + n.room + ")").join(", ")}` : "";
+  if (sel.kind === "stock") el.innerHTML = `<div><b>${o.short}</b> <small>(stock building)</small></div><small>${o.name}<br>at ${o.x}, ${o.y} · heading ${o.heading}${o.fp ? ` · ${(o.fp.x1 - o.fp.x0).toFixed(0)}×${(o.fp.y1 - o.fp.y0).toFixed(0)} m` : ""}<br>rooms: ${rooms}${occupants}</small>${openLink}`;
   else if (sel.kind === "site") el.innerHTML = `<div><b>site ${o.name}</b></div><small>${o.template}<br>at ${o.x}, ${o.y} · heading ${o.heading} · ${o.tenants.length} tenant(s)<br>rooms: ${rooms}</small>${openLink}<button id="editSite">Edit this site</button>`;
   const a = document.getElementById("editSite"); if (a) a.onclick = () => { $("sites").value = o.file; $("sites").onchange(); };
   const b = document.getElementById("openLayout"); if (b) b.onclick = () => openInside(sel);
@@ -257,6 +259,7 @@ function drawMap() {
     else { const [sx, sy] = w2s(o.x, o.y); ctx.beginPath(); ctx.arc(sx, sy, (o.radius || 20) * S.view.ppm, 0, Math.PI * 2); ctx.fillStyle = "rgba(76,195,255,0.18)"; ctx.fill(); ctx.strokeStyle = "#4cc3ff"; ctx.stroke(); }
     ctx.lineWidth = 1;
   }
+  if (S.area && $("stockNpcs").checked) for (const n of S.area.npcs || []) { const [sx, sy] = w2s(n.x, n.y); ctx.fillStyle = "#7fb0d0"; ctx.beginPath(); ctx.arc(sx, sy, 2.5, 0, Math.PI * 2); ctx.fill(); if (S.view.ppm > 3) { ctx.font = "10px system-ui"; ctx.fillText(n.template, sx + 4, sy + 3); } }
   for (const n of S.live) { if (n.zone !== $("planet").value) continue; const [sx, sy] = w2s(n.x, n.y); ctx.fillStyle = "#f0b429"; ctx.beginPath(); ctx.arc(sx, sy, 3, 0, Math.PI * 2); ctx.fill(); ctx.fillText(n.name, sx + 5, sy + 4); }
   const d = S.draft;
   if (d) {
@@ -288,6 +291,9 @@ function drawInside() {
     const col = c.verdict === "ok" ? "#44d17a" : c.verdict === "warn" ? "#f0b429" : "#ff5c5c";
     drawPerson(t, l2s, p => p, col, !S.inspect && S.sel && S.sel.kind === "tenant" && S.sel.i === i, (t.label || t.template) + "  (" + t.room + ")");
   });
+  if (S.inspect && $("stockNpcs").checked) for (const n of S.inspect.stock) drawPerson({ x: n.x, y: n.y, dir: n.heading }, l2s, p => p, "#7fb0d0", false, n.template + "  (" + n.room + ")");
+  const pose = S.inspect ? S.inspect.pose : (S.draft ? { x: S.draft.x, y: S.draft.y, heading: S.draft.heading } : null);
+  if (pose) for (const n of liveInside(pose, d.shell.fp)) { const [sx, sy] = l2s(n.x, n.y); ctx.fillStyle = "#f0b429"; ctx.beginPath(); ctx.arc(sx, sy, 4, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#f0b429"; ctx.font = "11px system-ui"; ctx.fillText(n.name, sx + 7, sy + 4); }
   const [ex, ey] = l2s(0, d.shell.fp.y1 + 2); ctx.fillStyle = "#4cc3ff"; ctx.font = "12px system-ui"; ctx.fillText("▲ entrance side (local +y)", ex + 6, ey);
   $("hud").textContent = `inside ${t.title}: ${d.shell.short}${S.inspect ? "  ·  read-only" : ""}  ·  local coordinates (x right, y toward the entrance)  ·  ${S.ivw.ppm.toFixed(1)} px/m`;
 }
@@ -360,8 +366,23 @@ function openInside(target) {
   const fp = target.shell.fp;
   S.ivw = { cx: 0, cy: (fp.y0 + fp.y1) / 2, ppm: Math.min(W(), H()) / (Math.max(fp.x1 - fp.x0, fp.y1 - fp.y0) + 10) };
   if (target.kind === "draft") { S.inspect = null; status("Inside your draft: click in a room to place the selected NPC. Double-click anywhere to return to the map.", "ok"); }
-  else { S.inspect = { shell: target.shell, tenants: target.kind === "site" ? target.obj.tenants : [], title: target.kind === "site" ? "site " + target.obj.name : target.obj.short, kind: target.kind }; status(`Inside ${S.inspect.title} (read-only). Double-click anywhere to return to the map.`, "ok"); }
+  else {
+    const o = target.obj;
+    S.inspect = { shell: target.shell, tenants: target.kind === "site" ? o.tenants : [], stock: target.kind === "stock" ? (o.npcs || []) : [],
+      pose: { x: o.x, y: o.y, heading: o.heading }, title: target.kind === "site" ? "site " + o.name : o.short, kind: target.kind };
+    status(`Inside ${S.inspect.title} (read-only): ${S.inspect.stock.length} stock NPC(s), ${S.inspect.tenants.length} tenant(s). Double-click anywhere to return to the map.`, "ok");
+  }
   S.mode = "inside"; S.sel = null; draw();
+}
+// live NPCs standing inside the building drawn in the inside view, converted to its local frame
+function liveInside(pose, fp) {
+  const out = [];
+  for (const n of S.live) {
+    if (n.zone !== $("planet").value) continue;
+    const [lx, ly] = toLocal(pose.x, pose.y, pose.heading, n.x, n.y);
+    if (lx >= fp.x0 - 1 && lx <= fp.x1 + 1 && ly >= fp.y0 - 1 && ly <= fp.y1 + 1) out.push({ x: lx, y: ly, dir: 0, name: n.name });
+  }
+  return out;
 }
 function doubleClickAt(sx, sy) {
   if (S.mode === "inside") { S.mode = "map"; S.inspect = null; status("Back on the map.", ""); draw(); return; }
@@ -456,6 +477,7 @@ async function loadArea() {
 }
 $("load").onclick = loadArea;
 $("allPlanets").onchange = fillShells;
+$("stockNpcs").onchange = draw;
 $("live").onclick = async () => { status("Asking the server…"); try { S.live = await api("/api/live?filter=fb_"); status(S.live.length + " live NPC(s) overlaid (orange).", "ok"); draw(); } catch (e) { status("No live data: " + e.message, "warn"); } };
 $("place").onclick = () => {
   const sh = S.shells.find(s => s.template === $("shell").value); if (!sh) { status("Pick a shell.", "warn"); return; }

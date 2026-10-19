@@ -91,7 +91,23 @@ class Data:
 
     def area(self, planet, x, y, r):
         buildings, props = [], []
-        for n in self.snapshot(planet):
+        nodes = self.snapshot(planet)
+        cell_of = {}   # cell oid -> (building oid, cell index)
+        for n in nodes:
+            if n["parent"] != 0:
+                cell_of[n["oid"]] = (n["parent"], n["cell"])
+        spawns = city_spawns(planet)
+        by_building = {}
+        outdoor = []
+        for sp in spawns:
+            if sp["cell"] == 0:
+                if ((sp["x"] - x) ** 2 + (sp["y"] - y) ** 2) ** 0.5 <= r:
+                    outdoor.append(sp)
+            elif sp["cell"] in cell_of:
+                b, idx = cell_of[sp["cell"]]
+                by_building.setdefault(b, []).append(dict(sp, cellIndex=idx))
+        shells = {sh["template"]: sh for sh in self.shells()}
+        for n in nodes:
             if n["parent"] != 0:
                 continue
             d = ((n["x"] - x) ** 2 + (n["y"] - y) ** 2) ** 0.5
@@ -108,10 +124,15 @@ class Data:
                     entry["radius"] = round(fp[0], 1)
                 else:
                     entry["radius"] = ls.guessed_radius(name)
+                sh = shells.get(name)
+                rooms_by_index = {rm["cell"]: rm["name"] for rm in sh["rooms"]} if sh else {}
+                entry["npcs"] = [dict(template=sp["template"], x=round(sp["x"], 2), z=round(sp["z"], 2), y=round(sp["y"], 2), heading=round(sp["heading"]),
+                                      cell=sp["cell"], room=rooms_by_index.get(sp["cellIndex"], "cell%d" % sp["cellIndex"])) for sp in by_building.get(n["oid"], [])]
                 buildings.append(entry)
             elif d <= r and "soundobject" not in name and "object/static" not in name:
                 props.append(dict(x=round(n["x"], 1), y=round(n["y"], 1), short=name.rsplit("/", 1)[-1].replace("shared_", "").replace(".iff", "")))
-        return dict(planet=planet, x=x, y=y, r=r, buildings=buildings, props=props[:600])
+        return dict(planet=planet, x=x, y=y, r=r, buildings=buildings, props=props[:600],
+                    npcs=[dict(template=sp["template"], x=round(sp["x"], 1), y=round(sp["y"], 1), heading=round(sp["heading"]), city=sp["city"]) for sp in outdoor][:800])
 
     def shells(self):
         if self._shells is not None:
@@ -163,6 +184,27 @@ class Data:
             except FileNotFoundError:
                 pass
         return templates
+
+
+# ---------------------------------------------------------------- stock NPC spawns (city screenplays)
+
+CITIES_DIR = os.path.join(REPO, "MMOCoreORB", "bin", "scripts", "screenplays", "cities")
+SPAWN_RE = re.compile(r'\{\s*"([^"]+)"\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(\d+)\s*,')
+
+
+def city_spawns(planet, cache={}):
+    """[{template, x, z, y, heading, cell}] from screenplays/cities/<planet>_*.lua (x, y world when cell 0, else cell-local)."""
+    if planet in cache:
+        return cache[planet]
+    out = []
+    if os.path.isdir(CITIES_DIR):
+        for f in sorted(os.listdir(CITIES_DIR)):
+            if f.startswith(planet + "_") and f.endswith(".lua"):
+                with open(os.path.join(CITIES_DIR, f), encoding="utf-8", errors="replace") as fh:
+                    for m in SPAWN_RE.finditer(fh.read()):
+                        out.append(dict(template=m.group(1), x=float(m.group(3)), z=float(m.group(4)), y=float(m.group(5)), heading=float(m.group(6)), cell=int(m.group(7)), city=f[len(planet) + 1:-4]))
+    cache[planet] = out
+    return out
 
 
 # ---------------------------------------------------------------- site files
@@ -358,10 +400,14 @@ def cmd_selftest(a):
     sites = load_sites()
     th = next((s for s in sites if s["name"] == "mos_eisley_trade_hall"), None)
     assert th and len(th["tenants"]) == 11 and th["heading"] == 180, "trade hall site parse"
+    hall_b = next((b for b in area["buildings"] if b["short"] == "guild_commerce_tatooine_style_01"), None)
+    assert hall_b and any(n["template"] == "trainer_artisan" and n["room"] == "meetingd" for n in hall_b["npcs"]), "stock npc -> room mapping"
+    assert len(area["npcs"]) > 20, "outdoor stock npcs"
     npcs = npc_templates()
     assert any(n["template"] == "fb_parts_dealer" for n in npcs), "npc list"
     assert os.path.exists(os.path.join(UI_DIR, "index.html")), "ui page"
-    print("siteplanner selftest: %d buildings in the Mos Eisley area, %d shells, %d sites, %d npc templates — ok" % (len(area["buildings"]), len(shells), len(sites), len(npcs)))
+    print("siteplanner selftest: %d buildings (%d stock npcs indoors, %d outdoors) in the Mos Eisley area, %d shells, %d sites, %d npc templates — ok" % (
+        len(area["buildings"]), sum(len(b["npcs"]) for b in area["buildings"]), len(area["npcs"]), len(shells), len(sites), len(npcs)))
     return 0
 
 
