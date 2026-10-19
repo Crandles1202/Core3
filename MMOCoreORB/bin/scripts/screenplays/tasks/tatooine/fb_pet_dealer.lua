@@ -4,7 +4,7 @@
 FbPetDealer = ScreenPlay:new {
 	screenplayName = "FbPetDealer",
 	spawns = {
-		{ planet = "tatooine", label = "Mos Eisley Starport", x = 3516, z = 5, y = -4813, dir = 1 },
+		-- moved into the Mos Eisley Trade Hall (fb_trade_hall.lua), Phase 2.11: { planet = "tatooine", label = "Mos Eisley Starport", x = 3516, z = 5, y = -4813, dir = 1 },
 	},
 }
 

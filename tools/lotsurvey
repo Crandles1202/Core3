@@ -1,0 +1,313 @@
+#!/usr/bin/env python3
+"""
+lotsurvey — where can a building go, and where are the rooms inside it? (Final Boss, Phase 2.11)
+
+Reads the stock client data straight from the server's archives (TrePath + Core3.TreFiles order, via
+tools/tre), so it answers from the same files the client renders:
+
+  lotsurvey near PLANET X Y [RADIUS]             world-snapshot objects around a point (buildings first)
+  lotsurvey cells PLANET X Y                      the building at a point and its cell object ids
+                                                  (those ids are what city screenplays spawn into)
+  lotsurvey footprint TEMPLATE                    a building template's exterior floor extents (local x/z)
+  lotsurvey rooms TEMPLATE                        each cell: name, cell-local x/y range, floor height z
+  lotsurvey lots PLANET X Y [RADIUS] [--template T | --width W --back B --front F]
+                                                  free lots nearest the point for a building of that size,
+                                                  clear of every stock footprint; prints origin + heading
+
+Formats (from the server's own readers, see docs/dev-notes.md 2026-10-18):
+  .ws  WSNP > <ver> > NODS > NODE > <ver> > DATA(objectID, parentID, nameID, cellIndex, quat wxyz,
+       x z y, type, unknown) + child NODEs; then OTNL(count, names). IFF sizes big-endian, payload little.
+  .iff object template: strings only (portal layout .pob file name).
+  .pob portal layout: strings only (per-room floor .flr names, in cell order; r0 = exterior).
+  .flr floor mesh: VERT chunk (count, count x (x, height, z) floats). Cell-local server coordinates are
+       (x, floor height, z) -> Lua spawn (x, z=height, y=meshZ).
+"""
+import argparse, importlib.util, math, os, re, struct, sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+_spec = importlib.util.spec_from_loader("fbtre", loader=None)
+fbtre = importlib.util.module_from_spec(_spec)
+fbtre.__file__ = os.path.join(HERE, "tre")   # tools/tre derives the repo root from its own path
+with open(fbtre.__file__, encoding="utf-8") as _fh:
+    exec(compile(_fh.read(), fbtre.__file__, "exec"), fbtre.__dict__)
+
+
+class Vfs:
+    """The client's view of the data: first archive in Core3.TreFiles that has a path wins."""
+
+    def __init__(self):
+        self.tre_dir = fbtre.tre_path_from_config()
+        with open(fbtre.CONFIG_MAIN, encoding="utf-8", errors="replace") as fh:
+            m = re.search(r"TreFiles\s*=\s*\{([^}]*)\}", fh.read(), re.S)
+        self.files = re.findall(r'"([^"]+)"', m.group(1)) if m else []
+        self._recs = {}
+
+    def _records(self, name):
+        if name not in self._recs:
+            path = os.path.join(self.tre_dir, name)
+            try:
+                with open(path, "rb") as fh:
+                    recs = fbtre.tre_read(fh.read())
+                self._recs[name] = {r.name: r for r in recs}
+            except (OSError, ValueError):
+                self._recs[name] = {}
+        return self._recs[name]
+
+    def read(self, path):
+        for name in self.files:
+            rec = self._records(name).get(path)
+            if rec is not None:
+                return rec.data()
+        raise FileNotFoundError(path)
+
+
+def iff_strings(blob, minlen=5):
+    return [s.decode("ascii") for s in re.findall(rb"[\x20-\x7e]{%d,}" % minlen, blob)]
+
+
+# ---------------------------------------------------------------- world snapshot
+
+def read_snapshot(vfs, planet):
+    data = vfs.read("snapshot/%s.ws" % planet)
+    nodes, names = [], []
+
+    def form(pos):
+        return data[pos:pos + 4], struct.unpack(">I", data[pos + 4:pos + 8])[0], pos + 8
+
+    def node(pos):
+        tag, size, p = form(pos)
+        assert tag == b"FORM" and data[p:p + 4] == b"NODE", (tag, data[p:p + 4])
+        end = p + size
+        p += 4
+        tag, size, p = form(p)
+        ver_end = p + size
+        p += 4
+        assert data[p:p + 4] == b"DATA"
+        csize = struct.unpack(">I", data[p + 4:p + 8])[0]
+        f = struct.unpack("<IIIIfffffffffI", data[p + 8:p + 8 + 56])
+        oid, parent, nameid, cellidx = f[0:4]
+        qw, qx, qy, qz = f[4:8]
+        x, z, y = f[8:11]
+        nodes.append(dict(oid=oid, parent=parent, nameid=nameid, cell=cellidx, x=x, y=y, z=z,
+                          heading=math.degrees(2 * math.atan2(qy, qw)) % 360))
+        p += 8 + csize
+        while p < ver_end:
+            p = node(p)
+        return end
+
+    tag, size, p = form(0)
+    assert data[p:p + 4] == b"WSNP", "not a world snapshot"
+    p += 4
+    tag, size, p = form(p)
+    p += 4
+    tag, size, p = form(p)
+    assert data[p:p + 4] == b"NODS"
+    nods_end = p + size
+    p += 4
+    while p < nods_end:
+        p = node(p)
+    assert data[nods_end:nods_end + 4] == b"OTNL"
+    q = nods_end + 8
+    count = struct.unpack("<I", data[q:q + 4])[0]
+    q += 4
+    for _ in range(count):
+        e = data.index(b"\0", q)
+        names.append(data[q:e].decode())
+        q = e + 1
+    for n in nodes:
+        n["name"] = names[n["nameid"]]
+    return nodes
+
+
+# ---------------------------------------------------------------- templates, layouts, floors
+
+def pob_of(vfs, template):
+    strings = iff_strings(vfs.read(template))
+    pobs = [s for s in strings if s.endswith(".pob")]
+    return pobs[0] if pobs else None
+
+
+def floors_of(vfs, pob):
+    """[(room index, room name, floor path)] in portal-layout order; index 0 is the exterior."""
+    out = []
+    for s in iff_strings(vfs.read(pob)):
+        m = re.search(r"_r(\d+)_(?:([a-z0-9]+)_)?collision_floor\d*\.flr$", s)   # exteriors may carry no room name
+        if m:
+            out.append((int(m.group(1)), m.group(2) or ("exterior" if m.group(1) == "0" else "r" + m.group(1)), s))
+    return sorted(out)
+
+
+def floor_extents(vfs, path):
+    d = vfs.read(path)
+    i = d.find(b"VERT")
+    p = i + 8
+    n = struct.unpack("<I", d[p:p + 4])[0]
+    p += 4
+    v = [struct.unpack("<fff", d[p + 12 * k:p + 12 * k + 12]) for k in range(n)]
+    xs, hs, zs = [a for a, b, c in v], [b for a, b, c in v], [c for a, b, c in v]
+    return dict(verts=n, x0=min(xs), x1=max(xs), h0=min(hs), h1=max(hs), z0=min(zs), z1=max(zs))
+
+
+def footprint(vfs, template, cache={}):
+    """Conservative footprint of a building: (radius, extents) from its exterior floor; None if no layout."""
+    if template in cache:
+        return cache[template]
+    res = None
+    try:
+        pob = pob_of(vfs, template)
+        if pob:
+            fl = [f for f in floors_of(vfs, pob) if f[0] == 0]
+            if fl:
+                e = floor_extents(vfs, fl[0][2])
+                res = (max(abs(e["x0"]), abs(e["x1"]), abs(e["z0"]), abs(e["z1"])), e)
+    except FileNotFoundError:
+        res = None
+    cache[template] = res
+    return res
+
+
+def guessed_radius(name):
+    if "64x32" in name:
+        return 40.0
+    if "64x16" in name:
+        return 36.0
+    return 22.0   # shells without a portal layout (filler buildings)
+
+
+# ---------------------------------------------------------------- commands
+
+def cmd_near(a):
+    vfs = Vfs()
+    rows = []
+    for n in read_snapshot(vfs, a.planet):
+        if n["parent"] != 0:
+            continue
+        d = math.hypot(n["x"] - a.x, n["y"] - a.y)
+        if d <= a.radius and (not a.buildings or "object/building" in n["name"]):
+            rows.append((0 if "object/building" in n["name"] else 1, d, n))
+    rows.sort(key=lambda r: (r[0], r[1]))
+    for kind, d, n in rows:
+        print("%6.1f  x=%8.1f y=%8.1f z=%6.1f h=%3.0f  oid=%-8d %s" % (d, n["x"], n["y"], n["z"], n["heading"], n["oid"], n["name"]))
+    return 0
+
+
+def cmd_cells(a):
+    vfs = Vfs()
+    nodes = read_snapshot(vfs, a.planet)
+    best = min((n for n in nodes if n["parent"] == 0 and "object/building" in n["name"]),
+               key=lambda n: math.hypot(n["x"] - a.x, n["y"] - a.y))
+    print("building oid=%d %s at %.1f,%.1f heading=%.0f" % (best["oid"], best["name"], best["x"], best["y"], best["heading"]))
+    for k in sorted((n for n in nodes if n["parent"] == best["oid"]), key=lambda n: n["cell"]):
+        print("  cell %d oid=%d" % (k["cell"], k["oid"]))
+    return 0
+
+
+def cmd_footprint(a):
+    vfs = Vfs()
+    fp = footprint(vfs, a.template)
+    if fp is None:
+        print("no portal layout / exterior floor for %s (filler shell?)" % a.template)
+        return 1
+    r, e = fp
+    print("local x %.1f..%.1f  z %.1f..%.1f  (radius %.1f)  height %.2f..%.2f" % (e["x0"], e["x1"], e["z0"], e["z1"], r, e["h0"], e["h1"]))
+    return 0
+
+
+def cmd_rooms(a):
+    vfs = Vfs()
+    pob = pob_of(vfs, a.template)
+    if pob is None:
+        print("no portal layout in %s" % a.template)
+        return 1
+    print("portal layout %s" % pob)
+    print("%-4s %-10s %-24s %-24s %s" % ("cell", "room", "local x", "local y (mesh z)", "floor z"))
+    for idx, room, path in floors_of(vfs, pob):
+        e = floor_extents(vfs, path)
+        fz = "%.2f" % e["h0"] if abs(e["h1"] - e["h0"]) < 0.05 else "%.2f..%.2f" % (e["h0"], e["h1"])
+        print("%-4d %-10s %6.1f .. %6.1f           %6.1f .. %6.1f           %s" % (idx, room, e["x0"], e["x1"], e["z0"], e["z1"], fz))
+    print("spawnMobile(planet, template, 0, x, floor_z, y, heading, cellOid); cell 0 is the exterior, cells are 1-based in BuildingObject:getCell")
+    return 0
+
+
+def cmd_lots(a):
+    vfs = Vfs()
+    if a.template:
+        fp = footprint(vfs, a.template)
+        if fp is None:
+            print("no footprint for %s" % a.template)
+            return 1
+        e = fp[1]
+        half_w, back, front = max(abs(e["x0"]), abs(e["x1"])), -e["z0"], e["z1"]
+    else:
+        half_w, back, front = a.width / 2, a.back, a.front
+    nodes = read_snapshot(vfs, a.planet)
+    blds, props = [], []
+    for n in nodes:
+        if n["parent"] != 0:
+            continue
+        if "object/building" in n["name"]:
+            fp = footprint(vfs, n["name"])
+            blds.append((n["x"], n["y"], fp[0] if fp else guessed_radius(n["name"])))
+        elif "soundobject" not in n["name"]:
+            props.append((n["x"], n["y"]))
+
+    def rect(gx, gy, h):
+        r = math.radians(h)
+        c, s = math.cos(r), math.sin(r)
+        pts = [(-half_w, -back), (half_w, -back), (half_w, front), (-half_w, front)]
+        return [(gx + x * c + y * s, gy - x * s + y * c) for x, y in pts]
+
+    def dist(px, py, poly):
+        inside, best = True, 1e9
+        for i in range(len(poly)):
+            ax, ay = poly[i]
+            bx, by = poly[(i + 1) % len(poly)]
+            ex, ey = bx - ax, by - ay
+            t = max(0, min(1, ((px - ax) * ex + (py - ay) * ey) / (ex * ex + ey * ey)))
+            best = min(best, math.hypot(px - (ax + t * ex), py - (ay + t * ey)))
+            if ex * (py - ay) - ey * (px - ax) > 0:
+                inside = False
+        return 0 if inside else best
+
+    reach = max(half_w, back, front)
+    cands = []
+    for gx in range(int(a.x - a.radius), int(a.x + a.radius) + 1, a.step):
+        for gy in range(int(a.y - a.radius), int(a.y + a.radius) + 1, a.step):
+            nb = [b for b in blds if math.hypot(b[0] - gx, b[1] - gy) < reach + b[2] + a.gap]
+            npr = [q for q in props if math.hypot(q[0] - gx, q[1] - gy) < reach + a.gap]
+            for h in (0, 90, 180, 270):
+                poly = rect(gx, gy, h)
+                if all(dist(x, y, poly) >= r + a.gap for x, y, r in nb) and all(dist(x, y, poly) >= 4 for x, y in npr):
+                    r = math.radians(h)
+                    px, py = gx + front * math.sin(r), gy + front * math.cos(r)
+                    cands.append((math.hypot(px - a.x, py - a.y), gx, gy, h, px, py))
+    cands.sort()
+    seen = []
+    for d, gx, gy, h, px, py in cands:
+        if any(math.hypot(gx - sx, gy - sy) < 12 for sx, sy in seen):
+            continue
+        seen.append((gx, gy))
+        print("entrance %4.0f m from the point: origin x=%d y=%d heading=%d  (entrance side ends at %.0f,%.0f)" % (d, gx, gy, h, px, py))
+        if len(seen) >= a.count:
+            break
+    if not seen:
+        print("no clear lot within %d m" % a.radius)
+    return 0
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(prog="lotsurvey", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    p = sub.add_parser("near"); p.add_argument("planet"); p.add_argument("x", type=float); p.add_argument("y", type=float); p.add_argument("radius", type=float, nargs="?", default=100); p.add_argument("--buildings", action="store_true"); p.set_defaults(fn=cmd_near)
+    p = sub.add_parser("cells"); p.add_argument("planet"); p.add_argument("x", type=float); p.add_argument("y", type=float); p.set_defaults(fn=cmd_cells)
+    p = sub.add_parser("footprint"); p.add_argument("template"); p.set_defaults(fn=cmd_footprint)
+    p = sub.add_parser("rooms"); p.add_argument("template"); p.set_defaults(fn=cmd_rooms)
+    p = sub.add_parser("lots"); p.add_argument("planet"); p.add_argument("x", type=float); p.add_argument("y", type=float); p.add_argument("radius", type=float, nargs="?", default=220)
+    p.add_argument("--template"); p.add_argument("--width", type=float, default=41); p.add_argument("--back", type=float, default=20.5); p.add_argument("--front", type=float, default=34)
+    p.add_argument("--gap", type=float, default=3); p.add_argument("--step", type=int, default=4); p.add_argument("--count", type=int, default=10); p.set_defaults(fn=cmd_lots)
+    a = ap.parse_args(argv)
+    return a.fn(a)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

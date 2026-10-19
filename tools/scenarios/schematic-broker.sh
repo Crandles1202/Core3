@@ -25,7 +25,7 @@ check "broker_spawned" "$( [ -n "$OID" ] && echo 1 || echo 0 )" "oid=$OID zone=$
 
 bot_bg --wait 15
 wait_online || die "$CHAR never came online"
-lab "travel:$CHAR:$ZONE:$((NX - 2)):$NY" >/dev/null
+lab "gotoNpc:$CHAR:$OID" >/dev/null   # 2 m in front of the NPC, inside the Trade Hall (Phase 2.11)
 wait "$BOT_PID"
 
 # --- act 1: the conversation ------------------------------------------------------------------

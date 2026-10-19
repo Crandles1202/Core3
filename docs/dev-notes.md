@@ -186,6 +186,35 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-18 (late) — Phase 2.11 Mos Eisley Trade Hall (server-placed building, proof of concept).**
+  Chuck asked for a mall to put the vendors in. Facts: cities' buildings come from `snapshot/<planet>.ws`
+  (client and server read it), but a building is also just an object — `spawnSceneObject` with a
+  building template creates the structure *and* its cells (`DirectorManager::spawnSceneObject`,
+  persistence 0, so it is respawned every boot like any stock prop; cell ids change per boot, so the
+  screenplay finds rooms by `getCellName`). The client already owns every stock mesh and portal
+  layout, so no TRE change was needed. Picked `guild_commerce_tatooine_style_01` (9 cells: foyer,
+  halla/b, mainroom, meetinga–e). **Lot survey tooling — now `tools/lotsurvey` (near / cells / footprint / rooms / lots, reads the archives through `tools/tre`; the hall's lot search takes 7 s):**
+  a `.ws` reader (WSNP → NODS → NODE/DATA: ids, quaternion, position, little-endian payload, big-endian
+  IFF sizes; OTNL name table) listed every building near the square; footprints came from each
+  template's `.pob` → `r0 … collision_floor.flr` VERT extents — the starport's apron is x −89..81,
+  z ±89 (170 m across!), so every "free" spot east of the square is on it; the nearest lot clearing
+  every footprint is 150 m north: origin (3580, −4638), heading 180, porch facing the square. Room
+  coordinates: `.flr` per cell gives x range, floor height and z range; cell-local y = mesh z, cell-local
+  z = floor height (foyer/halls 2.50, main room back and meeting rooms 1.13) — matched the three stock
+  spawns found in the same hall type across Tatooine (Bestine/Anchorhead/Wayfar/Mos Eisley city files,
+  cells looked up through the snapshot's child nodes). Tenants: the 11 square vendors (their plaza
+  entries commented out in their screenplays), FB-21 and HN-7 stay outside. Doorman "Hallkeeper Jyn
+  Odaro" on the square (`addWaypoint` to the doors, tenant list via `setDialogTextTT`); galaxy chatter
+  line. Lessons: a conversation template needs the trailing `addConversationTemplate(...)` call or the
+  NPC is silent (the lab's `conversation_registered_as_*` check caught it); non-existent mobile
+  appearance templates fail only at spawn (`dressed_commoner_tatooine_human_male_01` does not exist —
+  ishitib does); `gotoNpc` now tries several spots and keeps the first the NPC has line of sight to
+  (2 m "in front" of a shopkeeper behind a counter crosses a wall); the lab's purchase oracles need the
+  bot online (buy inside the `bot_bg` window). The bot logs out inside the hall at the end of the
+  `trade-hall` scenario, so a later `test all` restart + bot login of that character exercises "my cell
+  is gone" (not yet observed: the next cycle's bot created a fresh character instead; watch for it). Scenarios touched:
+  `parts-dealer`, `schematic-broker`, `schematic-broker-ui`, `npc-conversation` now `gotoNpc` to the NPC
+  instead of walking to plaza coordinates.
 - **2026-10-18 — Phase 4 design + 4.0 TRE tooling.** Chuck settled the Phase 4 design (recorded at the top
   of the roadmap's Phase 4 section: Village optional, hidden attunement score with capped sources and
   Force-ghost clues, FRS rank trees as the ladder with quest promotions, Masters in the Yavin 4

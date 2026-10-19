@@ -18,7 +18,7 @@
 FbArmoryDroid = ScreenPlay:new {
 	screenplayName = "FbArmoryDroid",
 	spawns = {
-		{ planet = "tatooine", label = "Mos Eisley Starport",      x = 3517,  z = 5,    y = -4818, dir = 1 },
+		-- moved into the Mos Eisley Trade Hall (fb_trade_hall.lua), Phase 2.11: { planet = "tatooine", label = "Mos Eisley Starport",      x = 3517,  z = 5,    y = -4818, dir = 1 },
 		-- Themed indoor spawns inside Mos Eisley weapon shops
 		{ planet = "tatooine", label = "Mos Eisley Weaponsmith",   x = -2.85, z = 1.13, y = -7.80, dir = 1, cellID = 1189579 },
 		{ planet = "tatooine", label = "Mos Eisley Weapons Shop",  x = 3.08,  z = 1.13, y = -8.20, dir = 1, cellID = 1189578 },

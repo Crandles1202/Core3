@@ -3,7 +3,7 @@
 FbDroidDispenser = ScreenPlay:new {
 	screenplayName = "FbDroidDispenser",
 	spawns = {
-		{ planet = "tatooine", label = "Mos Eisley Starport",       x = 3513,   z = 5,    y = -4813, dir = 1 },
+		-- moved into the Mos Eisley Trade Hall (fb_trade_hall.lua), Phase 2.11: { planet = "tatooine", label = "Mos Eisley Starport",       x = 3513,   z = 5,    y = -4813, dir = 1 },
 		-- Themed indoor spawn inside the Mos Eisley Droid Engineer Shop.
 		{ planet = "tatooine", label = "Mos Eisley Droid Shop",     x = -13.96, z = 1.13, y = -9.02, dir = 1, cellID = 1189580 },
 	},

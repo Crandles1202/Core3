@@ -68,6 +68,9 @@ end
 function FbGalaxyChatter.liveLines()
 	local out = {}
 	pcall(function()
+		if FbTradeHall ~= nil and FbTradeHall:isOpen() then
+			out[#out + 1] = "The traders by the Mos Eisley starport moved indoors. New Trade Hall, east of the square. About time."
+		end
 		if FbTravelingMerchant ~= nil then
 			local stop = FbTravelingMerchant.stops[FbTravelingMerchant:currentStop()]
 			if stop ~= nil then

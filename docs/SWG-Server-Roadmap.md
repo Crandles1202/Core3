@@ -157,6 +157,7 @@ The big "make crafting solo-friendly without nerfing it" phase. This is where yo
     
 - **2.9 \[M\] Traveling Merchant NPC.** A wandering merchant that shows up in random cities for a few hours at a time selling rare/unusual items (cosmetic, low-power but interesting). Borrowed from Tarkin's Revenge. Massive immersion boost.  
     
+- **2.11 \[M\] Mos Eisley Trade Hall (server-placed building, proof of concept).** A stock building shell spawned by a screenplay on an empty lot by the starport, with the Final Boss vendors moved inside (armory, armor, medical supplies, parts, schematics, pets, property, speeders…), a greeter at the door and a line on the HoloNet so players find it. Proves the pattern for every later shop, enclave or quest site: pick a flat lot from the world snapshot, spawn the building each boot (stock screenplay pattern, not persisted), spawn the NPCs into its cells, audit floors and line of sight, walk the bot through the door. Custom names/signage for the building come with the TRE object-template work (Phase 4.0 follow-up). Decided with Chuck 2026-10-18.
 - **2.10 \[S\] Vendor maintenance auto-skim.** Vendors automatically retain 5% of each sale to top up maintenance. Solves "player goes on vacation, vendor decays, items disappear" — particularly painful for solo players running their own shops.
 
 **Branch:** `feature/npc-economy`.

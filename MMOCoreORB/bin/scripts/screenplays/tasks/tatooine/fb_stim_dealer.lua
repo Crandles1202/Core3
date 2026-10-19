@@ -19,7 +19,7 @@
 FbStimDealer = ScreenPlay:new {
 	screenplayName = "FbStimDealer",
 	spawns = {
-		{ planet = "tatooine", label = "Mos Eisley Starport", x = 3520, z = 5, y = -4818, dir = 1 },
+		-- moved into the Mos Eisley Trade Hall (fb_trade_hall.lua), Phase 2.11: { planet = "tatooine", label = "Mos Eisley Starport", x = 3520, z = 5, y = -4818, dir = 1 },
 	},
 }
 

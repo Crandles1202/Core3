@@ -10,14 +10,14 @@ PICKS=${2:-0}
 bot_bg --wait 30
 wait_online || die "$CHAR never came online"
 
-NPC_LINE=$(lab "npc:$TEMPLATE:$CHAR" | grep -a "zone=tatooine" | grep -a "cell=0" | head -n1)
+NPC_LINE=$(lab "npc:$TEMPLATE:$CHAR" | grep -a "zone=tatooine" | head -n1)
 NPC_OID=$(sed -n 's/.*oid=\([0-9]*\).*/\1/p' <<<"$NPC_LINE")
 NPC_X=$(sed -n 's/.*x=\(-\{0,1\}[0-9.]*\).*/\1/p' <<<"$NPC_LINE")
 NPC_Y=$(sed -n 's/.*y=\(-\{0,1\}[0-9.]*\).*/\1/p' <<<"$NPC_LINE")
-check "npc_spawned_outdoors_on_tatooine" "$( [ -n "$NPC_OID" ] && echo 1 || echo 0 )" "$TEMPLATE oid=$NPC_OID at $NPC_X,$NPC_Y"
-[ -n "$NPC_OID" ] || die "no outdoor tatooine spawn of $TEMPLATE recorded"
+check "npc_spawned_on_tatooine" "$( [ -n "$NPC_OID" ] && echo 1 || echo 0 )" "$TEMPLATE oid=$NPC_OID at $NPC_X,$NPC_Y"
+[ -n "$NPC_OID" ] || die "no tatooine spawn of $TEMPLATE recorded"
 
-lab "travel:$CHAR:tatooine:$(awk "BEGIN{print $NPC_X+1.5}"):$(awk "BEGIN{print $NPC_Y+1.5}")" >/dev/null
+lab "gotoNpc:$CHAR:$NPC_OID" >/dev/null    # same cell, 2 m in front (vendors live in the Trade Hall since 2.11)
 sleep 2
 DIST=$(lab "npc:$TEMPLATE:$CHAR" | grep -a "oid=$NPC_OID" | sed -n 's/.*dist=\([0-9.]*\).*/\1/p')
 check "within_conversation_range" "$(awk "BEGIN{print (${DIST:-99} < 6) ? 1 : 0}")" "distance ${DIST:-?} m"

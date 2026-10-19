@@ -644,6 +644,25 @@ function FbLabTests.checkTreStrings()
 	check("tre.stock_strings_intact", getStringId("@jedi_spam:fs_progress_1") ~= "", "stock jedi_spam table unreadable")
 end
 
+-- Phase 2.11: the Trade Hall stands on its lot with every room, every tenant in a cell and the doorman
+-- on the square (the placement check covers how they stand).
+function FbLabTests.checkTradeHall()
+	if FbTradeHall == nil then check("tradehall.loaded", false); return end
+	local st = FbTradeHall:status()
+	check("tradehall.open", st:find("open=1", 1, true) ~= nil, st)
+	check("tradehall.nine_cells", st:find("cells=9", 1, true) ~= nil, st)
+	local inside, names = 0, {}
+	for _, e in ipairs(FbLabTests.liveSpawns("fb_trade_hall")) do
+		if e.cell ~= 0 and SceneObject(e.pObj):getParentID() ~= 0 then inside = inside + 1 end
+		names[e.template] = true
+	end
+	check("tradehall.tenants_inside", inside >= #FbTradeHall.tenants, inside .. " of " .. #FbTradeHall.tenants .. " tenants in a cell")
+	for _, t in ipairs(FbTradeHall.tenants) do
+		check("tradehall.tenant." .. t.template, names[t.template] == true, "not spawned by fb_trade_hall")
+	end
+	check("tradehall.keeper_on_square", #FbLabTests.liveSpawns("fb_trade_hall_keeper") >= 1)
+end
+
 -- ---------------------------------------------------------------- entry points
 
 -- runLuaFunction passes the FbLabTests table as the first argument, then the ':'-separated args.
@@ -675,6 +694,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkInvasions()
 		FbLabTests.checkTerritory()
 		FbLabTests.checkTreStrings()
+		FbLabTests.checkTradeHall()
 		FbLabTests.checkPlacement()
 	end)
 	if not ok then
@@ -1570,15 +1590,22 @@ function FbLabTests:gotoNpc(charName, filter)
 	local e = FbLabTests.liveSpawns(filter)[1]
 	if e == nil then print("ERROR no live spawn matches " .. tostring(filter)); return "none" end
 	local pNpc = e.pObj
-	-- 2 m along the NPC's facing, in its own (cell-local) coordinates
+	-- in front of the NPC, in its own (cell-local) coordinates; a cramped shop can put "2 m ahead"
+	-- behind a counter or through a portal, so try a few spots and keep the first the NPC can see
 	local a = SceneObject(pNpc):getDirectionAngle()
 	local lx, ly, lz = SceneObject(pNpc):getPositionX(), SceneObject(pNpc):getPositionY(), SceneObject(pNpc):getPositionZ()
-	local tx, ty = lx + 2 * math.sin(a), ly + 2 * math.cos(a)
 	local cell = SceneObject(pNpc):getParentID()
 	local zone = SceneObject(pNpc):getZoneName()
-	SceneObject(pPlayer):switchZone(zone, tx, lz, ty, cell)
+	local tries = { { 1.5, 0 }, { 2.5, 0 }, { 1.5, math.pi / 2 }, { 1.5, -math.pi / 2 }, { 1.5, math.pi }, { 1.0, 0 } }
+	local spot = "?"
+	for i, t in ipairs(tries) do
+		local tx, ty = lx + t[1] * math.sin(a + t[2]), ly + t[1] * math.cos(a + t[2])
+		SceneObject(pPlayer):switchZone(zone, tx, lz, ty, cell)
+		spot = string.format("try=%d d=%.1f", i, t[1])
+		if not SceneObject(pNpc):isAiAgent() or AiAgent(pNpc):checkLineOfSight(pPlayer) then break end
+	end
 	SceneObject(pPlayer):faceObject(pNpc, true)
-	print(string.format("INFO gotoNpc char=%s %s", charName, (spawnLine(e))))
+	print(string.format("INFO gotoNpc char=%s %s %s", charName, spot, (spawnLine(e))))
 	return "ok"
 end
 
@@ -1708,3 +1735,62 @@ function FbLabTests.checkPlacement()
 		end
 	end
 end
+
+-- ---------------------------------------------------------------- buildings (lab)
+
+-- spawnBuildingAt:<template>:<planet>:<x>:<y>[:<heading deg>] → a (non-persistent) structure on the
+-- terrain, as the mall screenplay does it; prints the cells. Remove with destroyObject.
+function FbLabTests:spawnBuildingAt(template, planet, x, y, heading)
+	x, y = tonumber(x), tonumber(y)
+	local z = getTerrainHeightAt(planet, x, y)
+	local rad = math.rad(tonumber(heading) or 0)
+	local pBuilding = spawnSceneObject(planet, template, x, z, y, 0, math.cos(rad / 2), 0, math.sin(rad / 2), 0)
+	if pBuilding == nil then print("ERROR spawnSceneObject failed for " .. tostring(template)); return "none" end
+	local oid = SceneObject(pBuilding):getObjectID()
+	print(string.format("INFO building oid=%d template=%s planet=%s x=%.1f y=%.1f z=%.1f", oid, template, planet, x, y, z))
+	FbLabTests:buildingInfo(oid)
+	return tostring(oid)
+end
+
+-- buildingInfo:<oid> → one line per cell (oid, name) and the corner heights of the lot
+function FbLabTests:buildingInfo(oid)
+	local p = getSceneObject(tonumber(oid))
+	if p == nil or not SceneObject(p):isBuildingObject() then print("ERROR no building " .. tostring(oid)); return "none" end
+	local n = BuildingObject(p):getTotalCellNumber()
+	for i = 1, n do
+		local pCell = BuildingObject(p):getCell(i)
+		if pCell ~= nil then
+			print(string.format("INFO cell building=%s idx=%d oid=%d name=%s", tostring(oid), i, SceneObject(pCell):getObjectID(), tostring(BuildingObject(p):getCellName(i))))
+		end
+	end
+	local zone = SceneObject(p):getZoneName()
+	local bx, by, bz = SceneObject(p):getWorldPositionX(), SceneObject(p):getWorldPositionY(), SceneObject(p):getWorldPositionZ()
+	local hs = {}
+	for _, d in ipairs({ {-12, -12}, {12, -12}, {-12, 12}, {12, 12}, {0, 0} }) do
+		hs[#hs + 1] = string.format("%.1f", getTerrainHeightAt(zone, bx + d[1], by + d[2]) - bz)
+	end
+	print(string.format("INFO lot building=%s zone=%s x=%.1f y=%.1f z=%.1f cells=%d corner_dz=%s", tostring(oid), zone, bx, by, bz, n, table.concat(hs, ",")))
+	return tostring(n)
+end
+
+-- tradeHall → the Trade Hall's status line plus the lot's corner heights (lot_ok=1 when the terrain under
+-- the building's four corners is within 1.5 m of its floor)
+function FbLabTests:tradeHall()
+	if FbTradeHall == nil then print("ERROR FbTradeHall not loaded"); return "none" end
+	local st = FbTradeHall:status()
+	local lotOk = 0
+	local pBuilding = FbTradeHall:building()
+	if pBuilding ~= nil then
+		local zone = SceneObject(pBuilding):getZoneName()
+		local bx, by, bz = SceneObject(pBuilding):getWorldPositionX(), SceneObject(pBuilding):getWorldPositionY(), SceneObject(pBuilding):getWorldPositionZ()
+		local worst = 0
+		for _, d in ipairs({ {-20, -20}, {20, -20}, {-20, 20}, {20, 20}, {0, 30}, {0, -30} }) do
+			worst = math.max(worst, math.abs(getTerrainHeightAt(zone, bx + d[1], by + d[2]) - bz))
+		end
+		lotOk = (worst <= 1.5) and 1 or 0
+		st = st .. string.format(" worst_corner_dz=%.1f lot_ok=%d", worst, lotOk)
+	end
+	print("INFO tradehall " .. st)
+	return st
+end
+
