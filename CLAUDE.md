@@ -28,7 +28,7 @@ runs and tests. Host: WSL2 Debian 12.
 | MySQL | `127.0.0.1:3306`, db `swgemu`, user `swgemu`; `mysql swgemu` works via `~/.my.cnf` |
 | Logs | `bin/screenlog.0` (console of the current run), `bin/log/core3.log`, `bin/log/lua.log`, `bin/log/player.log` |
 | TRE client files | `/tre` (`TrePath`); `/tre/finalboss.tre` is ours, installed by `tools/swg tre install` from the build output `MMOCoreORB/bin/tre/finalboss.tre` (ignored). Chuck's game client: `/mnt/c/EMU/swg - Copy/SWGEmu` (remembered in `~/.swg-lab/client-dir`; `/mnt/c/SWGDev/SWG_Game/swg - Copy/SWGEmu` is a stale duplicate still pointing at nova.swgemu.com) |
-| Lot / room survey | `tools/lotsurvey near|cells|footprint|rooms|lots …` reads the stock snapshot, portal layouts and floor meshes through the server's archives: where buildings stand, a template's footprint and rooms (cell-local coordinates for `spawnMobile`), and free lots for a building near a point. Used to place the 2.11 Trade Hall |
+| Lot / room survey | `tools/lotsurvey near|cells|footprint|rooms|furniture|check|lots …` reads the stock snapshot, portal layouts and floor meshes through the server's archives: where buildings stand, a template's footprint and rooms (cell-local coordinates for `spawnMobile`), and free lots for a building near a point. Used to place the 2.11 Trade Hall |
 | Custom client/server data (strings, templates) | `tre-src/` → packed by `tools/tre` (stdlib Python; `build/list/extract/strings/verify/roundtrip/install/status/crc`). `string/en/fb_*.stf.txt` = `key = text` lines → `@fb_*:key` |
 | Wrapper scripts | `~/bin/build`, `~/bin/run` (both `source ~/.env`) |
 | Unit tests (gtest) | `MMOCoreORB/src/tests/*.cpp` |
@@ -215,6 +215,11 @@ Persisted object fields (`containerVolumeLimit`, …) are only read from the tem
   every stock footprint from `snapshot/<planet>.ws` (WSNP/NODS/NODE DATA, payload little-endian) before
   choosing it — `tools/lotsurvey lots <planet> <x> <y> --template <building iff>` does exactly that and
   `lotsurvey rooms <iff>` prints the rooms; the lab's `spawnBuildingAt`/`buildingInfo` oracles spawn and measure a candidate.
+  **Furniture is client-only** (the building's `interiorlayout/*.ilf`; the server never loads it), so neither
+  the placement audit nor line of sight can see an NPC standing in a table: `tools/lotsurvey check <iff> --lua
+  <screenplay>` (or `--spot room,x,y`) tests spots against the furniture boxes — run it for every indoor spot
+  and keep it in the scenario (trade-hall does). Stock city files are not a safe source of spots either (their
+  Trade Hall "mercenary" point is inside the bar counter).
 - Starting a conversation needs same cell, ≤ 5 m and line of sight to the NPC, and fails silently otherwise.
   **Before trusting an NPC spot:** `swg cmd "runLuaFunction FbLabTests:placement:<name>"` (line of sight to
   probes 3 m around, height above terrain, drift; `checkPlacement` runs it for every FB spawn in `swg test lua`),

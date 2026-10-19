@@ -13,6 +13,11 @@ check_eq "keeper_on_the_square" "$(lab "findNpc:Hallkeeper" | grep -ac 'cell=0')
 PL=$(lab "placement:fb_trade_hall" | grep -a 'INFO placement summary')
 check_eq "placement_clean" "$(sed -n 's/.*fail=\([0-9]*\).*/\1/p' <<<"$PL")" "0" "$PL"
 check "lot_is_flat" "$(lab "tradeHall" | grep -q 'lot_ok=1' && echo 1 || echo 0)" "$ST"
+# the furniture is client-only (interior layout file): the server cannot see a tenant standing in a table,
+# so the survey tool checks every tenant spot in the screenplay against it
+FURN=$("$REPO/tools/lotsurvey" check object/building/tatooine/shared_guild_commerce_tatooine_style_01.iff --lua "$REPO/MMOCoreORB/bin/scripts/screenplays/tasks/tatooine/fb_trade_hall.lua" 2>&1)
+check_eq "no_tenant_in_the_furniture" "$(sed -n 's/.*summary spots=\([0-9]*\) fail=\([0-9]*\).*/\2/p' <<<"$FURN")" "0" "$(grep -a '^FAIL\|^summary' <<<"$FURN" | tr '\n' ' ')"
+check_ge "furniture_check_covered_tenants" "$(sed -n 's/.*summary spots=\([0-9]*\).*/\1/p' <<<"$FURN")" 11
 
 # --- the doorman marks the hall ---------------------------------------------------------------
 bot_bg --wait 25
