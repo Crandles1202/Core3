@@ -79,7 +79,7 @@
 <main>
   <canvas id="c"></canvas>
   <div id="help">drag: pan · wheel: zoom · click a building: details · double-click any building: inside view · drag your placed shell to move it<br>
-    <span style="color:#8a94a6">■ stock building (line = entrance side)</span> · <span style="color:#5b6678">◌ stock shell, no interior data</span> · <span style="color:#c58cff">■ our site</span> · <span style="color:#44d17a">■ your placed shell</span> (amber/red = lot problem) · <span style="color:#fff">□ selected</span> · <span style="color:#f0b429">● live NPC</span> · <span style="color:#7fb0d0">● stock NPC</span> · <span style="color:#4cc3ff">▣ terminal</span> · <span style="color:#58e0c8">▣ crafting station</span> · <span style="color:#ffd166">▣ vendor / ticket</span> (white edge = server-spawned with the building)</div>
+    <span style="color:#8a94a6">▲ stock building: real outline, rooms faint when zoomed (line = entrance side)</span> · <span style="color:#5b6678">▭ solid shell (mesh box)</span> · <span style="color:#c58cff">■ our site</span> · <span style="color:#44d17a">■ your placed shell</span> (amber/red = lot problem) · <span style="color:#fff">□ selected</span> · <span style="color:#f0b429">● live NPC</span> · <span style="color:#7fb0d0">● stock NPC</span> · <span style="color:#4cc3ff">▣ terminal</span> · <span style="color:#58e0c8">▣ crafting station</span> · <span style="color:#ffd166">▣ vendor / ticket</span> (white edge = server-spawned with the building)</div>
   <div id="hud"></div>
 </main>
 
@@ -227,15 +227,16 @@ function poly(points, toScreen, fill, stroke) {
   ctx.beginPath(); points.forEach((p, i) => { const [sx, sy] = toScreen(p[0], p[1]); i ? ctx.lineTo(sx, sy) : ctx.moveTo(sx, sy); }); ctx.closePath();
   if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.stroke(); }
 }
-function drawShellRooms(shell, bx, by, h, toScreen, local) {
+function drawShellRooms(shell, bx, by, h, toScreen, local, quiet) {
   // rooms as floor triangles (in building-local coordinates; mapped to world when not local)
   const map = local ? (p => p) : (p => toWorld(bx, by, h, p[0], p[1]));
   for (const r of shell.rooms) {
     if (local && !onLevel(shell, r.z, r.name)) continue;
-    for (const t of r.tris) poly(t.map(map), toScreen, "rgba(76,195,255,0.10)", null);
+    for (const t of r.tris) poly(t.map(map), toScreen, quiet ? "rgba(76,195,255,0.07)" : "rgba(76,195,255,0.10)", null);
     if (!r.tris.length) poly([[r.x0, r.y0], [r.x1, r.y0], [r.x1, r.y1], [r.x0, r.y1]].map(map), toScreen, "rgba(76,195,255,0.10)", "rgba(76,195,255,0.3)");
+    if (quiet && S.view.ppm < 4) continue;
     const c = map([(r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2]); const [sx, sy] = toScreen(c[0], c[1]);
-    ctx.fillStyle = "#9ad8ff"; ctx.font = "11px system-ui"; ctx.textAlign = "center"; ctx.fillText(r.name, sx, sy); ctx.textAlign = "left";
+    ctx.fillStyle = quiet ? "rgba(154,216,255,0.6)" : "#9ad8ff"; ctx.font = quiet ? "9px system-ui" : "11px system-ui"; ctx.textAlign = "center"; ctx.fillText(r.name, sx, sy); ctx.textAlign = "left";
   }
 }
 function drawPerson(p, toScreen, map, color, selected, label) {
@@ -261,16 +262,26 @@ function drawMap() {
       if (usable && L("L_labels") && S.view.ppm > 4) { ctx.font = "9px system-ui"; ctx.fillText(p.short, sx + 4, sy + 3); }
     }
     for (const b of S.area.buildings) {
-      if (b.fp) poly(rectPoly(b.x, b.y, b.heading, b.fp), w2s, "rgba(150,160,180,0.12)", "#5b6678");
+      const sh = b.fp ? shellFor(b.name) : null;
+      const map = p => toWorld(b.x, b.y, b.heading, p[0], p[1]);
+      if (sh && sh.exterior && sh.exterior.length) {
+        // the real outline: the exterior floor mesh (porch, steps, apron), with the rooms faint inside when zoomed in
+        for (const t of sh.exterior) poly(t.map(map), w2s, "rgba(150,160,180,0.16)", null);
+        if (S.view.ppm > 1.6) drawShellRooms(sh, b.x, b.y, b.heading, w2s, false, true);
+        poly(rectPoly(b.x, b.y, b.heading, b.fp), w2s, null, "rgba(91,102,120,0.5)");
+      } else if (b.fp) poly(rectPoly(b.x, b.y, b.heading, b.fp), w2s, "rgba(150,160,180,0.12)", "#5b6678");
+      else if (b.box) poly(rectPoly(b.x, b.y, b.heading, b.box), w2s, "rgba(150,160,180,0.14)", "#5b6678");
       else { const [sx, sy] = w2s(b.x, b.y); ctx.beginPath(); ctx.arc(sx, sy, b.radius * S.view.ppm, 0, Math.PI * 2); ctx.fillStyle = "rgba(150,160,180,0.08)"; ctx.fill(); ctx.strokeStyle = "#444d5b"; ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]); }
       const [sx, sy] = w2s(b.x, b.y); if (L("L_labels")) { ctx.fillStyle = "#8a94a6"; ctx.font = "10px system-ui"; ctx.fillText(b.short, sx + 3, sy - 3); }
-      if (b.fp) { const [ex, ey] = toWorld(b.x, b.y, b.heading, 0, b.fp.y1); const [tx, ty] = w2s(ex, ey); ctx.strokeStyle = "#5b6678"; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(tx, ty); ctx.stroke(); }
+      if (b.fp) { const [ex, ey] = toWorld(b.x, b.y, b.heading, 0, b.fp.y1); const [tx, ty] = w2s(ex, ey); ctx.strokeStyle = "#8a94a6"; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(tx, ty); ctx.stroke(); }
     }
   }
   for (const s of S.sites) {
     const sh = S.shells.find(x => x.server === s.template || x.template === s.template);
     if (!sh || S.loadedFile === s.file) continue;
-    poly(rectPoly(s.x, s.y, s.heading, sh.fp), w2s, "rgba(197,140,255,0.15)", "#c58cff");
+    if (sh.exterior && sh.exterior.length) for (const t of sh.exterior) poly(t.map(p => toWorld(s.x, s.y, s.heading, p[0], p[1])), w2s, "rgba(197,140,255,0.18)", null);
+    poly(rectPoly(s.x, s.y, s.heading, sh.fp), w2s, sh.exterior && sh.exterior.length ? null : "rgba(197,140,255,0.15)", "#c58cff");
+    if (S.view.ppm > 1.6) drawShellRooms(sh, s.x, s.y, s.heading, w2s, false, true);
     const [sx, sy] = w2s(s.x, s.y); ctx.fillStyle = "#c58cff"; ctx.fillText("site " + s.name, sx + 3, sy - 3);
     for (const o of s.outside) drawPerson(o, w2s, p => p, "#c58cff", false, o.template);
   }
@@ -286,7 +297,8 @@ function drawMap() {
   const d = S.draft;
   if (d) {
     const lot = S.lot; const col = !lot ? "#4cc3ff" : lot.verdict === "ok" ? "#44d17a" : lot.verdict === "warn" ? "#f0b429" : "#ff5c5c";
-    poly(rectPoly(d.x, d.y, d.heading, d.shell.fp), w2s, col + "33", col);   // hex + alpha: translucent fill
+    if (d.shell.exterior && d.shell.exterior.length) for (const t of d.shell.exterior) poly(t.map(p => toWorld(d.x, d.y, d.heading, p[0], p[1])), w2s, col + "33", null);
+    poly(rectPoly(d.x, d.y, d.heading, d.shell.fp), w2s, d.shell.exterior && d.shell.exterior.length ? null : col + "33", col);   // hex + alpha: translucent fill
     drawShellRooms(d.shell, d.x, d.y, d.heading, w2s, false);
     const [sx, sy] = w2s(d.x, d.y); const [ex, ey] = toWorld(d.x, d.y, d.heading, 0, d.shell.fp.y1 + 3); const [tx, ty] = w2s(ex, ey);
     ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(tx, ty); ctx.stroke(); ctx.lineWidth = 1;

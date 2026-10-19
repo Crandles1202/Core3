@@ -177,6 +177,10 @@ class Data:
                     entry["radius"] = round(fp[0], 1)
                 else:
                     entry["radius"] = ls.guessed_radius(name)
+                    box = ls.prop_box(self.vfs, name)   # the mesh's bounding box: the real oriented rectangle of a filler shell
+                    if box is not None:
+                        entry["box"] = dict(x0=round(box[0], 1), y0=round(box[2], 1), x1=round(box[3], 1), y1=round(box[5], 1))
+                        entry["radius"] = round(max(abs(box[0]), abs(box[3]), abs(box[2]), abs(box[5])), 1)
                 sh = shells.get(name)
                 rooms_by_index = {rm["cell"]: rm["name"] for rm in sh["rooms"]} if sh else {}
                 entry["npcs"] = [dict(template=sp["template"], x=round(sp["x"], 2), z=round(sp["z"], 2), y=round(sp["y"], 2), heading=round(sp["heading"]),
@@ -200,8 +204,13 @@ class Data:
             if fp is None or pob is None:
                 continue
             rooms = []
+            exterior = []
             for idx, room, path in ls.floors_of(self.vfs, pob):
                 if idx == 0:
+                    try:
+                        exterior = floor_triangles(self.vfs, path)
+                    except (struct.error, ValueError):
+                        exterior = []
                     continue
                 e = ls.floor_extents(self.vfs, path)
                 try:
@@ -226,7 +235,7 @@ class Data:
             server = re.sub(r"/shared_([^/]+)$", r"/\1", t)
             rooms_by_index = {rm["cell"]: rm["name"] for rm in rooms}
             children = [dict(c, room=rooms_by_index.get(c["cell"], "outside" if c["cell"] <= 0 else "cell%d" % c["cell"])) for c in child_objects(server)]
-            out.append(dict(template=t, server=server, children=children, short=t.rsplit("/", 1)[-1].replace("shared_", "").replace(".iff", ""),
+            out.append(dict(template=t, server=server, children=children, exterior=exterior, short=t.rsplit("/", 1)[-1].replace("shared_", "").replace(".iff", ""),
                             planet=(re.search(r"object/building/([a-z0-9_]+)/", t) or [None, ""])[1],
                             fp=dict(x0=round(e["x0"], 1), x1=round(e["x1"], 1), y0=round(e["z0"], 1), y1=round(e["z1"], 1)), radius=round(fp[0], 1),
                             rooms=rooms, furniture=furniture))
@@ -516,6 +525,8 @@ def cmd_selftest(a):
     hall = next((s for s in shells if s["short"] == "guild_commerce_tatooine_style_01"), None)
     assert hall and len(hall["rooms"]) == 9, "commerce hall rooms"
     assert any(r["name"] == "meetingd" and len(r["tris"]) >= 4 for r in hall["rooms"]), "floor triangles"
+    assert len(hall["exterior"]) >= 10, "exterior outline triangles"
+    assert any(b.get("box") for b in area["buildings"] if "filler" in b["short"]), "filler boxes"
     assert any(f["room"] == "meetingb" and "dining" in f["name"] for f in hall["furniture"]), "dining table"
     sites = load_sites()
     th = next((s for s in sites if s["name"] == "mos_eisley_trade_hall"), None)
