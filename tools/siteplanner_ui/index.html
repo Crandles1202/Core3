@@ -66,7 +66,7 @@
 
 <main>
   <canvas id="c"></canvas>
-  <div id="help">drag: pan · wheel: zoom · drag the building to move it · double-click the building: inside view</div>
+  <div id="help">drag: pan · wheel: zoom · click a building: details · double-click any building: inside view · drag your placed shell to move it</div>
   <div id="hud"></div>
 </main>
 
@@ -93,6 +93,8 @@ const S = {
   draft: null,                                     // { shell, x, y, heading, tenants:[], outside:[], name, door }
   sel: null,                                       // { kind: "tenant"|"outside", i }
   drag: null, lot: null, loadedFile: null,
+  selB: null,                                      // selected map building: { kind: "stock"|"site"|"draft", obj, shell }
+  inspect: null,                                   // inside view of something that is not the draft: { shell, tenants, title }
 };
 
 // ---------------------------------------------------------------- geometry
@@ -137,6 +139,30 @@ function furnitureClearance(shell, room, x, y) {
   if (best <= BODY) return { verdict: "fail", text: "inside " + name };
   if (best < MARGIN) return { verdict: "warn", text: best.toFixed(2) + " m from " + name };
   return { verdict: "ok", text: best.toFixed(1) + " m from " + name };
+}
+function shellFor(template) { return S.shells.find(x => x.server === template || x.template === template) || null; }
+function buildingAt(wx, wy) {
+  const d = S.draft;
+  if (d && distPointPoly(wx, wy, rectPoly(d.x, d.y, d.heading, d.shell.fp)) === 0) return { kind: "draft", obj: d, shell: d.shell };
+  for (const s of S.sites) {
+    if (S.loadedFile === s.file) continue;
+    const sh = shellFor(s.template); if (!sh) continue;
+    if (distPointPoly(wx, wy, rectPoly(s.x, s.y, s.heading, sh.fp)) === 0) return { kind: "site", obj: s, shell: sh };
+  }
+  if (S.area) for (const b of S.area.buildings) {
+    const inside = b.fp ? distPointPoly(wx, wy, rectPoly(b.x, b.y, b.heading, b.fp)) === 0 : Math.hypot(wx - b.x, wy - b.y) <= b.radius;
+    if (inside) return { kind: "stock", obj: b, shell: shellFor(b.name) };
+  }
+  return null;
+}
+function showInfo(sel) {
+  const el = $("lot");
+  if (!sel) { refresh(); return; }
+  const o = sel.obj, sh = sel.shell;
+  const rooms = sh ? sh.rooms.map(r => r.name).join(", ") : "no interior data";
+  if (sel.kind === "stock") el.innerHTML = `<div><b>${o.short}</b> <small>(stock building)</small></div><small>${o.name}<br>at ${o.x}, ${o.y} · heading ${o.heading}${o.fp ? ` · ${(o.fp.x1 - o.fp.x0).toFixed(0)}×${(o.fp.y1 - o.fp.y0).toFixed(0)} m` : ""}<br>rooms: ${rooms}</small><div class="${sh ? "ok" : "warn"}">${sh ? "double-click (or Inside view) to see its layout" : "no portal layout: a solid shell"}</div>`;
+  else if (sel.kind === "site") el.innerHTML = `<div><b>site ${o.name}</b></div><small>${o.template}<br>at ${o.x}, ${o.y} · heading ${o.heading} · ${o.tenants.length} tenant(s)<br>rooms: ${rooms}</small><div class="ok">double-click to see inside · <a href="#" id="editSite">edit this site</a></div>`;
+  const a = document.getElementById("editSite"); if (a) a.onclick = ev => { ev.preventDefault(); $("sites").value = o.file; $("sites").onchange(); };
 }
 function lotReport(d) {
   if (!S.area) return null;
@@ -218,6 +244,7 @@ function drawMap() {
     const [sx, sy] = w2s(s.x, s.y); ctx.fillStyle = "#c58cff"; ctx.fillText("site " + s.name, sx + 3, sy - 3);
     for (const o of s.outside) drawPerson(o, w2s, p => p, "#c58cff", false, o.template);
   }
+  if (S.selB && S.selB.kind !== "draft") { const o = S.selB.obj; const fp = S.selB.kind === "stock" ? o.fp : (S.selB.shell && S.selB.shell.fp); if (fp) poly(rectPoly(o.x, o.y, o.heading, fp), w2s, null, "#ffffff"); }
   for (const n of S.live) { if (n.zone !== $("planet").value) continue; const [sx, sy] = w2s(n.x, n.y); ctx.fillStyle = "#f0b429"; ctx.beginPath(); ctx.arc(sx, sy, 3, 0, Math.PI * 2); ctx.fill(); ctx.fillText(n.name, sx + 5, sy + 4); }
   const d = S.draft;
   if (d) {
@@ -233,7 +260,9 @@ function drawMap() {
   $("hud").textContent = `${$("planet").value}  centre ${S.view.cx.toFixed(0)}, ${S.view.cy.toFixed(0)}  ·  ${S.view.ppm.toFixed(2)} px/m` + (d ? `  ·  draft at ${d.x.toFixed(1)}, ${d.y.toFixed(1)} heading ${d.heading}` : "");
 }
 function drawInside() {
-  const d = S.draft; if (!d) { ctx.fillStyle = "#98a2b3"; ctx.fillText("Place a building first.", 20, 30); return; }
+  const t = S.inspect || (S.draft ? { shell: S.draft.shell, tenants: S.draft.tenants, title: "your draft", kind: "draft" } : null);
+  if (!t) { ctx.fillStyle = "#98a2b3"; ctx.fillText("Double-click a building on the map, or place one.", 20, 30); return; }
+  const d = { shell: t.shell, tenants: t.tenants, heading: S.draft && !S.inspect ? S.draft.heading : 0 };
   grid(l2s, s2l, 5);
   poly([[d.shell.fp.x0, d.shell.fp.y0], [d.shell.fp.x1, d.shell.fp.y0], [d.shell.fp.x1, d.shell.fp.y1], [d.shell.fp.x0, d.shell.fp.y1]], l2s, null, "#5b6678");
   drawShellRooms(d.shell, 0, 0, 0, l2s, true);
@@ -245,10 +274,10 @@ function drawInside() {
   d.tenants.forEach((t, i) => {
     const c = furnitureClearance(d.shell, t.room, t.x, t.y);
     const col = c.verdict === "ok" ? "#44d17a" : c.verdict === "warn" ? "#f0b429" : "#ff5c5c";
-    drawPerson(t, l2s, p => p, col, S.sel && S.sel.kind === "tenant" && S.sel.i === i, (t.label || t.template) + "  (" + t.room + ")");
+    drawPerson(t, l2s, p => p, col, !S.inspect && S.sel && S.sel.kind === "tenant" && S.sel.i === i, (t.label || t.template) + "  (" + t.room + ")");
   });
-  const [ex, ey] = l2s(0, d.shell.fp.y1 + 2); ctx.fillStyle = "#4cc3ff"; ctx.font = "12px system-ui"; ctx.fillText("▲ entrance side (local +y, heading " + d.heading + ")", ex + 6, ey);
-  $("hud").textContent = `inside ${d.shell.short}  ·  local coordinates (x right, y toward the entrance)  ·  ${S.ivw.ppm.toFixed(1)} px/m`;
+  const [ex, ey] = l2s(0, d.shell.fp.y1 + 2); ctx.fillStyle = "#4cc3ff"; ctx.font = "12px system-ui"; ctx.fillText("▲ entrance side (local +y)", ex + 6, ey);
+  $("hud").textContent = `inside ${t.title}: ${d.shell.short}${S.inspect ? "  ·  read-only" : ""}  ·  local coordinates (x right, y toward the entrance)  ·  ${S.ivw.ppm.toFixed(1)} px/m`;
 }
 
 // ---------------------------------------------------------------- interaction
@@ -257,7 +286,7 @@ canvas.addEventListener("mousedown", e => {
   const r = canvas.getBoundingClientRect(); const sx = e.clientX - r.left, sy = e.clientY - r.top;
   down = { sx, sy, moved: false, view: { ...(S.mode === "map" ? S.view : S.ivw) } };
   const d = S.draft;
-  if (d) {
+  if (d && !S.inspect) {
     // a person under the cursor?
     const hit = personAt(sx, sy);
     if (hit) { S.sel = hit; down.person = hit; draw(); return; }
@@ -286,7 +315,15 @@ window.addEventListener("mouseup", e => {
   const wasClick = !down.moved && !down.person && !down.building;
   const r = canvas.getBoundingClientRect(); const sx = e.clientX - r.left, sy = e.clientY - r.top;
   down = null;
-  if (!wasClick || !S.draft) return;
+  if (!wasClick) return;
+  if (S.mode === "map") {
+    // a single click selects the building under the cursor (details in the right panel)
+    const [wx, wy] = s2w(sx, sy); const target = buildingAt(wx, wy);
+    if (target && target.kind !== "draft") { S.selB = target; showInfo(target); draw(); if ($("tool").value !== "outside") return; }
+    else if (!target) { S.selB = null; if (S.draft) refresh(); }
+  }
+  if (S.inspect) { status("This building is read-only. Place your own shell to add tenants.", "warn"); return; }
+  if (!S.draft) return;
   const tool = $("tool").value, npc = S.npcs.find(n => n.template === $("npc").value);
   if (!npc) return;
   if (S.mode === "inside" && tool === "tenant") {
@@ -302,7 +339,20 @@ window.addEventListener("mouseup", e => {
     status("Switch to the inside view to place a tenant (double-click the building).", "warn");
   }
 });
-canvas.addEventListener("dblclick", e => { if (S.draft) { S.mode = S.mode === "map" ? "inside" : "map"; if (S.mode === "inside") S.ivw = { cx: 0, cy: (S.draft.shell.fp.y0 + S.draft.shell.fp.y1) / 2, ppm: Math.min(W(), H()) / (Math.max(S.draft.shell.fp.x1 - S.draft.shell.fp.x0, S.draft.shell.fp.y1 - S.draft.shell.fp.y0) + 10) }; draw(); } });
+function openInside(target) {
+  if (!target || !target.shell) { status("That building has no interior data to show.", "warn"); return; }
+  const fp = target.shell.fp;
+  S.ivw = { cx: 0, cy: (fp.y0 + fp.y1) / 2, ppm: Math.min(W(), H()) / (Math.max(fp.x1 - fp.x0, fp.y1 - fp.y0) + 10) };
+  if (target.kind === "draft") { S.inspect = null; status("Inside your draft: click in a room to place the selected NPC. Double-click anywhere to return to the map.", "ok"); }
+  else { S.inspect = { shell: target.shell, tenants: target.kind === "site" ? target.obj.tenants : [], title: target.kind === "site" ? "site " + target.obj.name : target.obj.short, kind: target.kind }; status(`Inside ${S.inspect.title} (read-only). Double-click anywhere to return to the map.`, "ok"); }
+  S.mode = "inside"; S.sel = null; draw();
+}
+canvas.addEventListener("dblclick", e => {
+  if (S.mode === "inside") { S.mode = "map"; S.inspect = null; draw(); return; }
+  const r = canvas.getBoundingClientRect(); const [wx, wy] = s2w(e.clientX - r.left, e.clientY - r.top);
+  const target = buildingAt(wx, wy) || (S.draft ? { kind: "draft", obj: S.draft, shell: S.draft.shell } : null);
+  openInside(target);
+});
 canvas.addEventListener("wheel", e => { e.preventDefault(); const v = S.mode === "map" ? S.view : S.ivw; const k = e.deltaY < 0 ? 1.15 : 1 / 1.15; v.ppm = Math.max(0.2, Math.min(80, v.ppm * k)); draw(); }, { passive: false });
 function personAt(sx, sy) {
   const d = S.draft; if (!d) return null;
@@ -397,7 +447,10 @@ $("rotR").onclick = () => { if (S.draft) { S.draft.heading = (S.draft.heading + 
 $("heading").onchange = () => { if (S.draft) { S.draft.heading = ((+$("heading").value % 360) + 360) % 360; refresh(); } };
 $("bx").onchange = () => { if (S.draft) { S.draft.x = +$("bx").value; refresh(); } };
 $("by").onchange = () => { if (S.draft) { S.draft.y = +$("by").value; refresh(); } };
-$("inside").onclick = () => canvas.dispatchEvent(new MouseEvent("dblclick"));
+$("inside").onclick = () => {
+  if (S.mode === "inside") { S.mode = "map"; S.inspect = null; draw(); return; }
+  if (S.selB) openInside(S.selB); else if (S.draft) openInside({ kind: "draft", obj: S.draft, shell: S.draft.shell }); else status("Click a building on the map first (or place one).", "warn");
+};
 $("export").onclick = () => { if (S.draft) { $("lua").value = siteLua(S.draft); status("Site file built below. Save writes it into the repo for Claude to test and commit.", "ok"); } };
 $("download").onclick = () => { if (!S.draft) return; const name = ($("name").value || "new_site") + ".lua"; const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([$("lua").value], { type: "text/plain" })); a.download = name; a.click(); };
 $("save").onclick = async () => {
