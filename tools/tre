@@ -28,6 +28,8 @@ Formats (confirmed against the stock patch_*.tre files and MMOCoreORB/src/tre3, 
 Only python3's standard library is used.
 """
 import argparse
+import importlib.machinery
+import importlib.util
 import hashlib
 import json
 import os
@@ -226,6 +228,8 @@ def collect_sources(src):
                 continue
             full = os.path.join(root, n)
             rel = os.path.relpath(full, src).replace(os.sep, "/")
+            if rel.startswith("world/"):
+                continue   # world edits are data for tools/worldedit, which turns them into snapshot/<planet>.ws below
             with open(full, "rb") as fh:
                 raw = fh.read()
             if rel.endswith(".stf.txt"):
@@ -235,9 +239,30 @@ def collect_sources(src):
                 files[rel[:-4]] = stf_encode(pairs)
             else:
                 files[rel] = raw
+    for path, blob in world_snapshots().items():
+        files[path] = blob
     if not files:
         raise SystemExit("nothing to pack under %s" % src)
     return files
+
+
+def world_snapshots():
+    """Patched snapshot/<planet>.ws files from tre-src/world/*.json (tools/worldedit); also refreshes the Lua twin."""
+    loader = importlib.machinery.SourceFileLoader("worldedit", os.path.join(os.path.dirname(os.path.abspath(__file__)), "worldedit"))
+    spec = importlib.util.spec_from_loader("worldedit", loader)
+    we = importlib.util.module_from_spec(spec)
+    loader.exec_module(we)
+    out = {}
+    vfs = we.StockVfs()
+    for planet in we.PLANETS:
+        blob, results = we.patched_snapshot(vfs, planet)
+        for op, msg in results:
+            if msg.startswith("ERROR"):
+                raise SystemExit("world edit %s/%s: %s" % (planet, op.get("oid", "?"), msg))
+        if blob is not None:
+            out["snapshot/%s.ws" % planet] = blob
+    we.write_lua_twin()
+    return out
 
 
 def sha256_file(path):

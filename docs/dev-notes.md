@@ -186,6 +186,31 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-19 — the sandstorm scenario's `client_saw_the_storm` flake, explained.** `WeatherManager::sendWeatherTo`
+  computes `map.getWeatherAt(x, y) + baseWeather` and upstream set anything above 4 to **0**. `setZoneWeather(4)`
+  therefore showed *clear* to any player standing where the local map was above 0 — the scenario passed only
+  when the bot happened to stand on a map cell at 0 (and in game Chuck's "sky goes dark" check could have failed
+  the same way). Clamped to 4 instead (one line, `WeatherManagerImplementation.cpp`). The bot log is the
+  tell: `Weather id=…` lines without a 4 while `storm` says `weather=4`. Players receive weather on their own
+  periodic tick (`PlayerObjectImplementation`, also at login), which is why a forced change takes a few
+  seconds to arrive.
+- **2026-10-19 — 2.12g, world edits (moving the stock world).** Chuck asked whether the filler blocks could be
+  moved or added. They can, because the client and the server read the same `snapshot/<planet>.ws` and our
+  archive wins on both sides (`searchTree_00_26=finalboss.tre` in the client cfg, first in `Core3.TreFiles`).
+  Format (`tools/worldedit`): `FORM WSNP { FORM 0001 { FORM NODS { FORM NODE { FORM 0000 { DATA(52) , child
+  NODEs… } } … } , OTNL } }`; DATA = `oid parent nameid cell | qw qx qy qz | x z y | radius | portal-crc`
+  (little-endian, the FORM/chunk sizes big-endian; a FORM size includes its type tag). Server side
+  (`PlanetManager::loadSnapshotObject`): `createClientObject(serverTemplate.hashCode(), oid)` with the
+  `shared_` prefix stripped, cells attached from child nodes by `cellid`, nothing persisted. Stock oids run
+  2…9 995 370 across all planets; adds use 10 000 000 + 64k (db objects start at 2^48). An add is a *clone* of a
+  stock instance of the template (radius, portal CRC, cell children) so the client never sees a node shape it
+  does not know. Pipeline: planner → `tre-src/world/<planet>.json` → `tre build` (patched `.ws` into the archive
+  + Lua twin) → `swg start` installs both copies → `checkWorldEdits` compares the booted server with the twin.
+  Proved end to end with a temporary filler block east of the bank (0.00 m off, heading exact), then removed.
+  Two bugs found on the way: the form-size gotcha above, and `getDirectionAngle()` is already degrees (the
+  check said "heading off by −109°" until the `math.deg` came out — six call sites fixed). Not done: terrain
+  pads do not move (baked into the `.trn`), stock NPCs/terminals from city scripts stay put; both are visible
+  in the planner so Chuck can judge. Client-side caveat: every player needs the patched archive.
 - **2026-10-19 — 2.12d, the planner's game loop.** Design: the planner never talks to the server directly;
   it writes the draft as a real site file into `tasks/sites/.preview/` (a dot-directory, so the boot loader's
   `ls …/sites/*.lua` never sees it; git-ignored) and asks the lab (`swg cmd runLuaFunction FbLabTests:sitePreview:preview`)

@@ -773,6 +773,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkTradeHall()
 		FbLabTests.checkLabRemote()
 		FbLabTests.checkPlacement()
+		FbLabTests.checkWorldEdits()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)
@@ -1281,8 +1282,8 @@ function FbLabTests:objectPos(oid)
 	if SceneObject(p):isCreatureObject() then
 		extra = string.format(" combat=%s dead=%s ham=%d/%d", tostring(CreatureObject(p):isInCombat()), tostring(CreatureObject(p):isDead()), CreatureObject(p):getHAM(0), CreatureObject(p):getMaxHAM(0))
 	end
-	print(string.format("INFO objectPos oid=%s zone=%s x=%.1f y=%.1f z=%.1f cell=%d%s", tostring(oid), SceneObject(p):getZoneName(),
-		SceneObject(p):getWorldPositionX(), SceneObject(p):getWorldPositionY(), SceneObject(p):getWorldPositionZ(), SceneObject(p):getParentID(), extra))
+	print(string.format("INFO objectPos oid=%s zone=%s x=%.1f y=%.1f z=%.1f heading=%.1f cell=%d%s", tostring(oid), SceneObject(p):getZoneName(),
+		SceneObject(p):getWorldPositionX(), SceneObject(p):getWorldPositionY(), SceneObject(p):getWorldPositionZ(), SceneObject(p):getDirectionAngle() % 360, SceneObject(p):getParentID(), extra))
 	return "ok"
 end
 
@@ -1938,7 +1939,7 @@ function FbLabTests:siteNew(charName, template, heading, name)
 	local pPlayer = onlinePlayer(charName)
 	if pPlayer == nil then return "offline" end
 	local h = tonumber(heading)
-	if heading == "look" then h = math.deg(SceneObject(pPlayer):getDirectionAngle()) % 360 end
+	if heading == "look" then h = SceneObject(pPlayer):getDirectionAngle() % 360 end
 	local d, verdict, lines = FbSiteBuilder:newSite(pPlayer, template, h, name)
 	if d == nil then print("ERROR no preview"); return "none" end
 	for _, l in ipairs(lines) do print("INFO lot " .. l) end
@@ -2062,5 +2063,57 @@ function FbLabTests:sitePlacement(name)
 	if n == 0 then print("INFO placement summary spawns=0 — site " .. tostring(name) .. " is not standing (spawn the preview first)") end
 	print(string.format("INFO placement summary spawns=%d fail=%d warn=%d", n, fails, warns))
 	return tostring(fails)
+end
+
+-- ---------------------------------------------------------------- world edits (2.12g: patched snapshots)
+
+-- One line per edit of a planet: does the booted server show it? (the snapshot it loaded came from finalboss.tre)
+function FbLabTests.worldEditLines(planet)
+	local out = {}
+	for _, e in ipairs((FbWorldEdits or {})[planet] or {}) do
+		local p = getSceneObject(e.oid)
+		local alive = p ~= nil and SceneObject(p):getZoneName() ~= ""
+		local ok, why
+		if e.op == "delete" then
+			ok = not alive; why = alive and "still standing" or "gone"
+		elseif not alive then
+			ok = false; why = "missing"
+		else
+			local dx, dy = SceneObject(p):getWorldPositionX() - e.x, SceneObject(p):getWorldPositionY() - e.y
+			local dist = math.sqrt(dx * dx + dy * dy)
+			local h = e.heading and ((SceneObject(p):getDirectionAngle() - e.heading + 540) % 360 - 180) or 0
+			ok = dist < 0.5 and math.abs(h) < 2
+			why = string.format("at %.1f,%.1f (%.2f m off, heading off by %.0f)", SceneObject(p):getWorldPositionX(), SceneObject(p):getWorldPositionY(), dist, h)
+		end
+		out[#out + 1] = { op = e.op, oid = e.oid, ok = ok, why = why, template = e.template or (alive and SceneObject(p):getObjectName()) or "?", planet = planet }
+	end
+	return out
+end
+
+-- worldEdits[:<planet>] → INFO line per edit, verdict included
+function FbLabTests:worldEdits(planet)
+	local n = 0
+	for _, pl in ipairs(planet and { planet } or { "tatooine", "naboo", "corellia", "talus", "rori", "dantooine", "lok", "yavin4", "endor", "dathomir" }) do
+		for _, l in ipairs(FbLabTests.worldEditLines(pl)) do
+			n = n + 1
+			print(string.format("INFO worldedit planet=%s op=%s oid=%d template=%s ok=%s why=%s", l.planet, l.op, l.oid, tostring(l.template), tostring(l.ok), (l.why:gsub(" ", "_"))))
+		end
+	end
+	if n == 0 then print("INFO worldedit none (tre-src/world/ has no edits)") end
+	return tostring(n)
+end
+
+-- Lab check: every world edit in fb_world_edits.lua is what the server built from the installed snapshot
+function FbLabTests.checkWorldEdits()
+	local n = 0
+	for _, pl in ipairs({ "tatooine", "naboo", "corellia", "talus", "rori", "dantooine", "lok", "yavin4", "endor", "dathomir" }) do
+		if isZoneEnabled(pl) then
+			for _, l in ipairs(FbLabTests.worldEditLines(pl)) do
+				n = n + 1
+				check("worldedit." .. pl .. "." .. l.op .. "." .. l.oid, l.ok, l.why .. (l.ok and "" or " — is the patched finalboss.tre installed and the server restarted since the edit?"))
+			end
+		end
+	end
+	if n == 0 then print("INFO worldedit: no edits to check") end
 end
 

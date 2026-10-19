@@ -1,0 +1,420 @@
+#!/usr/bin/env python3
+"""worldedit — Final Boss world edits: move, add and delete the stock buildings and props of a planet (Phase 2.12g).
+
+The stock world is the snapshot file snapshot/<planet>.ws in the game archives; the client draws it and the
+server builds its collision, structures and cells from the very same file (PlanetManager::loadSnapshotObjects).
+Our archive (finalboss.tre) is searched first on both sides, so a patched copy of the snapshot moves a
+building for everyone — after `swg tre build` + `swg tre install` (client) and a server restart.
+
+Edits live as data in tre-src/world/<planet>.json (never packed verbatim; `tre build` turns them into the
+patched snapshot and into the Lua twin custom_scripts/fb_world_edits.lua that the lab checks against the
+booted server):
+
+  { "planet": "tatooine", "ops": [
+      { "op": "move",   "oid": 1198843, "x": 3500.0, "y": -4930.0, "z": 5.0, "heading": 90, "note": "bank 10 m east" },
+      { "op": "delete", "oid": 1198900, "note": "filler block in the way of the trade hall" },
+      { "op": "add",    "oid": 10000064, "template": "object/building/tatooine/shared_filler_building_block_64x16_style_01.iff",
+                        "x": 3600.0, "y": -4700.0, "z": 6.1, "heading": 215 } ] }
+
+An "add" clones a reference instance of that template from the stock snapshots (same radius, portal CRC and
+cell children) under fresh object ids: 10 000 000 + 64 k (every stock snapshot id is below 10 000 000, every
+database object id above 2^48). z is the ground height at the spot (the planner asks the server; the stock
+z is kept when unknown).
+
+  worldedit check                          every planet's snapshot re-serialises byte-identical (the writer is safe)
+  worldedit build [--out-dir DIR]          write the patched snapshot/<planet>.ws files (default: print what would change)
+  worldedit lua                            write custom_scripts/fb_world_edits.lua from the edit files
+  worldedit show <planet>                  list the edits of a planet with the stock node they touch
+"""
+import argparse
+import importlib.machinery
+import importlib.util
+import json
+import math
+import os
+import re
+import struct
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(HERE)
+WORLD_DIR = os.path.join(REPO, "tre-src", "world")
+LUA_TWIN = os.path.join(REPO, "MMOCoreORB", "bin", "scripts", "custom_scripts", "fb_world_edits.lua")
+ADD_BASE, ADD_STRIDE = 10_000_000, 64
+PLANETS = ["tatooine", "naboo", "corellia", "talus", "rori", "dantooine", "lok", "yavin4", "endor", "dathomir"]
+
+_loader = importlib.machinery.SourceFileLoader("lotsurvey", os.path.join(HERE, "lotsurvey"))
+_spec = importlib.util.spec_from_loader("lotsurvey", _loader)
+ls = importlib.util.module_from_spec(_spec)
+_loader.exec_module(ls)
+
+
+# ---------------------------------------------------------------- the stock files (never our own archive)
+
+class StockVfs(ls.Vfs):
+    """The game data as shipped: our archive left out, so a patched snapshot is never patched twice."""
+
+    def __init__(self):
+        super().__init__()
+        self.files = [f for f in self.files if f != ls.fbtre.TRE_NAME]
+
+
+# ---------------------------------------------------------------- snapshot tree: read, write, roundtrip
+
+class Node:
+    __slots__ = ("oid", "parent", "nameid", "cell", "qw", "qx", "qy", "qz", "x", "z", "y", "radius", "crc", "children", "version")
+
+    def __init__(self, *fields, version=b"0000"):
+        (self.oid, self.parent, self.nameid, self.cell, self.qw, self.qx, self.qy, self.qz,
+         self.x, self.z, self.y, self.radius, self.crc) = fields
+        self.children = []
+        self.version = version
+
+    @property
+    def heading(self):
+        return math.degrees(2 * math.atan2(self.qy, self.qw)) % 360
+
+    def set_heading(self, deg):
+        a = math.radians(deg) / 2
+        self.qw, self.qx, self.qy, self.qz = math.cos(a), 0.0, math.sin(a), 0.0
+
+    def walk(self):
+        yield self
+        for c in self.children:
+            yield from c.walk()
+
+    def clone(self):
+        n = Node(self.oid, self.parent, self.nameid, self.cell, self.qw, self.qx, self.qy, self.qz, self.x, self.z, self.y, self.radius, self.crc, version=self.version)
+        n.children = [c.clone() for c in self.children]
+        return n
+
+
+DATA_FMT = "<IIIIffffffffI"   # oid parent nameid cell | qw qx qy qz | x z y | radius | crc  (52 bytes)
+
+
+class Snapshot:
+    def __init__(self, data):
+        self.version = None
+        self.roots = []
+        self.names = []
+        self.tail = b""          # anything after OTNL inside the version form (none in stock files)
+        self._parse(data)
+
+    def _parse(self, data):
+        def form(pos):
+            return data[pos:pos + 4], struct.unpack(">I", data[pos + 4:pos + 8])[0], pos + 8
+
+        def node(pos):
+            tag, size, p = form(pos)
+            assert tag == b"FORM" and data[p:p + 4] == b"NODE", "not a NODE form at %d" % pos
+            end = p + size
+            p += 4
+            tag, size, p = form(p)
+            ver = data[p:p + 4]
+            ver_end = p + size
+            p += 4
+            assert data[p:p + 4] == b"DATA"
+            csize = struct.unpack(">I", data[p + 4:p + 8])[0]
+            assert csize == 52, "DATA chunk of %d bytes" % csize
+            n = Node(*struct.unpack(DATA_FMT, data[p + 8:p + 60]), version=ver)
+            p += 8 + csize
+            while p < ver_end:
+                child, p = node(p)
+                n.children.append(child)
+            return n, end
+
+        tag, size, p = form(0)
+        assert tag == b"FORM" and data[p:p + 4] == b"WSNP", "not a world snapshot"
+        p += 4
+        tag, size, p = form(p)
+        self.version = data[p:p + 4]
+        ver_end = p + size
+        p += 4
+        tag, size, p = form(p)
+        assert data[p:p + 4] == b"NODS"
+        nods_end = p + size
+        p += 4
+        while p < nods_end:
+            n, p = node(p)
+            self.roots.append(n)
+        assert data[nods_end:nods_end + 4] == b"OTNL"
+        osize = struct.unpack(">I", data[nods_end + 4:nods_end + 8])[0]
+        q = nods_end + 8
+        count = struct.unpack("<I", data[q:q + 4])[0]
+        q += 4
+        for _ in range(count):
+            e = data.index(b"\0", q)
+            self.names.append(data[q:e].decode())
+            q = e + 1
+        assert q == nods_end + 8 + osize, "OTNL has bytes after its names"
+        self.tail = data[q:ver_end]
+        assert ver_end == len(data), "bytes after the snapshot form"
+
+    # -- writing
+    @staticmethod
+    def _form(tag, payload):
+        return b"FORM" + struct.pack(">I", len(payload) + 4) + tag + payload   # an IFF form size counts its 4-byte type tag
+
+    @staticmethod
+    def _chunk(tag, payload):
+        return tag + struct.pack(">I", len(payload)) + payload
+
+    def _node_bytes(self, n):
+        data = self._chunk(b"DATA", struct.pack(DATA_FMT, n.oid, n.parent, n.nameid, n.cell, n.qw, n.qx, n.qy, n.qz, n.x, n.z, n.y, n.radius, n.crc))
+        inner = data + b"".join(self._node_bytes(c) for c in n.children)
+        return self._form(b"NODE", self._form(n.version, inner))
+
+    def to_bytes(self):
+        nods = self._form(b"NODS", b"".join(self._node_bytes(n) for n in self.roots))
+        otnl = self._chunk(b"OTNL", struct.pack("<I", len(self.names)) + b"".join(s.encode() + b"\0" for s in self.names))
+        return self._form(b"WSNP", self._form(self.version, nods + otnl + self.tail))
+
+    # -- lookups
+    def all_nodes(self):
+        for r in self.roots:
+            yield from r.walk()
+
+    def find(self, oid):
+        for n in self.all_nodes():
+            if n.oid == oid:
+                return n
+        return None
+
+    def name_of(self, n):
+        return self.names[n.nameid]
+
+    def name_index(self, template):
+        if template not in self.names:
+            self.names.append(template)
+        return self.names.index(template)
+
+
+def stock_snapshot(vfs, planet):
+    return Snapshot(vfs.read("snapshot/%s.ws" % planet))
+
+
+# ---------------------------------------------------------------- edits
+
+def load_edits(planet):
+    path = os.path.join(WORLD_DIR, planet + ".json")
+    if not os.path.exists(path):
+        return dict(planet=planet, ops=[])
+    with open(path, encoding="utf-8") as fh:
+        e = json.load(fh)
+    e.setdefault("ops", [])
+    e["planet"] = planet
+    return e
+
+
+def save_edits(planet, ops):
+    """Write the planet's edit file; adds without an oid get the next free block. Returns the ops as saved."""
+    used = set()
+    for pl in PLANETS:
+        for op in load_edits(pl)["ops"]:
+            if op.get("op") == "add" and op.get("oid"):
+                used.add(int(op["oid"]))
+    out = []
+    for op in ops:
+        op = dict(op)
+        if op.get("op") == "add" and not op.get("oid"):
+            k = 1
+            while ADD_BASE + ADD_STRIDE * k in used:
+                k += 1
+            op["oid"] = ADD_BASE + ADD_STRIDE * k
+            used.add(op["oid"])
+        out.append(op)
+    os.makedirs(WORLD_DIR, exist_ok=True)
+    path = os.path.join(WORLD_DIR, planet + ".json")
+    if not out and os.path.exists(path):
+        os.remove(path)
+        return out
+    if out:
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(dict(planet=planet, ops=out), fh, indent=1)
+            fh.write("\n")
+    return out
+
+
+def reference_instance(vfs, template, planet_first, cache={}):
+    """A stock root node of this template (cells included), to clone for an add; None if the game never placed one."""
+    key = template
+    if key in cache:
+        return cache[key]
+    found = None
+    for pl in [planet_first] + [p for p in PLANETS if p != planet_first]:
+        try:
+            snap = stock_snapshot(vfs, pl)
+        except (FileNotFoundError, AssertionError):
+            continue
+        for r in snap.roots:
+            if snap.name_of(r) == template:
+                found = (snap, r)
+                break
+        if found:
+            break
+    cache[key] = found
+    return found
+
+
+def apply_edits(vfs, planet, snap, ops):
+    """Apply the ops to a Snapshot in place. Returns a list of (op, message) results; raises nothing."""
+    results = []
+    for op in ops:
+        kind = op.get("op")
+        if kind == "move":
+            n = snap.find(int(op["oid"]))
+            if n is None or n.parent != 0:
+                results.append((op, "ERROR move: no top-level stock object %s" % op.get("oid")))
+                continue
+            n.x, n.y = float(op["x"]), float(op["y"])
+            if op.get("z") is not None:
+                n.z = float(op["z"])
+            if op.get("heading") is not None:
+                n.set_heading(float(op["heading"]))
+            results.append((op, "moved %s to %.1f,%.1f heading %.0f" % (snap.name_of(n).rsplit("/", 1)[-1], n.x, n.y, n.heading)))
+        elif kind == "delete":
+            oid = int(op["oid"])
+            before = len(snap.roots)
+            snap.roots = [r for r in snap.roots if r.oid != oid]
+            if len(snap.roots) == before:
+                results.append((op, "ERROR delete: no top-level stock object %s" % oid))
+            else:
+                results.append((op, "deleted %s" % oid))
+        elif kind == "add":
+            ref = reference_instance(vfs, op["template"], planet)
+            if ref is None:
+                results.append((op, "ERROR add: the stock world never places %s, nothing to clone" % op["template"]))
+                continue
+            src_snap, src = ref
+            n = src.clone()
+            base = int(op["oid"])
+            # fresh ids for the clone and its children; names re-indexed into this planet's name table
+            for i, m in enumerate(n.walk()):
+                m.nameid = snap.name_index(src_snap.name_of(m))
+                m.oid = base + i
+                if i > 0:
+                    m.parent = base
+            n.parent = 0
+            n.x, n.y = float(op["x"]), float(op["y"])
+            n.z = float(op["z"]) if op.get("z") is not None else n.z
+            n.set_heading(float(op.get("heading") or 0))
+            snap.roots.append(n)
+            results.append((op, "added %s as %d at %.1f,%.1f heading %.0f (%d child node(s))" % (op["template"].rsplit("/", 1)[-1], base, n.x, n.y, n.heading, len(list(n.walk())) - 1)))
+        else:
+            results.append((op, "ERROR unknown op %r" % kind))
+    return results
+
+
+def patched_snapshot(vfs, planet, ops=None):
+    """The planet's snapshot bytes with its edits applied, plus the apply results; (None, []) when there are none."""
+    ops = load_edits(planet)["ops"] if ops is None else ops
+    if not ops:
+        return None, []
+    snap = stock_snapshot(vfs, planet)
+    results = apply_edits(vfs, planet, snap, ops)
+    return snap.to_bytes(), results
+
+
+def lua_twin(all_edits):
+    """custom_scripts/fb_world_edits.lua: the same ops as a Lua table, for the lab's checkWorldEdits."""
+    L = ["-- fb_world_edits.lua — GENERATED by tools/worldedit (tre build) from tre-src/world/*.json. Do not edit.",
+         "-- The world edits the patched snapshots carry; FbLabTests.checkWorldEdits verifies the booted server shows them.",
+         "FbWorldEdits = {"]
+    for planet in PLANETS:
+        ops = all_edits.get(planet, {}).get("ops", [])
+        if not ops:
+            continue
+        L.append("\t%s = {" % planet)
+        for op in ops:
+            fields = ['op = "%s"' % op["op"], "oid = %d" % int(op["oid"])]
+            if op.get("template"):
+                fields.append('template = "%s"' % op["template"])
+            for k in ("x", "y", "z", "heading"):
+                if op.get(k) is not None:
+                    fields.append("%s = %.2f" % (k, float(op[k])))
+            if op.get("note"):
+                fields.append('note = "%s"' % str(op["note"]).replace('"', "'"))
+            L.append("\t\t{ %s }," % ", ".join(fields))
+        L.append("\t},")
+    L.append("}")
+    return "\n".join(L) + "\n"
+
+
+def write_lua_twin():
+    edits = {pl: load_edits(pl) for pl in PLANETS}
+    text = lua_twin(edits)
+    old = open(LUA_TWIN, encoding="utf-8").read() if os.path.exists(LUA_TWIN) else None
+    if old != text:
+        with open(LUA_TWIN, "w", encoding="utf-8") as fh:
+            fh.write(text)
+    return sum(len(e["ops"]) for e in edits.values()), old != text
+
+
+# ---------------------------------------------------------------- commands
+
+def cmd_check(a):
+    vfs = StockVfs()
+    bad = 0
+    for pl in PLANETS:
+        try:
+            raw = vfs.read("snapshot/%s.ws" % pl)
+        except FileNotFoundError:
+            print("%-10s no snapshot" % pl)
+            continue
+        snap = Snapshot(raw)
+        same = snap.to_bytes() == raw
+        bad += not same
+        print("%-10s %6d nodes %5d templates %8d bytes  %s" % (pl, sum(1 for _ in snap.all_nodes()), len(snap.names), len(raw), "roundtrip ok" if same else "ROUNDTRIP DIFFERS"))
+    return 1 if bad else 0
+
+
+def cmd_build(a):
+    vfs = StockVfs()
+    written = 0
+    for pl in PLANETS:
+        blob, results = patched_snapshot(vfs, pl)
+        for op, msg in results:
+            print("%s: %s" % (pl, msg))
+        if blob is None:
+            continue
+        if a.out_dir:
+            path = os.path.join(a.out_dir, "snapshot", pl + ".ws")
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as fh:
+                fh.write(blob)
+            print("%s: wrote %s (%d bytes)" % (pl, path, len(blob)))
+            written += 1
+    n, changed = write_lua_twin()
+    print("lua twin: %d op(s)%s" % (n, ", rewritten" if changed else ", unchanged"))
+    return 0
+
+
+def cmd_lua(a):
+    n, changed = write_lua_twin()
+    print("%s: %d op(s)%s" % (LUA_TWIN, n, ", rewritten" if changed else ", unchanged"))
+    return 0
+
+
+def cmd_show(a):
+    vfs = StockVfs()
+    snap = stock_snapshot(vfs, a.planet)
+    for op in load_edits(a.planet)["ops"]:
+        n = snap.find(int(op["oid"])) if op.get("oid") else None
+        was = ("%s at %.1f,%.1f heading %.0f" % (snap.name_of(n).rsplit("/", 1)[-1], n.x, n.y, n.heading)) if n else "(new)"
+        print("%-6s %-9s %s  ->  %s" % (op["op"], op.get("oid", "-"), was, json.dumps({k: v for k, v in op.items() if k not in ("op", "oid")})))
+    return 0
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    p = sub.add_parser("check"); p.set_defaults(fn=cmd_check)
+    p = sub.add_parser("build"); p.add_argument("--out-dir"); p.set_defaults(fn=cmd_build)
+    p = sub.add_parser("lua"); p.set_defaults(fn=cmd_lua)
+    p = sub.add_parser("show"); p.add_argument("planet"); p.set_defaults(fn=cmd_show)
+    a = ap.parse_args(argv)
+    return a.fn(a)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

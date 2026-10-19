@@ -150,7 +150,7 @@ end
 -- room name and the room coordinates in the order spawnMobile takes them (x, z = height, y).
 function FbLabRemote:whereLines(pPlayer)
 	local so = SceneObject(pPlayer)
-	local heading = math.deg(so:getDirectionAngle()) % 360
+	local heading = so:getDirectionAngle() % 360
 	local lines = {}
 	lines[#lines + 1] = string.format("planet %s   world x=%.1f y=%.1f z=%.2f   heading %.0f", so:getZoneName(), so:getWorldPositionX(), so:getWorldPositionY(), so:getWorldPositionZ(), heading)
 	local cell = so:getParentID()
@@ -263,7 +263,7 @@ function FbLabRemote:onNpcAction(pPlayer, pSui, eventIndex, args)
 		local so = SceneObject(pPlayer)
 		local e = FbLabTests.liveSpawns(oid)[1]
 		if e == nil then return end
-		local heading = math.deg(so:getDirectionAngle()) % 360
+		local heading = so:getDirectionAngle() % 360
 		-- same cell as me, my local coordinates, my facing
 		SceneObject(e.pObj):switchZone(so:getZoneName(), so:getPositionX(), so:getPositionZ(), so:getPositionY(), so:getParentID())
 		SceneObject(e.pObj):setDirectionalHeading(heading)
@@ -278,7 +278,7 @@ function FbLabRemote:onNpcAction(pPlayer, pSui, eventIndex, args)
 		local e = FbLabTests.liveSpawns(oid)[1]
 		if e == nil then return end
 		SceneObject(e.pObj):faceObject(pPlayer, true)
-		say(pPlayer, "[lab] " .. e.name .. " now faces you (dir " .. string.format("%.0f", math.deg(SceneObject(e.pObj):getDirectionAngle()) % 360) .. ")")
+		say(pPlayer, "[lab] " .. e.name .. " now faces you (dir " .. string.format("%.0f", SceneObject(e.pObj):getDirectionAngle() % 360) .. ")")
 	end
 end
 

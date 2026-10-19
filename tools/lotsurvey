@@ -74,8 +74,8 @@ def iff_strings(blob, minlen=5):
 
 # ---------------------------------------------------------------- world snapshot
 
-def read_snapshot(vfs, planet):
-    data = vfs.read("snapshot/%s.ws" % planet)
+def read_snapshot(vfs, planet, data=None):
+    data = data if data is not None else vfs.read("snapshot/%s.ws" % planet)
     nodes, names = [], []
 
     def form(pos):

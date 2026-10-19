@@ -139,8 +139,10 @@ void WeatherManagerImplementation::sendWeatherTo(CreatureObject* player) {
 	else
 		currentWeather = baseWeather;
 
-	if(currentWeather > 4)
-		currentWeather = 0;
+	// Final Boss: the local weather map adds to the base, so a forced extreme storm (base 4) used to wrap to clear
+	// wherever the map was above 0 (upstream reset anything over 4 to 0). An extreme storm is extreme everywhere.
+	if(currentWeather > WeatherManager::EXTREMESTORM)
+		currentWeather = WeatherManager::EXTREMESTORM;
 
 	if(hasDamagingSandstorms && currentWeather == WeatherManager::EXTREMESTORM) {
 		applySandstormDamage(player);

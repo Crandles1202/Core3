@@ -66,7 +66,7 @@ end
 
 -- ---------------------------------------------------------------- geometry
 
-local function headingOf(pObj) return math.deg(SceneObject(pObj):getDirectionAngle()) % 360 end
+local function headingOf(pObj) return SceneObject(pObj):getDirectionAngle() % 360 end
 
 -- The game data (snapshot, FbWorldData) names a building by its client template, object/…/shared_x.iff;
 -- the server spawns the matching server template, object/…/x.iff. Keep both forms at hand.
