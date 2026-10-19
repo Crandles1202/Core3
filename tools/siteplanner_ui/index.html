@@ -162,9 +162,11 @@ function showInfo(sel) {
   if (!sel) { refresh(); return; }
   const o = sel.obj, sh = sel.shell;
   const rooms = sh ? sh.rooms.map(r => r.name).join(", ") : "no interior data";
-  if (sel.kind === "stock") el.innerHTML = `<div><b>${o.short}</b> <small>(stock building)</small></div><small>${o.name}<br>at ${o.x}, ${o.y} · heading ${o.heading}${o.fp ? ` · ${(o.fp.x1 - o.fp.x0).toFixed(0)}×${(o.fp.y1 - o.fp.y0).toFixed(0)} m` : ""}<br>rooms: ${rooms}</small><div class="${sh ? "ok" : "warn"}">${sh ? "double-click (or Inside view) to see its layout" : "no portal layout: a solid shell"}</div>`;
-  else if (sel.kind === "site") el.innerHTML = `<div><b>site ${o.name}</b></div><small>${o.template}<br>at ${o.x}, ${o.y} · heading ${o.heading} · ${o.tenants.length} tenant(s)<br>rooms: ${rooms}</small><div class="ok">double-click to see inside · <a href="#" id="editSite">edit this site</a></div>`;
-  const a = document.getElementById("editSite"); if (a) a.onclick = ev => { ev.preventDefault(); $("sites").value = o.file; $("sites").onchange(); };
+  const openLink = sh ? `<button id="openLayout" class="primary">Open layout (Enter)</button>` : `<div class="warn">no portal layout: a solid shell, nothing to show inside</div>`;
+  if (sel.kind === "stock") el.innerHTML = `<div><b>${o.short}</b> <small>(stock building)</small></div><small>${o.name}<br>at ${o.x}, ${o.y} · heading ${o.heading}${o.fp ? ` · ${(o.fp.x1 - o.fp.x0).toFixed(0)}×${(o.fp.y1 - o.fp.y0).toFixed(0)} m` : ""}<br>rooms: ${rooms}</small>${openLink}`;
+  else if (sel.kind === "site") el.innerHTML = `<div><b>site ${o.name}</b></div><small>${o.template}<br>at ${o.x}, ${o.y} · heading ${o.heading} · ${o.tenants.length} tenant(s)<br>rooms: ${rooms}</small>${openLink}<button id="editSite">Edit this site</button>`;
+  const a = document.getElementById("editSite"); if (a) a.onclick = () => { $("sites").value = o.file; $("sites").onchange(); };
+  const b = document.getElementById("openLayout"); if (b) b.onclick = () => openInside(sel);
 }
 function lotReport(d) {
   if (!S.area) return null;
@@ -246,7 +248,13 @@ function drawMap() {
     const [sx, sy] = w2s(s.x, s.y); ctx.fillStyle = "#c58cff"; ctx.fillText("site " + s.name, sx + 3, sy - 3);
     for (const o of s.outside) drawPerson(o, w2s, p => p, "#c58cff", false, o.template);
   }
-  if (S.selB && S.selB.kind !== "draft") { const o = S.selB.obj; const fp = S.selB.kind === "stock" ? o.fp : (S.selB.shell && S.selB.shell.fp); if (fp) poly(rectPoly(o.x, o.y, o.heading, fp), w2s, null, "#ffffff"); }
+  if (S.selB && S.selB.kind !== "draft") {
+    const o = S.selB.obj; const fp = S.selB.kind === "stock" ? o.fp : (S.selB.shell && S.selB.shell.fp);
+    ctx.lineWidth = 3;
+    if (fp) poly(rectPoly(o.x, o.y, o.heading, fp), w2s, "rgba(76,195,255,0.25)", "#4cc3ff");
+    else { const [sx, sy] = w2s(o.x, o.y); ctx.beginPath(); ctx.arc(sx, sy, (o.radius || 20) * S.view.ppm, 0, Math.PI * 2); ctx.fillStyle = "rgba(76,195,255,0.18)"; ctx.fill(); ctx.strokeStyle = "#4cc3ff"; ctx.stroke(); }
+    ctx.lineWidth = 1;
+  }
   for (const n of S.live) { if (n.zone !== $("planet").value) continue; const [sx, sy] = w2s(n.x, n.y); ctx.fillStyle = "#f0b429"; ctx.beginPath(); ctx.arc(sx, sy, 3, 0, Math.PI * 2); ctx.fill(); ctx.fillText(n.name, sx + 5, sy + 4); }
   const d = S.draft;
   if (d) {
@@ -320,7 +328,7 @@ window.addEventListener("mouseup", e => {
   if (!wasClick) return;
   // our own double-click: two clicks within 450 ms and 8 px (the dblclick event is unreliable through WSLg)
   const now = performance.now();
-  if (S.lastClick && now - S.lastClick.t < 450 && Math.hypot(sx - S.lastClick.sx, sy - S.lastClick.sy) < 8) { S.lastClick = null; doubleClickAt(sx, sy); return; }
+  if (S.lastClick && now - S.lastClick.t < 650 && Math.hypot(sx - S.lastClick.sx, sy - S.lastClick.sy) < 10) { S.lastClick = null; doubleClickAt(sx, sy); return; }
   S.lastClick = { t: now, sx, sy };
   if (S.mode === "map") {
     // a single click selects the building under the cursor (details in the right panel)
@@ -370,6 +378,8 @@ function personAt(sx, sy) {
 }
 window.addEventListener("keydown", e => {
   if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
+  if (e.key === "Enter") { if (S.mode === "inside") { S.mode = "map"; S.inspect = null; draw(); } else if (S.selB) openInside(S.selB); else if (S.draft) openInside({ kind: "draft", obj: S.draft, shell: S.draft.shell }); e.preventDefault(); return; }
+  if (e.key === "Escape" && S.mode === "inside") { S.mode = "map"; S.inspect = null; draw(); return; }
   const d = S.draft; if (!d) return;
   const step = e.shiftKey ? 5 : 1;
   if (S.sel) {
