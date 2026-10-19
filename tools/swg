@@ -20,6 +20,7 @@
 #                                    test bot runs it when the account is at the 10-character cap
 #   swg tre build|install|status [--client DIR]
 #   swg site save <char> <name> | site list   # write an in-game site draft into tasks/sites/
+#   swg test planner                        # headless check of the site planner's data (in test all)
 #                                    tools/tre: pack tre-src/ into finalboss.tre and install it for the
 #                                    server (TrePath) and the client (DIR, remembered in ~/.swg-lab/).
 #                                    start/test unit do build+install themselves; start adds the
@@ -522,6 +523,14 @@ test_scenario() {
 	return $rc
 }
 
+# the site planner's data path (tools/siteplanner selftest): snapshot, shells, floor triangles, furniture,
+# site-file parsing — headless, ~20 s, no server needed
+test_planner() {
+	say "== planner: tools/siteplanner selftest"
+	if "$REPO/tools/siteplanner" selftest 2>&1 | sed 's/^/   /'; then say "== planner: PASS"; return 0; fi
+	say "== planner: FAIL"; return 1
+}
+
 cmd_test() {
 	local what=${1:-}; shift || true
 	mkdir -p "$LABDIR"; chmod 700 "$LABDIR"
@@ -530,17 +539,19 @@ cmd_test() {
 		lua)  test_lua "$@" ;;
 		bot)  test_bot "$@" ;;
 		scenario) test_scenario "$@" ;;
+		planner) test_planner ;;
 		all)
 			local rc=0
 			if is_running; then say "== all: stopping the running server for unit tests"; cmd_stop || exit 1; fi
 			test_unit || rc=1
+			test_planner || rc=1
 			cmd_start || exit 1
 			test_lua || rc=1
 			test_bot || rc=1
 			test_scenario all || rc=1
 			say "== all: $( (( rc == 0 )) && echo PASS || echo FAIL )  (server left running)"
 			return $rc ;;
-		*) die "usage: swg test unit|lua|bot|scenario <name>|all" ;;
+		*) die "usage: swg test unit|lua|bot|scenario <name>|planner|all" ;;
 	esac
 }
 

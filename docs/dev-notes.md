@@ -186,6 +186,20 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-19 — Phase 2.12c site planner (web UI).** Chuck: "a top view of the buildings that I can click
+  and drag around, view the layout of the building and show where vendors should go". `tools/siteplanner`
+  is a stdlib `ThreadingHTTPServer` serving `tools/siteplanner_ui/index.html` (vanilla JS canvas, no
+  dependencies) and JSON built on `tools/lotsurvey`: `/api/area` (snapshot buildings with footprints +
+  headings, props), `/api/shells` (147 shells: footprint, rooms with **floor triangles** — the `.flr` TRIS
+  chunk is 60-byte records, first three ints are vertex indices; count-prefixed only in version 0006 —
+  furniture boxes), `/api/sites` (regex parse of `tasks/sites/*.lua`), `/api/npcs` (fb_ mobiles with
+  `customName`), `/api/live` (shells out to `swg cmd … findNpc`), `POST /api/save` (writes the site file,
+  refuses to overwrite unless the page loaded that file). The page does the same lot check (footprint
+  rectangle vs neighbour circles, +3 m) and furniture clearance as the Lua builder, so the three tools
+  agree. First `/api/shells` costs ~15 s (every archive is read once); afterwards it is cached in the
+  process. `swg test planner` (`siteplanner selftest`) guards the data path inside `test all`. The page
+  is not browser-tested by the lab (no browser here): Chuck's walk-through is the test; `node --check`
+  passes on the script.
 - **2026-10-18/19 (night) — Phase 2.12b site builder + data-driven sites.** Chuck: "a tool that helps me
   translate where I'd like to put a building, what direction it faces, what vendors are in it and where".
   Pieces: (1) `tools/lotsurvey export` writes `custom_scripts/fb_world_data.lua` (239 stock footprints,

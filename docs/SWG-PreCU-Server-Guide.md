@@ -241,6 +241,21 @@ Your client is the `C:\EMU\swg - Copy\SWGEmu` folder (login cfg points at 127.0.
 admin unlock lives there). `C:\SWGDev\SWG_Game\swg - Copy\SWGEmu` is an earlier copy of the same
 install that was never launched (still points at nova.swgemu.com); it can be deleted (2.8 GB).
 
+### Reaching a WSL web tool from the Windows browser (mirrored networking)
+
+Mirrored networking puts a Hyper-V firewall between Windows and WSL. The game's UDP ports pass, but a
+new TCP service in WSL (the site planner on 8765, for example) shows "took too long to respond" in the
+browser until, once, in an **Administrator** PowerShell:
+
+```powershell
+Set-NetFirewallHyperVVMSetting -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -LoopbackEnabled True
+New-NetFirewallHyperVRule -Name 'FB-SitePlanner' -DisplayName 'Final Boss site planner (8765)' -Direction Inbound -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -Protocol TCP -LocalPorts 8765
+```
+
+The id is WSL's fixed VM-creator id. `-LoopbackEnabled True` (the word, not `$True`) is the general
+switch for Windows → WSL localhost; the rule is per port (add one per new tool). "Access is denied"
+means the window is not elevated. Done 2026-10-19.
+
 ### Launch the client
 
 1. Server up: `cd ~/workspace/Core3 && tools/swg status` (or `tools/swg start`, READY after ~50 s).
