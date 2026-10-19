@@ -4,7 +4,7 @@ FbSites:add {
 	label = "Mos Eisley Trade Hall",
 	planet = "tatooine",
 	template = "object/building/tatooine/guild_commerce_tatooine_style_01.iff",
-	x = 3617.1, y = -4980.6, heading = 305,
+	x = 3580.6, y = -4645.0, heading = 215,
 	door = { dx = 0, dy = 18 },
 	tenants = {
 		{ template = "fb_armory_droid", label = "FB-72, weapons", room = "mainroom", x = -3.70, z = 1.13, y = -6.00, dir = 11 },
