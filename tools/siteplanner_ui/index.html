@@ -26,7 +26,8 @@
   ul { list-style:none; padding:0; margin:0; } li { padding:4px 6px; border-bottom:1px solid var(--line); display:flex; gap:6px; align-items:center; }
   li.sel { background:#223042; } li span.grow { flex:1; } li button { width:auto; margin:0; padding:2px 6px; }
   textarea { height:220px; font:11px/1.3 ui-monospace, monospace; white-space:pre; }
-  #checkOut { font-size: 11px; margin-top: 6px; max-height: 220px; overflow: auto; white-space: pre-wrap; }
+  #worldOps { font-size: 11px; padding-left: 14px; margin: 4px 0; } #worldOps li { margin: 2px 0; }
+#checkOut { font-size: 11px; margin-top: 6px; max-height: 220px; overflow: auto; white-space: pre-wrap; }
 #status { color:var(--dim); margin-top:6px; min-height:1.2em; }
   small { color:var(--dim); }
 </style>
@@ -83,12 +84,23 @@
   <button id="teleport">Teleport me to the door</button>
   <button id="checks">Run lab checks on the draft</button>
   <div id="checkOut"></div>
+
+  <h2>World edits <small>(stock buildings)</small></h2>
+  <small>Click a stock building on the map, then:</small>
+  <button id="wMove">Move / rotate the selected building</button>
+  <button id="wDelete">Delete the selected building</button>
+  <label>Add a stock building <small>(type to filter, click to pick)</small></label><input id="catFilter" placeholder="filler">
+  <select id="catalog" size="6"></select>
+  <button id="wAdd">Place it at the map centre</button>
+  <button id="wApply" class="primary">Apply this world edit (saves to repo)</button>
+  <label>Edits on this planet</label><ul id="worldOps"></ul>
+  <small>World edits change the snapshot both sides read: they show in game after a server restart with the rebuilt archive and a client restart — tell Claude.</small>
   <div id="status"></div>
 </aside>
 
 <main>
   <canvas id="c"></canvas>
-  <div id="help">drag: pan · wheel: zoom · click a building: details · double-click any building: inside view · drag a purple site or your placed shell to move it · drag the entrance knob to rotate · Ctrl+Z undo<br>
+  <div id="help">drag: pan · wheel: zoom · click a building: details · double-click any building: inside view · drag a purple site or your placed shell to move it · drag the entrance knob to rotate · Ctrl+Z undo · <span style="color:#ff9f43">orange = world edit</span><br>
     <span style="color:#8a94a6">▲ stock building: real outline, rooms faint when zoomed (line = entrance side)</span> · <span style="color:#8a94a6">▲ solid shell: the game's radar outline</span> · <span style="color:#c58cff">■ our site</span> · <span style="color:#44d17a">■ your placed shell</span> (amber/red = lot problem) · <span style="color:#fff">□ selected</span> · <span style="color:#f0b429">● live NPC</span> · <span style="color:#7fb0d0">● stock NPC</span> · <span style="color:#4cc3ff">▣ terminal</span> · <span style="color:#58e0c8">▣ crafting station</span> · <span style="color:#ffd166">▣ vendor / ticket</span> (white edge = server-spawned with the building)</div>
   <div id="hud"></div>
 </main>
@@ -120,6 +132,7 @@ const S = {
   floor: null,                                     // inside view: selected floor level index (null = all)
   terrain: null,                                   // last terrain answer for the draft: { worst, centre, corners } | { unknown }
   hist: [], histAt: -1,                            // undo history: serialized drafts
+  world: { planet: null, ops: [] }, catalog: [],   // world edits of the loaded planet; every stock building template the world places
   selB: null,                                      // selected map building: { kind: "stock"|"site"|"draft", obj, shell }
   inspect: null,                                   // inside view of something that is not the draft: { shell, tenants, title }
 };
@@ -213,9 +226,10 @@ function showInfo(sel) {
   const usables = sel.kind === "stock" && o.objects ? o.objects.filter(x => ["terminal", "station", "vendor", "elevator"].includes(x.kind)) : [];
   const kids = ((sel.kind === "stock" && o.children) || (sh && sh.children) || []).filter(c => ["terminal", "station", "vendor", "elevator"].includes(c.kind) || /ticket/.test(c.template));
   const usableText = (usables.length || kids.length) ? `<br>usable: ${usables.concat(kids).map(u => u.short + " (" + u.room + ")").join(", ")}` : "";
-  if (sel.kind === "stock") el.innerHTML = `<div><b>${o.short}</b> <small>(stock building)</small></div><small>${o.name}<br>at ${o.x}, ${o.y} · heading ${o.heading}${o.fp ? ` · ${(o.fp.x1 - o.fp.x0).toFixed(0)}×${(o.fp.y1 - o.fp.y0).toFixed(0)} m` : ""}<br>rooms: ${rooms}${occupants}${usableText}</small>${openLink}`;
+  if (sel.kind === "stock") el.innerHTML = `<div><b>${o.short}</b> <small>(stock building${o.edit ? ", " + (o.edit === "add" ? "added" : "moved") + " by a world edit" : ""})</small></div><small>${o.name}<br>oid ${o.oid} · at ${o.x}, ${o.y} · heading ${o.heading}${o.fp ? ` · ${(o.fp.x1 - o.fp.x0).toFixed(0)}×${(o.fp.y1 - o.fp.y0).toFixed(0)} m` : ""}<br>rooms: ${rooms}${occupants}${usableText}</small>${openLink}<button id="editStock">Move / rotate it (world edit)</button>`;
   else if (sel.kind === "site") el.innerHTML = `<div><b>site ${o.name}</b></div><small>${o.template}<br>at ${o.x}, ${o.y} · heading ${o.heading} · ${o.tenants.length} tenant(s)<br>rooms: ${rooms}</small>${openLink}<button id="editSite">Edit this site</button>`;
   const a = document.getElementById("editSite"); if (a) a.onclick = () => loadSite(o, true);
+  const m = document.getElementById("editStock"); if (m) m.onclick = () => startWorldDraft("move", o);
   const b = document.getElementById("openLayout"); if (b) b.onclick = () => openInside(sel);
 }
 let _terrainTimer = null;
@@ -250,6 +264,7 @@ function lotReport(d) {
   const polyG = rectPoly(d.x, d.y, d.heading, fpG);   // our footprint plus the gap we want to keep
   const clashes = [];
   for (const b of S.area.buildings) {
+    if (d.kind === "world" && b.oid === d.oid) continue;   // the building being moved: not its own neighbour
     const dist = distPointPoly(b.x, b.y, poly);
     if (dist >= b.radius + GAP) continue;   // too far for any shape to touch
     const sh = b.fp ? shellFor(b.name) : null;
@@ -348,7 +363,8 @@ function drawMap() {
       } else if (b.fp) poly(rectPoly(b.x, b.y, b.heading, b.fp), w2s, "rgba(150,160,180,0.12)", "#5b6678");
       else if (b.box) poly(rectPoly(b.x, b.y, b.heading, b.box), w2s, "rgba(150,160,180,0.14)", "#5b6678");
       else { const [sx, sy] = w2s(b.x, b.y); ctx.beginPath(); ctx.arc(sx, sy, b.radius * S.view.ppm, 0, Math.PI * 2); ctx.fillStyle = "rgba(150,160,180,0.08)"; ctx.fill(); ctx.strokeStyle = "#444d5b"; ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]); }
-      const [sx, sy] = w2s(b.x, b.y); if (L("L_labels")) { ctx.fillStyle = "#8a94a6"; ctx.font = "10px system-ui"; ctx.fillText(b.short, sx + 3, sy - 3); }
+      const [sx, sy] = w2s(b.x, b.y); if (L("L_labels")) { ctx.fillStyle = b.edit ? "#ff9f43" : "#8a94a6"; ctx.font = "10px system-ui"; ctx.fillText(b.short + (b.edit ? (b.edit === "add" ? "  (added)" : "  (moved)") : ""), sx + 3, sy - 3); }
+      if (b.edit) { const shape = (sh && sh.exterior && sh.exterior.length) ? sh.exterior : (b.radar && b.radar.length ? b.radar : null); ctx.lineWidth = 2; if (shape) strokeOutline(shape, map, w2s, "#ff9f43"); else poly(rectPoly(b.x, b.y, b.heading, b.fp || b.box || { x0: -b.radius, x1: b.radius, y0: -b.radius, y1: b.radius }), w2s, null, "#ff9f43"); ctx.lineWidth = 1; }
       if (b.fp) { const [ex, ey] = toWorld(b.x, b.y, b.heading, 0, b.fp.y1); const [tx, ty] = w2s(ex, ey); ctx.strokeStyle = "#8a94a6"; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(tx, ty); ctx.stroke(); }
       // what the server spawns with this building (bank terminals, travel terminals, ticket collectors)
       for (const c of b.children || []) {
@@ -359,6 +375,14 @@ function drawMap() {
         if (usable && L("L_labels") && S.view.ppm > 2.2) { ctx.fillStyle = col; ctx.font = "9px system-ui"; ctx.fillText(c.short.replace(/^terminal_/, ""), cx + sz + 2, cy + 3); }
       }
     }
+  }
+  if (S.area) for (const g of S.area.deleted || []) {
+    // a stock building a world edit removed: its ghost, so the lot it freed stays readable
+    const mapG = p => toWorld(g.x, g.y, g.heading, p[0], p[1]);
+    ctx.setLineDash([5, 4]);
+    if (g.radar && g.radar.length) strokeOutline(g.radar, mapG, w2s, "#ff5c5c"); else { const [sx, sy] = w2s(g.x, g.y); ctx.beginPath(); ctx.arc(sx, sy, 8 * S.view.ppm, 0, Math.PI * 2); ctx.strokeStyle = "#ff5c5c"; ctx.stroke(); }
+    ctx.setLineDash([]);
+    const [gx, gy] = w2s(g.x, g.y); ctx.fillStyle = "#ff5c5c"; ctx.font = "10px system-ui"; ctx.fillText(g.short + "  (deleted)", gx + 3, gy - 3);
   }
   for (const s of S.sites) {
     const sh = S.shells.find(x => x.server === s.template || x.template === s.template);
@@ -393,7 +417,7 @@ function drawMap() {
     const [sx, sy] = w2s(d.x, d.y); const [ex, ey] = toWorld(d.x, d.y, d.heading, 0, d.shell.fp.y1 + 3); const [tx, ty] = w2s(ex, ey);
     ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(tx, ty); ctx.stroke(); ctx.lineWidth = 1;
     ctx.beginPath(); ctx.arc(tx, ty, 7, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill(); ctx.strokeStyle = "#fff"; ctx.stroke();
-    ctx.fillStyle = col; ctx.font = "12px system-ui"; ctx.fillText("entrance · drag the knob to rotate (Alt = fine)", tx + 10, ty + 4);
+    ctx.fillStyle = col; ctx.font = "12px system-ui"; ctx.fillText((d.kind === "world" ? (d.op === "add" ? "new stock building" : "moving oid " + d.oid) + " · front" : "entrance") + " · drag the knob to rotate (Alt = fine)", tx + 10, ty + 4);
     d.tenants.forEach((t, i) => drawPerson({ x: t.x, y: t.y, dir: (t.dir + d.heading) % 360 }, w2s, p => toWorld(d.x, d.y, d.heading, p[0], p[1]), "#44d17a", S.sel && S.sel.kind === "tenant" && S.sel.i === i, t.template.replace("fb_", "")));
     d.outside.forEach((o, i) => drawPerson(o, w2s, p => p, "#4cc3ff", S.sel && S.sel.kind === "outside" && S.sel.i === i, o.template.replace("fb_", "")));
   }
@@ -524,6 +548,7 @@ window.addEventListener("mouseup", e => {
   }
   if (S.inspect) { status("This building is read-only. Place your own shell to add tenants.", "warn"); return; }
   if (!S.draft) return;
+  if (S.draft.kind === "world") return;   // a stock building being moved or added: no tenants here
   const tool = $("tool").value, npc = S.npcs.find(n => n.template === $("npc").value);
   if (!npc) return;
   if (S.mode === "inside" && tool === "tenant") {
@@ -579,6 +604,7 @@ function personAt(sx, sy) {
 }
 window.addEventListener("keydown", e => {
   if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT" || e.target.tagName === "BUTTON" || e.target.tagName === "A") return;
+  if (e.key === "Enter" && S.draft && S.draft.kind === "world" && S.mode === "map" && !S.selB) { e.preventDefault(); return; }
   if (e.key === "Enter") { if (S.mode === "inside") { S.mode = "map"; S.inspect = null; S.floor = null; $("floorsBox").style.display = "none"; draw(); } else if (S.selB) openInside(S.selB); else if (S.draft) openInside({ kind: "draft", obj: S.draft, shell: S.draft.shell }); e.preventDefault(); return; }
   if (e.key === "Escape" && S.mode === "inside") { S.mode = "map"; S.inspect = null; S.floor = null; $("floorsBox").style.display = "none"; draw(); return; }
   if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z" || e.key === "y")) { undo(e.key === "y" || (e.key === "Z" && e.shiftKey) ? 1 : -1); e.preventDefault(); return; }
@@ -617,11 +643,11 @@ function siteLua(d) {
 // ---------------------------------------------------------------- panels
 function status(t, cls) { const s = $("status"); s.textContent = t; s.className = cls || ""; }
 // ---------------------------------------------------------------- undo and autosave
-function serializeDraft(d) { return d ? { server: d.shell.server, x: d.x, y: d.y, heading: d.heading, tenants: d.tenants.map(t => ({ ...t })), outside: d.outside.map(o => ({ ...o })), name: d.name, label: d.label } : null; }
+function serializeDraft(d) { return d ? { server: d.shell.server, x: d.x, y: d.y, heading: d.heading, tenants: d.tenants.map(t => ({ ...t })), outside: d.outside.map(o => ({ ...o })), name: d.name, label: d.label, kind: d.kind, op: d.op, oid: d.oid, template: d.template, z: d.z, shellData: d.kind === "world" ? d.shell : undefined } : null; }
 function restoreDraft(j) {
   if (!j) return null;
-  const sh = S.shells.find(x => x.server === j.server); if (!sh) return null;
-  return { shell: sh, x: j.x, y: j.y, heading: j.heading, tenants: j.tenants.map(t => ({ ...t })), outside: j.outside.map(o => ({ ...o })), name: j.name, label: j.label };
+  const sh = j.kind === "world" ? (j.shellData || null) : S.shells.find(x => x.server === j.server); if (!sh) return null;
+  return { shell: sh, x: j.x, y: j.y, heading: j.heading, tenants: (j.tenants || []).map(t => ({ ...t })), outside: (j.outside || []).map(o => ({ ...o })), name: j.name, label: j.label, kind: j.kind, op: j.op, oid: j.oid, template: j.template, z: j.z };
 }
 function dragging() { return !!(down && (down.building || down.rotate || down.person)); }
 function remember(d) {
@@ -675,6 +701,7 @@ async function loadArea() {
     S.view.ppm = Math.max(0.2, Math.min(80, Math.min(W(), H()) / (2.3 * (+$("radius").value || 250))));   // fit the area
     S.area = await api(`/api/area?planet=${encodeURIComponent($("planet").value)}&x=${$("cx").value}&y=${$("cy").value}&r=${$("radius").value}`);
     S.sites = await api("/api/sites");
+    S.world = await api("/api/world?planet=" + encodeURIComponent($("planet").value)); renderWorldOps();
     const sel = $("sites"); sel.innerHTML = "<option value=''>—</option>"; for (const s of S.sites) { const o = document.createElement("option"); o.value = s.file; o.textContent = `${s.name} (${s.planet})`; sel.appendChild(o); }
     fillShells(); status(`${S.area.buildings.length} buildings, ${S.area.props.length} props, ${S.sites.length} site(s).`, "ok"); refresh();
   } catch (e) { status("Load failed: " + e.message, "bad"); }
@@ -724,9 +751,11 @@ $("inside").onclick = () => {
   if (S.mode === "inside") { S.mode = "map"; S.inspect = null; S.floor = null; $("floorsBox").style.display = "none"; draw(); return; }
   if (S.selB) openInside(S.selB); else if (S.draft) openInside({ kind: "draft", obj: S.draft, shell: S.draft.shell }); else status("Click a building on the map first (or place one).", "warn");
 };
-$("export").onclick = () => { if (S.draft) { $("lua").value = siteLua(S.draft); status("Site file built below. Save writes it into the repo for Claude to test and commit.", "ok"); } };
+function isWorldDraft() { if (S.draft && S.draft.kind === "world") { status("This is a world edit of a stock building: use Apply this world edit in the World edits panel.", "warn"); return true; } return false; }
+$("export").onclick = () => { if (isWorldDraft()) return; if (S.draft) { $("lua").value = siteLua(S.draft); status("Site file built below. Save writes it into the repo for Claude to test and commit.", "ok"); } };
 $("download").onclick = () => { if (!S.draft) return; const name = ($("name").value || "new_site") + ".lua"; const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([$("lua").value], { type: "text/plain" })); a.download = name; a.click(); };
 $("save").onclick = async () => {
+  if (isWorldDraft()) return;
   if (!S.draft) { status("Nothing to save.", "warn"); return; }
   const name = ($("name").value || "").trim(); if (!name) { status("Give the site a name first.", "warn"); return; }
   if (S.lot && S.lot.verdict === "fail" && !confirm("The lot report says FAIL. Save anyway?")) return;
@@ -745,6 +774,7 @@ function showChecks(r, headline) {
 function charName() { const c = $("char").value.trim(); try { localStorage.setItem("fbPlannerChar", c); } catch (e) {} return c; }
 $("char").onchange = charName;
 $("preview").onclick = async () => {
+  if (isWorldDraft()) return;
   if (!S.draft) { status("Place or load a site first.", "warn"); return; }
   const name = ($("name").value || "").trim(); if (!name) { status("Give the site a name first (it becomes the preview's name).", "warn"); return; }
   $("preview").disabled = true; status("Spawning the preview in the game (10–20 s)…");
@@ -766,11 +796,68 @@ $("teleport").onclick = async () => {
   catch (e) { status("Teleport failed: " + e.message, "bad"); }
 };
 $("checks").onclick = async () => {
+  if (isWorldDraft()) return;
   if (!S.draft) { status("Place or load a site first.", "warn"); return; }
   status("Running the lab checks…");
   try { const r = await api("/api/check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lua: siteLua(S.draft), template: S.draft.shell.template }) }); showChecks(r, "Lab checks"); status(r.ok ? "Checks passed." : "Checks found problems (see the list).", r.ok ? "ok" : "bad"); }
   catch (e) { status("Checks failed to run: " + e.message, "bad"); }
 };
+// ---------------------------------------------------------------- world edits (2.12g: stock buildings)
+function pseudoShell(e) {
+  // a drawable stand-in for a stock building template that has no interior: the real shell when there is one
+  const real = shellFor(e.template || e.name); if (real) return real;
+  const r = e.radius || 10, fp = e.fp || e.box || { x0: -r, x1: r, y0: -r, y1: r };
+  return { template: e.template || e.name, server: (e.template || e.name).replace(/\/shared_([^/]+)$/, "/$1"), short: e.short, fp, radar: e.radar || [], exterior: [], rooms: [], furniture: [], children: [] };
+}
+function startWorldDraft(op, src) {
+  if (op === "move") S.draft = { kind: "world", op, oid: src.oid, template: src.name, shell: pseudoShell(src), x: src.x, y: src.y, heading: src.heading, z: src.z, tenants: [], outside: [], name: src.short };
+  else S.draft = { kind: "world", op: "add", template: src.template, shell: pseudoShell(src), x: S.view.cx, y: S.view.cy, heading: 0, tenants: [], outside: [], name: src.short };
+  S.sel = null; S.selB = null; S.loadedFile = null; S.mode = "map"; refresh();
+  status(op === "move" ? `Moving ${src.short}: drag it, drag the knob to rotate, then Apply this world edit.` : `New ${src.short} at the centre: drag it into place, then Apply this world edit.`, "ok");
+}
+function renderWorldOps() {
+  const ul = $("worldOps"); ul.innerHTML = "";
+  for (const op of S.world.ops) {
+    const li = document.createElement("li");
+    const was = op.was ? `${op.was.short} (was ${op.was.x}, ${op.was.y} h${op.was.heading})` : (op.template || "").split("/").pop().replace("shared_", "").replace(".iff", "");
+    li.innerHTML = `<span>${op.op} ${was}${op.op !== "delete" ? ` → ${(+op.x).toFixed(1)}, ${(+op.y).toFixed(1)} h${Math.round(op.heading || 0)}` : ""}</span>`;
+    const x = document.createElement("button"); x.textContent = "✕ undo this edit"; x.style.width = "auto"; x.style.padding = "1px 6px"; x.style.marginLeft = "6px";
+    x.onclick = () => saveWorld(S.world.ops.filter(o => o !== op));
+    li.appendChild(x); ul.appendChild(li);
+  }
+  if (!S.world.ops.length) ul.innerHTML = "<li><small>none</small></li>";
+}
+async function saveWorld(ops) {
+  status("Saving the world edits…");
+  try {
+    const r = await api("/api/world/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planet: $("planet").value, ops: ops.map(o => ({ op: o.op, oid: o.oid, template: o.template, x: o.x, y: o.y, z: o.z, heading: o.heading, note: o.note })) }) });
+    S.draft = null; S.sel = null; S.selB = null;
+    await loadArea();
+    status(r.message + (r.ok ? " — in game after a server restart with the rebuilt archive (and a client restart): tell Claude." : ""), r.ok ? "ok" : "bad");
+  } catch (e) { status("World edit failed: " + e.message, "bad"); }
+}
+$("wMove").onclick = () => { if (S.selB && S.selB.kind === "stock") startWorldDraft("move", S.selB.obj); else status("Click a stock building on the map first.", "warn"); };
+$("wDelete").onclick = () => {
+  if (!(S.selB && S.selB.kind === "stock")) { status("Click a stock building on the map first.", "warn"); return; }
+  const o = S.selB.obj; if (o.edit === "add") { status("That building is itself a world edit: undo its add in the list instead.", "warn"); return; }
+  if (!confirm(`Delete ${o.short} (oid ${o.oid}) from the world?`)) return;
+  saveWorld(S.world.ops.filter(x => !(x.oid === o.oid)).concat([{ op: "delete", oid: o.oid, note: o.short }]));
+};
+$("wApply").onclick = () => {
+  const d = S.draft; if (!d || d.kind !== "world") { status("Start with Move / rotate, or pick a building to add.", "warn"); return; }
+  if (S.lot && S.lot.verdict === "fail" && !confirm("The lot report says FAIL. Apply anyway?")) return;
+  const z = (S.terrain && !S.terrain.unknown) ? +S.terrain.centre.toFixed(2) : d.z;
+  if (z === undefined || z === null) status("Ground height unknown (game server not running): the building keeps the stock height; re-apply later with the server up.", "warn");
+  const op = { op: d.op, oid: d.oid, template: d.template, x: +d.x.toFixed(1), y: +d.y.toFixed(1), z, heading: Math.round(d.heading), note: d.name };
+  const rest = d.op === "move" ? S.world.ops.filter(o => o.oid !== d.oid) : S.world.ops.slice();
+  saveWorld(rest.concat([op]));
+};
+function fillCatalog() {
+  const f = $("catFilter").value.trim().toLowerCase(), sel = $("catalog"); sel.innerHTML = "";
+  for (const c of S.catalog) { if (f && !c.short.includes(f)) continue; const o = document.createElement("option"); o.value = c.template; o.textContent = `${c.short}  (${c.count}×${c.interior ? ", interior" : ""})`; sel.appendChild(o); if (sel.options.length >= 400) break; }
+}
+$("catFilter").oninput = fillCatalog;
+$("wAdd").onclick = () => { const c = S.catalog.find(x => x.template === $("catalog").value); if (!c) { status("Pick a building in the catalogue first.", "warn"); return; } startWorldDraft("add", c); };
 function loadSite(s, keepView) {
   const sh = S.shells.find(x => x.server === s.template || x.template === s.template); if (!sh) { status("Shell of that site is not in the catalogue: " + s.template, "bad"); return false; }
   S.draft = { shell: sh, x: s.x, y: s.y, heading: s.heading, tenants: s.tenants.map(t => ({ ...t })), outside: s.outside.map(o => ({ ...o })), name: s.name, label: s.label };
@@ -785,6 +872,7 @@ $("sites").onchange = () => { const s = S.sites.find(x => x.file === $("sites").
   try { S.shells = await api("/api/shells"); S.npcs = await api("/api/npcs"); const sel = $("npc"); for (const n of S.npcs) { const o = document.createElement("option"); o.value = n.template; o.textContent = `${n.label}  (${n.template})`; sel.appendChild(o); } if (sel.options.length) sel.selectedIndex = 0; }
   catch (e) { status("Could not load the catalogue: " + e.message, "bad"); }
   window.addEventListener("resize", resize); resize(); await loadPlaces();
+  api("/api/catalog").then(c => { S.catalog = c; fillCatalog(); }).catch(() => {});
   try { $("char").value = localStorage.getItem("fbPlannerChar") || ""; } catch (e) {}
   let saved = null; try { saved = JSON.parse(localStorage.getItem("fbPlannerDraft") || "null"); } catch (e) {}
   if (saved && saved.draft) { $("planet").value = saved.planet || $("planet").value; renderPlanets(); $("cx").value = Math.round(saved.draft.x); $("cy").value = Math.round(saved.draft.y); }
