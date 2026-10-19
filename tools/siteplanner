@@ -1,0 +1,378 @@
+#!/usr/bin/env python3
+"""
+siteplanner — the site planner: a local web page to lay out a Final Boss site from the top down
+(Phase 2.12c). Serves tools/siteplanner_ui/index.html plus JSON from the game data (through
+tools/lotsurvey / tools/tre) and reads and writes the site files the server builds at boot.
+
+  siteplanner serve [--browser] [--port 8765] [--host ::]   --browser opens it in a WSL (WSLg) Firefox
+  siteplanner selftest                                 the data the page needs, checked headlessly (swg test planner)
+
+Endpoints (all JSON):
+  GET  /api/area?planet=tatooine&x=3520&y=-4810&r=250   stock buildings (footprint, heading) and props around a point
+  GET  /api/shells                                       the shell catalogue: footprint, rooms (floor polygons), furniture
+  GET  /api/sites                                        the repo's site files, parsed
+  GET  /api/npcs                                         the Final Boss NPC templates with their display names
+  GET  /api/live?filter=…                                live NPC positions from the running server (tools/swg), best effort
+  POST /api/save  {name, lua, force}                     write screenplays/tasks/sites/<name>.lua
+"""
+import argparse, importlib.machinery, importlib.util, json, os, re, socket, struct, subprocess, sys, urllib.parse
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+
+class DualStackServer(ThreadingHTTPServer):
+    """Listens on every address, IPv6 and IPv4 alike ("::" dual-stack), so the Windows browser reaches it
+    through WSL's mirrored networking whether it resolves localhost to ::1 or 127.0.0.1."""
+    address_family = socket.AF_INET6
+
+    def server_bind(self):
+        try:
+            self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+        except (AttributeError, OSError):
+            pass
+        super().server_bind()
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(HERE)
+UI_DIR = os.path.join(HERE, "siteplanner_ui")
+SITES_DIR = os.path.join(REPO, "MMOCoreORB", "bin", "scripts", "screenplays", "tasks", "sites")
+MOBILE_DIR = os.path.join(REPO, "MMOCoreORB", "bin", "scripts", "mobile", "quest", "tatooine")
+
+_loader = importlib.machinery.SourceFileLoader("lotsurvey", os.path.join(HERE, "lotsurvey"))
+_spec = importlib.util.spec_from_loader("lotsurvey", _loader)
+ls = importlib.util.module_from_spec(_spec)
+_loader.exec_module(ls)
+
+
+# ---------------------------------------------------------------- floor polygons (triangles of the floor meshes)
+
+def floor_triangles(vfs, path):
+    """Triangles of a floor mesh as [[(x, z), (x, z), (x, z)], …] in building-local plan coordinates.
+    VERT then TRIS; versions 0003/0005 have no count prefixes (60-byte triangle records), 0006 does."""
+    d = vfs.read(path)
+    i = d.find(b"VERT")
+    size = struct.unpack(">I", d[i + 4:i + 8])[0]
+    p = i + 8
+    n0 = struct.unpack("<I", d[p:p + 4])[0] if size >= 4 else 0
+    if size >= 4 and 4 + 12 * n0 == size:
+        n, p = n0, p + 4
+    else:
+        n = size // 12
+    verts = [struct.unpack("<fff", d[p + 12 * k:p + 12 * k + 12]) for k in range(n)]
+    j = d.find(b"TRIS", i)
+    if j < 0:
+        return []
+    tsize = struct.unpack(">I", d[j + 4:j + 8])[0]
+    q = j + 8
+    t0 = struct.unpack("<I", d[q:q + 4])[0] if tsize >= 4 else 0
+    if tsize >= 4 and 4 + 60 * t0 == tsize:
+        tn, q = t0, q + 4
+    else:
+        tn = tsize // 60
+    tris = []
+    for k in range(tn):
+        a, b, c = struct.unpack("<iii", d[q + 60 * k:q + 60 * k + 12])
+        if 0 <= a < n and 0 <= b < n and 0 <= c < n:
+            tris.append([[round(verts[a][0], 2), round(verts[a][2], 2)], [round(verts[b][0], 2), round(verts[b][2], 2)], [round(verts[c][0], 2), round(verts[c][2], 2)]])
+    return tris
+
+
+# ---------------------------------------------------------------- data for the page
+
+class Data:
+    def __init__(self):
+        self.vfs = ls.Vfs()
+        self._shells = None
+        self._snapshots = {}
+
+    def snapshot(self, planet):
+        if planet not in self._snapshots:
+            self._snapshots[planet] = ls.read_snapshot(self.vfs, planet)
+        return self._snapshots[planet]
+
+    def area(self, planet, x, y, r):
+        buildings, props = [], []
+        for n in self.snapshot(planet):
+            if n["parent"] != 0:
+                continue
+            d = ((n["x"] - x) ** 2 + (n["y"] - y) ** 2) ** 0.5
+            name = n["name"]
+            if "object/building" in name:
+                if d > r + 120:
+                    continue
+                fp = ls.footprint(self.vfs, name)
+                entry = dict(oid=n["oid"], name=name, short=name.rsplit("/", 1)[-1].replace("shared_", "").replace(".iff", ""),
+                             x=round(n["x"], 1), y=round(n["y"], 1), z=round(n["z"], 2), heading=round(n["heading"]))
+                if fp:
+                    e = fp[1]
+                    entry["fp"] = dict(x0=round(e["x0"], 1), x1=round(e["x1"], 1), y0=round(e["z0"], 1), y1=round(e["z1"], 1))
+                    entry["radius"] = round(fp[0], 1)
+                else:
+                    entry["radius"] = ls.guessed_radius(name)
+                buildings.append(entry)
+            elif d <= r and "soundobject" not in name and "object/static" not in name:
+                props.append(dict(x=round(n["x"], 1), y=round(n["y"], 1), short=name.rsplit("/", 1)[-1].replace("shared_", "").replace(".iff", "")))
+        return dict(planet=planet, x=x, y=y, r=r, buildings=buildings, props=props[:600])
+
+    def shells(self):
+        if self._shells is not None:
+            return self._shells
+        out = []
+        for t in sorted(ls.read_snapshot_templates(self.vfs) if hasattr(ls, "read_snapshot_templates") else self._templates()):
+            fp = ls.footprint(self.vfs, t)
+            pob = ls.pob_of(self.vfs, t)
+            if fp is None or pob is None:
+                continue
+            rooms = []
+            for idx, room, path in ls.floors_of(self.vfs, pob):
+                if idx == 0:
+                    continue
+                e = ls.floor_extents(self.vfs, path)
+                try:
+                    tris = floor_triangles(self.vfs, path)
+                except (struct.error, ValueError):
+                    tris = []
+                rooms.append(dict(name=room, cell=idx, x0=round(e["x0"], 1), x1=round(e["x1"], 1), y0=round(e["z0"], 1), y1=round(e["z1"], 1),
+                                  z=round(e["h0"], 2), z1=round(e["h1"], 2), tris=tris))
+            if not rooms or len(rooms) > 40:
+                continue
+            ilf = ls.ilf_of(self.vfs, t)
+            furniture = []
+            try:
+                for pr, box in (ls.standing_props(self.vfs, ls.read_ilf(self.vfs, ilf)) if ilf else []):
+                    b = box if box is not None else (-0.5, 0, -0.5, 0.5, 0, 0.5)
+                    furniture.append(dict(room=pr["cell"], x=round(pr["x"], 2), y=round(pr["z"], 2), yaw=round(pr["yaw"]),
+                                          x0=round(b[0], 2), y0=round(b[2], 2), x1=round(b[3], 2), y1=round(b[5], 2),
+                                          name=pr["template"].rsplit("/", 1)[-1].replace("shared_", "").replace(".iff", "")))
+            except FileNotFoundError:
+                pass
+            e = fp[1]
+            out.append(dict(template=t, server=re.sub(r"/shared_([^/]+)$", r"/\1", t), short=t.rsplit("/", 1)[-1].replace("shared_", "").replace(".iff", ""),
+                            planet=(re.search(r"object/building/([a-z0-9_]+)/", t) or [None, ""])[1],
+                            fp=dict(x0=round(e["x0"], 1), x1=round(e["x1"], 1), y0=round(e["z0"], 1), y1=round(e["z1"], 1)), radius=round(fp[0], 1),
+                            rooms=rooms, furniture=furniture))
+        self._shells = out
+        return out
+
+    def _templates(self):
+        templates = set()
+        for planet in ("tatooine", "naboo", "corellia", "talus", "rori", "dantooine", "lok", "yavin4", "endor", "dathomir"):
+            try:
+                for n in self.snapshot(planet):
+                    if n["parent"] == 0 and "object/building" in n["name"]:
+                        templates.add(n["name"])
+            except FileNotFoundError:
+                pass
+        return templates
+
+
+# ---------------------------------------------------------------- site files
+
+SITE_RE = re.compile(r"FbSites:add\s*\{(.*)\}\s*$", re.S)
+
+
+def parse_site(text):
+    m = SITE_RE.search(text)
+    if not m:
+        return None
+    body = m.group(1)
+
+    def field(name, default=None, conv=str):
+        mm = re.search(r"\b%s\s*=\s*(\"[^\"]*\"|-?[\d.]+)" % name, body)
+        if not mm:
+            return default
+        v = mm.group(1).strip('"')
+        return conv(v)
+
+    site = dict(name=field("name"), label=field("label", ""), planet=field("planet"), template=field("template"),
+                x=field("x", 0, float), y=field("y", 0, float), heading=field("heading", 0, float), tenants=[], outside=[])
+    dm = re.search(r"door\s*=\s*\{\s*dx\s*=\s*(-?[\d.]+)\s*,\s*dy\s*=\s*(-?[\d.]+)", body)
+    site["door"] = dict(dx=float(dm.group(1)), dy=float(dm.group(2))) if dm else dict(dx=0, dy=0)
+    tm = re.search(r"tenants\s*=\s*\{(.*?)\n\s*\},", body, re.S)
+    for e in re.finditer(r"\{([^{}]*)\}", tm.group(1) if tm else ""):
+        row = e.group(1)
+        g = lambda k, conv=float, d=0: (lambda mm: conv(mm.group(1).strip('"')) if mm else d)(re.search(r"\b%s\s*=\s*(\"[^\"]*\"|-?[\d.]+)" % k, row))
+        site["tenants"].append(dict(template=g("template", str, ""), label=g("label", str, ""), room=g("room", str, ""), x=g("x"), z=g("z"), y=g("y"), dir=g("dir")))
+    om = re.search(r"outside\s*=\s*\{(.*?)\n\s*\},", body, re.S)
+    for e in re.finditer(r"\{([^{}]*)\}", om.group(1) if om else ""):
+        row = e.group(1)
+        g = lambda k, conv=float, d=0: (lambda mm: conv(mm.group(1).strip('"')) if mm else d)(re.search(r"\b%s\s*=\s*(\"[^\"]*\"|-?[\d.]+)" % k, row))
+        site["outside"].append(dict(template=g("template", str, ""), x=g("x"), z=g("z"), y=g("y"), dir=g("dir")))
+    return site
+
+
+def load_sites():
+    out = []
+    if not os.path.isdir(SITES_DIR):
+        return out
+    for f in sorted(os.listdir(SITES_DIR)):
+        if f.endswith(".lua"):
+            with open(os.path.join(SITES_DIR, f), encoding="utf-8") as fh:
+                site = parse_site(fh.read())
+            if site:
+                site["file"] = f
+                out.append(site)
+    return out
+
+
+def npc_templates():
+    out = []
+    if not os.path.isdir(MOBILE_DIR):
+        return out
+    for f in sorted(os.listdir(MOBILE_DIR)):
+        if f.startswith("fb_") and f.endswith(".lua"):
+            with open(os.path.join(MOBILE_DIR, f), encoding="utf-8", errors="replace") as fh:
+                m = re.search(r'customName\s*=\s*"([^"]*)"', fh.read())
+            out.append(dict(template=f[:-4], label=m.group(1) if m else f[:-4]))
+    return out
+
+
+def live_npcs(filt):
+    try:
+        res = subprocess.run([os.path.join(HERE, "swg"), "cmd", "runLuaFunction FbLabTests:findNpc:" + (filt or "fb_"), "--timeout", "8"],
+                             capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    out = []
+    for line in res.stdout.splitlines():
+        if line.startswith("INFO npc "):
+            kv = dict(re.findall(r"(\w+)=(\S+)", line))
+            try:
+                out.append(dict(oid=int(kv["oid"]), name=kv["name"].replace("_", " "), template=kv["template"], zone=kv["zone"], x=float(kv["x"]), y=float(kv["y"]), cell=int(kv["cell"])))
+            except (KeyError, ValueError):
+                pass
+    return out
+
+
+def save_site(name, lua, force):
+    name = re.sub(r"[^a-z0-9_]", "_", name.lower())
+    if not name:
+        return False, "empty name"
+    if not re.search(r"^FbSites:add \{", lua, re.M):
+        return False, "not a site file"
+    os.makedirs(SITES_DIR, exist_ok=True)
+    out = os.path.join(SITES_DIR, name + ".lua")
+    if os.path.exists(out) and not force:
+        return False, "%s exists (save again with overwrite)" % out
+    lua = re.sub(r'name = "[^"]*"', 'name = "%s"' % name, lua, count=1)
+    with open(out, "w", encoding="utf-8") as fh:
+        fh.write(lua if lua.endswith("\n") else lua + "\n")
+    return True, out
+
+
+# ---------------------------------------------------------------- http
+
+class Handler(BaseHTTPRequestHandler):
+    data = None
+
+    def log_message(self, fmt, *args):
+        sys.stderr.write("siteplanner: " + (fmt % args) + "\n")
+
+    def _json(self, obj, code=200):
+        body = json.dumps(obj).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        u = urllib.parse.urlparse(self.path)
+        q = dict(urllib.parse.parse_qsl(u.query))
+        try:
+            if u.path in ("/", "/index.html"):
+                with open(os.path.join(UI_DIR, "index.html"), "rb") as fh:
+                    body = fh.read()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            elif u.path == "/api/area":
+                self._json(self.data.area(q.get("planet", "tatooine"), float(q.get("x", 3520)), float(q.get("y", -4810)), float(q.get("r", 250))))
+            elif u.path == "/api/shells":
+                self._json(self.data.shells())
+            elif u.path == "/api/sites":
+                self._json(load_sites())
+            elif u.path == "/api/npcs":
+                self._json(npc_templates())
+            elif u.path == "/api/live":
+                self._json(live_npcs(q.get("filter", "")))
+            else:
+                self._json(dict(error="not found"), 404)
+        except FileNotFoundError as e:
+            self._json(dict(error="no data: %s" % e), 404)
+
+    def do_POST(self):
+        u = urllib.parse.urlparse(self.path)
+        n = int(self.headers.get("Content-Length", "0"))
+        body = json.loads(self.rfile.read(n) or b"{}")
+        if u.path == "/api/save":
+            ok, msg = save_site(body.get("name", ""), body.get("lua", ""), bool(body.get("force")))
+            self._json(dict(ok=ok, message=msg), 200 if ok else 400)
+        else:
+            self._json(dict(error="not found"), 404)
+
+
+def open_browser(port):
+    """A browser inside WSL (WSLg shows it on the Windows desktop): Windows -> WSL TCP loopback is blocked
+    on this machine (see docs/dev-notes.md 2026-10-19), so the page is opened from the Linux side."""
+    for exe in ("firefox-esr", "firefox", "chromium", "xdg-open"):
+        path = subprocess.run(["which", exe], capture_output=True, text=True).stdout.strip()
+        if path:
+            env = dict(os.environ, DISPLAY=os.environ.get("DISPLAY", ":0"), WAYLAND_DISPLAY=os.environ.get("WAYLAND_DISPLAY", "wayland-0"), MOZ_ENABLE_WAYLAND="1")
+            subprocess.Popen([path, "http://127.0.0.1:%d/" % port], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            print("site planner: opened in %s (WSLg)" % exe)
+            return True
+    print("site planner: no browser in WSL (sudo apt-get install firefox-esr) — open http://localhost:%d/ yourself" % port)
+    return False
+
+
+def cmd_serve(a):
+    Handler.data = Data()
+    if a.browser:
+        open_browser(a.port)
+    try:
+        srv = DualStackServer((a.host, a.port), Handler) if ":" in a.host else ThreadingHTTPServer((a.host, a.port), Handler)
+    except OSError as e:
+        if e.errno == 98:
+            print("site planner: port %d is already in use — it is probably running already: open http://localhost:%d/  (or: tmux attach -t planner; another port: --port N)" % (a.port, a.port))
+            return 0
+        raise
+    print("site planner: http://localhost:%d/  (Ctrl+C to stop; sites are written to %s)" % (a.port, SITES_DIR))
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
+def cmd_selftest(a):
+    d = Data()
+    area = d.area("tatooine", 3520, -4810, 250)
+    assert any(b["short"] == "starport_tatooine" and b.get("radius", 0) > 80 for b in area["buildings"]), "starport footprint missing"
+    shells = d.shells()
+    hall = next((s for s in shells if s["short"] == "guild_commerce_tatooine_style_01"), None)
+    assert hall and len(hall["rooms"]) == 9, "commerce hall rooms"
+    assert any(r["name"] == "meetingd" and len(r["tris"]) >= 4 for r in hall["rooms"]), "floor triangles"
+    assert any(f["room"] == "meetingb" and "dining" in f["name"] for f in hall["furniture"]), "dining table"
+    sites = load_sites()
+    th = next((s for s in sites if s["name"] == "mos_eisley_trade_hall"), None)
+    assert th and len(th["tenants"]) == 11 and th["heading"] == 180, "trade hall site parse"
+    npcs = npc_templates()
+    assert any(n["template"] == "fb_parts_dealer" for n in npcs), "npc list"
+    assert os.path.exists(os.path.join(UI_DIR, "index.html")), "ui page"
+    print("siteplanner selftest: %d buildings in the Mos Eisley area, %d shells, %d sites, %d npc templates — ok" % (len(area["buildings"]), len(shells), len(sites), len(npcs)))
+    return 0
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(prog="siteplanner", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    p = sub.add_parser("serve"); p.add_argument("--browser", action="store_true", help="also open the page in a WSL browser (WSLg)"); p.add_argument("--port", type=int, default=8765); p.add_argument("--host", default="::", help="bind address; default :: = every address, IPv4 and IPv6"); p.set_defaults(fn=cmd_serve)
+    p = sub.add_parser("selftest"); p.set_defaults(fn=cmd_selftest)
+    a = ap.parse_args(argv)
+    return a.fn(a)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
