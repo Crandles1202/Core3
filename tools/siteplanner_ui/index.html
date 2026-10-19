@@ -108,6 +108,7 @@ const S = {
   sel: null,                                       // { kind: "tenant"|"outside", i }
   drag: null, lot: null, loadedFile: null,
   floor: null,                                     // inside view: selected floor level index (null = all)
+  terrain: null,                                   // last terrain answer for the draft: { worst, centre, corners } | { unknown }
   selB: null,                                      // selected map building: { kind: "stock"|"site"|"draft", obj, shell }
   inspect: null,                                   // inside view of something that is not the draft: { shell, tenants, title }
 };
@@ -206,13 +207,51 @@ function showInfo(sel) {
   const a = document.getElementById("editSite"); if (a) a.onclick = () => loadSite(o, true);
   const b = document.getElementById("openLayout"); if (b) b.onclick = () => openInside(sel);
 }
+let _terrainTimer = null;
+function requestTerrain(d) {
+  // corners + centre of the footprint; debounced so dragging does not flood the server
+  clearTimeout(_terrainTimer);
+  _terrainTimer = setTimeout(async () => {
+    const fp = d.shell.fp, pts = [[fp.x0, fp.y0], [fp.x1, fp.y0], [fp.x1, fp.y1], [fp.x0, fp.y1], [0, 0], [0, fp.y1]].map(p => toWorld(d.x, d.y, d.heading, p[0], p[1]));
+    try {
+      const hs = await api("/api/terrain?planet=" + encodeURIComponent($("planet").value) + "&pts=" + encodeURIComponent(pts.map(p => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(";")));
+      if (!hs.length) { S.terrain = { unknown: true }; }
+      else { const zc = hs[4].z; const worst = Math.max(...hs.slice(0, 4).map(h => Math.abs(h.z - zc))); S.terrain = { worst, centre: zc, corners: hs.slice(0, 4).map(h => h.z - zc) }; }
+    } catch (e) { S.terrain = { unknown: true }; }
+    if (S.draft === d) refresh(false);
+  }, 350);
+}
+function segsIntersect(a, b, c, d) {
+  const o = (p, q, r) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
+  return o(a, b, c) !== o(a, b, d) && o(c, d, a) !== o(c, d, b);
+}
+function polysTouch(rect, tri) {
+  // convex rectangle vs triangle: a vertex inside the other, or crossing edges
+  for (const p of tri) if (distPointPoly(p[0], p[1], rect) === 0) return true;
+  for (const p of rect) if (pointInTri(p, tri[0], tri[1], tri[2])) return true;
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) if (segsIntersect(rect[i], rect[(i + 1) % 4], tri[j], tri[(j + 1) % 3])) return true;
+  return false;
+}
 function lotReport(d) {
   if (!S.area) return null;
   const poly = rectPoly(d.x, d.y, d.heading, d.shell.fp);
+  const fpG = { x0: d.shell.fp.x0 - GAP, x1: d.shell.fp.x1 + GAP, y0: d.shell.fp.y0 - GAP, y1: d.shell.fp.y1 + GAP };
+  const polyG = rectPoly(d.x, d.y, d.heading, fpG);   // our footprint plus the gap we want to keep
   const clashes = [];
   for (const b of S.area.buildings) {
     const dist = distPointPoly(b.x, b.y, poly);
-    if (dist < b.radius + GAP) clashes.push(`${b.short} at ${b.x},${b.y} (radius ${b.radius}, ${dist.toFixed(1)} m)`);
+    if (dist >= b.radius + GAP) continue;   // too far for any shape to touch
+    const sh = b.fp ? shellFor(b.name) : null;
+    const tris = sh && sh.exterior && sh.exterior.length ? sh.exterior : (b.radar && b.radar.length ? b.radar : null);
+    if (tris) {
+      // the neighbour's real silhouette, in world coordinates
+      const map = p => toWorld(b.x, b.y, b.heading, p[0], p[1]);
+      const hit = tris.some(t => polysTouch(polyG, t.map(map)));
+      if (hit) clashes.push(`${b.short} at ${b.x},${b.y} (its outline is within ${GAP} m of the footprint)`);
+    } else if (b.box) {
+      const nb = rectPoly(b.x, b.y, b.heading, b.box);
+      if ([nb.slice(0, 3), [nb[0], nb[2], nb[3]]].some(t => polysTouch(polyG, t))) clashes.push(`${b.short} at ${b.x},${b.y} (box within ${GAP} m)`);
+    } else clashes.push(`${b.short} at ${b.x},${b.y} (radius ${b.radius}, ${dist.toFixed(1)} m)`);
   }
   for (const s of S.sites) {
     if (S.loadedFile === s.file) continue;
@@ -222,7 +261,10 @@ function lotReport(d) {
     if (dist < r + GAP) clashes.push(`site ${s.name} (${dist.toFixed(1)} m)`);
   }
   const propHits = S.area.props.filter(p => distPointPoly(p.x, p.y, poly) < 1).length;
-  return { verdict: clashes.length ? "fail" : (propHits ? "warn" : "ok"), clashes, propHits };
+  let verdict = clashes.length ? "fail" : (propHits ? "warn" : "ok");
+  const t = S.terrain;
+  if (t && !t.unknown) { if (t.worst > 3) verdict = "fail"; else if (t.worst > 1.5 && verdict === "ok") verdict = "warn"; }
+  return { verdict, clashes, propHits, terrain: t };
 }
 
 // ---------------------------------------------------------------- drawing
@@ -543,7 +585,7 @@ window.addEventListener("keydown", e => {
 // ---------------------------------------------------------------- site file
 function siteLua(d) {
   const name = ($("name").value || d.name || "new_site").toLowerCase().replace(/[^a-z0-9_]/g, "_");
-  const label = name.replace(/_/g, " ").replace(/^./, c => c.toUpperCase());
+  const label = (d.label && d.name === name) ? d.label : name.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());   // a loaded site keeps its label; otherwise Title Case the name
   const L = [];
   L.push(`-- Site ${name}: ${d.shell.short} on ${$("planet").value}, laid out with tools/siteplanner.`);
   L.push("FbSites:add {");
@@ -561,14 +603,17 @@ function siteLua(d) {
 
 // ---------------------------------------------------------------- panels
 function status(t, cls) { const s = $("status"); s.textContent = t; s.className = cls || ""; }
-function refresh() {
+function refresh(askTerrain) {
   const d = S.draft;
-  if (d) { $("heading").value = d.heading; $("bx").value = d.x; $("by").value = d.y; S.lot = lotReport(d); }
-  else S.lot = null;
+  if (d) { $("heading").value = d.heading; $("bx").value = d.x; $("by").value = d.y; if (askTerrain !== false) requestTerrain(d); S.lot = lotReport(d); }
+  else { S.lot = null; S.terrain = null; }
   const lotEl = $("lot");
   if (S.lot) {
     const cls = S.lot.verdict === "ok" ? "ok" : S.lot.verdict === "warn" ? "warn" : "bad";
-    lotEl.innerHTML = `<div class="${cls}"><b>${S.lot.verdict.toUpperCase()}</b></div>` + (S.lot.clashes.length ? "<ul>" + S.lot.clashes.map(c => `<li class="bad">${c}</li>`).join("") + "</ul>" : "<div class='ok'>clear of every stock footprint (+3 m)</div>") + (S.lot.propHits ? `<div class="warn">${S.lot.propHits} prop(s) inside the footprint (terminals, lamps…)</div>` : "");
+    const t = S.lot.terrain;
+    const terrainText = !t ? "<div><small>terrain: asking the server…</small></div>" : t.unknown ? "<div class='warn'>terrain: unknown (game server not running)</div>"
+      : `<div class="${t.worst > 3 ? "bad" : t.worst > 1.5 ? "warn" : "ok"}">terrain: corners ${t.corners.map(c => (c >= 0 ? "+" : "") + c.toFixed(1)).join(" / ")} m from the centre height (worst ${t.worst.toFixed(1)} m${t.worst > 3 ? ", the building would hang over the slope" : t.worst > 1.5 ? ", a step at one corner" : ""})</div>`;
+    lotEl.innerHTML = `<div class="${cls}"><b>${S.lot.verdict.toUpperCase()}</b></div>` + (S.lot.clashes.length ? "<ul>" + S.lot.clashes.map(c => `<li class="bad">${c}</li>`).join("") + "</ul>" : "<div class='ok'>clear of every stock footprint (+3 m)</div>") + (S.lot.propHits ? `<div class="warn">${S.lot.propHits} prop(s) inside the footprint (terminals, lamps…)</div>` : "") + terrainText;
   }
   const ul = $("people"); ul.innerHTML = "";
   if (d) {
@@ -659,7 +704,7 @@ $("save").onclick = async () => {
 $("clear").onclick = () => { S.draft = null; S.sel = null; S.loadedFile = null; S.mode = "map"; refresh(); };
 function loadSite(s, keepView) {
   const sh = S.shells.find(x => x.server === s.template || x.template === s.template); if (!sh) { status("Shell of that site is not in the catalogue: " + s.template, "bad"); return false; }
-  S.draft = { shell: sh, x: s.x, y: s.y, heading: s.heading, tenants: s.tenants.map(t => ({ ...t })), outside: s.outside.map(o => ({ ...o })), name: s.name };
+  S.draft = { shell: sh, x: s.x, y: s.y, heading: s.heading, tenants: s.tenants.map(t => ({ ...t })), outside: s.outside.map(o => ({ ...o })), name: s.name, label: s.label };
   S.loadedFile = s.file; $("name").value = s.name; $("ddx").value = s.door.dx; $("ddy").value = s.door.dy; $("planet").value = s.planet; renderPlanets();
   if (!keepView) { S.view.cx = s.x; S.view.cy = s.y; }
   S.mode = "map"; S.selB = null; refresh(); status(`Editing ${s.name}: drag it, drag the entrance arrow tip to rotate, r / R / arrows too. Save overwrites its file.`, "ok");

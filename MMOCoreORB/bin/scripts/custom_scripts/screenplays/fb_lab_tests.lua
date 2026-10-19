@@ -2009,3 +2009,17 @@ function FbLabTests:siteDiscard(charName)
 	return "ok"
 end
 
+-- terrainHeights:<planet>:<x1>,<y1>;<x2>,<y2>;… → one INFO line per point with the terrain height (the site
+-- planner's lot report asks for a building's corners this way; "x,y|x,y" also accepted)
+function FbLabTests:terrainHeights(planet, pts)
+	local n = 0
+	for pair in tostring(pts or ""):gmatch("[^;|]+") do
+		local x, y = pair:match("^%s*(-?[%d%.]+)%s*,%s*(-?[%d%.]+)%s*$")
+		if x ~= nil then
+			n = n + 1
+			print(string.format("INFO terrain x=%s y=%s z=%.2f", x, y, getTerrainHeightAt(planet, tonumber(x), tonumber(y))))
+		end
+	end
+	return tostring(n)
+end
+

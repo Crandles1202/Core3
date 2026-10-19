@@ -14,6 +14,7 @@ Endpoints (all JSON):
   GET  /api/sites                                        the repo's site files, parsed
   GET  /api/npcs                                         the Final Boss NPC templates with their display names
   GET  /api/live?filter=…                                live NPC positions from the running server (tools/swg), best effort
+  GET  /api/terrain?planet=&pts=x,y;x,y                   terrain heights from the running server (the lot report's slope check)
   POST /api/save  {name, lua, force}                     write screenplays/tasks/sites/<name>.lua
 """
 import argparse, importlib.machinery, importlib.util, json, os, re, socket, struct, subprocess, sys, urllib.parse
@@ -455,6 +456,23 @@ def live_npcs(filt):
     return out
 
 
+def terrain_heights(planet, pts):
+    """Terrain heights for 'x,y;x,y;…' from the running server (FbLabTests:terrainHeights); [] when it is not up."""
+    if not re.fullmatch(r"[-\d.,;| ]{1,2000}", pts or ""):
+        return []
+    try:
+        res = subprocess.run([os.path.join(HERE, "swg"), "cmd", "runLuaFunction FbLabTests:terrainHeights:%s:%s" % (planet, pts.replace(";", "|")), "--timeout", "8"],
+                             capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    out = []
+    for line in res.stdout.splitlines():
+        m = re.match(r"INFO terrain x=(-?[\d.]+) y=(-?[\d.]+) z=(-?[\d.]+)", line)
+        if m:
+            out.append(dict(x=float(m.group(1)), y=float(m.group(2)), z=float(m.group(3))))
+    return out
+
+
 def save_site(name, lua, force):
     name = re.sub(r"[^a-z0-9_]", "_", name.lower())
     if not name:
@@ -518,6 +536,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(load_sites())
             elif u.path == "/api/npcs":
                 self._json(npc_templates())
+            elif u.path == "/api/terrain":
+                self._json(terrain_heights(q.get("planet", "tatooine"), q.get("pts", "")))
             elif u.path == "/api/live":
                 self._json(live_npcs(q.get("filter", "")))
             else:
