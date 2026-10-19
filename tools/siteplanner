@@ -123,6 +123,44 @@ def child_objects(server_template, cache={}):
     return out
 
 
+# ---------------------------------------------------------------- radar shapes (the game's own top-down outline)
+
+def radar_shape(vfs, template, cache={}):
+    """The RADR shape of a building's appearance: a flat indexed triangle list (IDTL: VERT floats, INDX int32
+    triples) the client draws on the radar. [[(x, z), …] × 3, …] in building-local plan coordinates, or []."""
+    if template in cache:
+        return cache[template]
+    tris, seen, queue = [], set(), [template.encode()]
+    while queue and not tris:
+        f = queue.pop(0)
+        if f in seen:
+            continue
+        seen.add(f)
+        try:
+            d = vfs.read(f.decode())
+        except FileNotFoundError:
+            continue
+        i = d.find(b"RADR")
+        if i >= 0:
+            j = d.find(b"IDTL", i)
+            k = d.find(b"VERT", j) if j >= 0 else -1
+            m = d.find(b"INDX", j) if j >= 0 else -1
+            if k >= 0 and m >= 0:
+                vsize = struct.unpack(">I", d[k + 4:k + 8])[0]
+                verts = [struct.unpack("<fff", d[k + 8 + 12 * q:k + 8 + 12 * q + 12]) for q in range(vsize // 12)]
+                isize = struct.unpack(">I", d[m + 4:m + 8])[0]
+                idx = struct.unpack("<%di" % (isize // 4), d[m + 8:m + 8 + (isize // 4) * 4])
+                for q in range(0, len(idx) - 2, 3):
+                    a, b, c = idx[q:q + 3]
+                    if 0 <= a < len(verts) and 0 <= b < len(verts) and 0 <= c < len(verts):
+                        tris.append([[round(verts[a][0], 2), round(verts[a][2], 2)], [round(verts[b][0], 2), round(verts[b][2], 2)], [round(verts[c][0], 2), round(verts[c][2], 2)]])
+        queue.extend(ls.APPEARANCE_RE.findall(d))
+        for ref in re.findall(rb"appearance/[\x21-\x7e]+?\.pob", d):
+            queue.append(ref)
+    cache[template] = tris
+    return tris
+
+
 # ---------------------------------------------------------------- data for the page
 
 class Data:
@@ -181,6 +219,7 @@ class Data:
                     if box is not None:
                         entry["box"] = dict(x0=round(box[0], 1), y0=round(box[2], 1), x1=round(box[3], 1), y1=round(box[5], 1))
                         entry["radius"] = round(max(abs(box[0]), abs(box[3]), abs(box[2]), abs(box[5])), 1)
+                entry["radar"] = radar_shape(self.vfs, name)
                 sh = shells.get(name)
                 rooms_by_index = {rm["cell"]: rm["name"] for rm in sh["rooms"]} if sh else {}
                 entry["npcs"] = [dict(template=sp["template"], x=round(sp["x"], 2), z=round(sp["z"], 2), y=round(sp["y"], 2), heading=round(sp["heading"]),
@@ -235,7 +274,7 @@ class Data:
             server = re.sub(r"/shared_([^/]+)$", r"/\1", t)
             rooms_by_index = {rm["cell"]: rm["name"] for rm in rooms}
             children = [dict(c, room=rooms_by_index.get(c["cell"], "outside" if c["cell"] <= 0 else "cell%d" % c["cell"])) for c in child_objects(server)]
-            out.append(dict(template=t, server=server, children=children, exterior=exterior, short=t.rsplit("/", 1)[-1].replace("shared_", "").replace(".iff", ""),
+            out.append(dict(template=t, server=server, children=children, exterior=exterior, radar=radar_shape(self.vfs, t), short=t.rsplit("/", 1)[-1].replace("shared_", "").replace(".iff", ""),
                             planet=(re.search(r"object/building/([a-z0-9_]+)/", t) or [None, ""])[1],
                             fp=dict(x0=round(e["x0"], 1), x1=round(e["x1"], 1), y0=round(e["z0"], 1), y1=round(e["z1"], 1)), radius=round(fp[0], 1),
                             rooms=rooms, furniture=furniture))
@@ -546,6 +585,7 @@ def cmd_selftest(a):
     assert any(r["name"] == "meetingd" and len(r["tris"]) >= 4 for r in hall["rooms"]), "floor triangles"
     assert len(hall["exterior"]) >= 10, "exterior outline triangles"
     assert any(b.get("box") for b in area["buildings"] if "filler" in b["short"]), "filler boxes"
+    assert any(len(b.get("radar", [])) >= 20 for b in area["buildings"] if "filler_building_block" in b["short"]), "filler radar shape"
     assert any(f["room"] == "meetingb" and "dining" in f["name"] for f in hall["furniture"]), "dining table"
     sites = load_sites()
     th = next((s for s in sites if s["name"] == "mos_eisley_trade_hall"), None)
