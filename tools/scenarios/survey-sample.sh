@@ -37,7 +37,7 @@ sleep 3
 SURVEY=$("$SEAT" survey "$NAME" "$TOOL" "$RNAME" 2>&1); RC=$?
 check_eq "survey_ok" "$RC" "0" "$(grep -o '"error": "[^"]*"' <<<"$SURVEY" | head -n1)"
 PCT=$(sed -n 's/.*"bestPct": \([0-9.]*\).*/\1/p' <<<"$SURVEY" | head -n1)
-check "survey_sees_the_resource" "$(awk -v p="${PCT:-0}" 'BEGIN{print (p > 10) ? 1 : 0}')" "best grid point ${PCT:-?}% (oracle said $(awk -v d="${SD:-0}" 'BEGIN{printf "%.0f", d*100}')%)"
+check "survey_sees_the_resource" "$(awk -v p="${PCT:-0}" 'BEGIN{print (p > 0.10) ? 1 : 0}')" "best grid point $(awk -v p="${PCT:-0}" 'BEGIN{printf "%.0f", p*100}')% (oracle said $(awk -v d="${SD:-0}" 'BEGIN{printf "%.0f", d*100}')%)"
 
 # --- sample ------------------------------------------------------------------------------------------
 SAMPLE=$("$SEAT" sample "$NAME" "$RNAME" 1 2>&1); RC=$?

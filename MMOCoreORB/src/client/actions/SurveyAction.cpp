@@ -173,7 +173,8 @@ public:
 		bestX = core.getVar<float>("Survey/bestX", 0);
 		bestY = core.getVar<float>("Survey/bestY", 0);
 		bestPct = core.getVar<float>("Survey/bestPct", -1);
-		info() << "surveyed " << resource << ": best " << bestPct << "% at " << bestX << ", " << bestY;
+		// the server sends the concentration as a 0..1 fraction (the client shows it as a percentage)
+		info() << "surveyed " << resource << ": best " << (bestPct * 100.f) << "% at " << bestX << ", " << bestY;
 		result.setSuccess();
 	}
 

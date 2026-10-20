@@ -73,7 +73,7 @@ void ZonePacketHandler::handleMessage(Message* pack) {
 			core->setVar("Survey/bestX", bestX);
 			core->setVar("Survey/bestY", bestY);
 			core->setVar("Survey/bestPct", bestPct);
-			info(true) << "SurveyMessage " << count << " point(s), best " << bestPct << "% at " << bestX << ", " << bestY;
+			info(true) << "SurveyMessage " << count << " point(s), best " << (bestPct * 100.f) << "% at " << bestX << ", " << bestY;   // pct is a 0..1 fraction
 			break;
 		}
 		}
@@ -377,7 +377,11 @@ void ZonePacketHandler::handleChatSystemMessage(Message* pack) {
 	try {
 		int paramSize = pack->parseInt();
 		if (message.isEmpty() && paramSize > 0) {
+			// ChatParameter::insertToMessage: short (odd-length pad flag), byte TYPE_STRINGID, int STRINGID,
+			// then StringIdChatParameter::addToPacketStream (file, int, id, TU/TT/TO, DI, DF, byte)
+			pack->parseShort();
 			pack->parseByte();
+			pack->parseInt();
 			String file, id;
 			pack->parseAscii(file);
 			pack->parseInt();
