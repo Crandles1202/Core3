@@ -964,6 +964,15 @@ function FbLabTests:skill(charName, skillName)
 	return tostring(CreatureObject(pPlayer):hasSkill(skillName))
 end
 
+-- hasSkill:<char>:<skillName> → whether a loaded character has that skill box (7.2: citizen status)
+function FbLabTests:hasSkill(charName, skillName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then print("ERROR hasSkill: no loaded player " .. tostring(charName)); return "none" end
+	local has = CreatureObject(pPlayer):hasSkill(skillName)
+	print("INFO hasSkill char=" .. charName .. " skill=" .. skillName .. " has=" .. tostring(has))
+	return tostring(has)
+end
+
 -- skillmod:<char>:<modName> → current value of a skill mod (e.g. healing_ability)
 function FbLabTests:skillmod(charName, modName)
 	local pPlayer = loadedPlayer(charName)

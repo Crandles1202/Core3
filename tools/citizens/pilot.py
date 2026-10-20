@@ -71,7 +71,9 @@ class CitizenFiles:
     def persona(self):
         if not os.path.exists(self.persona_path):
             sys.exit(f"pilot: no persona at {self.persona_path} (draft it from docs/Citizens-Cast.md)")
-        return open(self.persona_path).read()
+        text = open(self.persona_path).read()
+        # the "## Character" section (account, race, skill boxes) is for tools/citizens/citizen, not for the model
+        return re.sub(r"^## Character\s*\n.*?(?=^## |\Z)", "", text, flags=re.S | re.M).rstrip() + "\n"
 
     def plan(self):
         if not os.path.exists(self.plan_path):

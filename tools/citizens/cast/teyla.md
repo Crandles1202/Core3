@@ -25,3 +25,14 @@ the "## Life plan" section at the end seeds ~/.swg-lab/citizens/teyla/plan.md on
 - [ ] Clear the krayt graveyard with a group
 - [ ] Fight on the Rebel side of every Bestine invasion she is online for
 - [ ] Keep a composite armour set from Dorran and a T21 from Ren; replaces them when condition drops below half
+
+## Character
+
+- account: teyla-vosk
+- name: Teyla Vosk
+- race: object/creature/player/human_female.iff
+- profession: combat_marksman
+- veteran: combat_marksman_master, combat_rifleman_accuracy_02, combat_rifleman_speed_02, outdoors_scout_novice
+- faction: rebel
+- home: tatooine 3520 -4800
+- sells:

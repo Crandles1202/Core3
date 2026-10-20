@@ -1,0 +1,214 @@
+#!/usr/bin/env python3
+"""
+tools/citizens/citizen — the citizens' accounts, characters and directory (Phase 7.2, Final Boss).
+
+  citizen new <citizen> [--no-veteran]      account (swg account create <account> 0, password in ~/.swg-lab) if
+                                            missing, the character through the bot client, then the veteran start:
+                                            each skill box of the persona's "## Character" section awarded by the lab
+                                            while the character is online (a seat is started and stopped for it)
+  citizen status <citizen>                  account, character, skills on the server (needs the server up)
+  citizen list                              every persona in tools/citizens/cast/ and whether it has a character
+  citizen directory                         prints tools/citizens/directory.json (what pilots use to find each other)
+
+The persona file (tools/citizens/cast/<citizen>.md) must carry a "## Character" section of key: value lines:
+  account: teyla-vosk                  the login (one account per citizen: a real player, not an NPC)
+  name: Teyla Vosk                     first and last name (checked against the name filter at creation)
+  race: object/creature/player/human_female.iff
+  profession: combat_marksman          the starting profession template
+  veteran: combat_marksman_master, combat_rifleman_accuracy_02, ...   skill boxes to award (prerequisites follow)
+  faction: rebel | imperial | neutral
+  home: tatooine 3520 -4800            planet and a spot the citizen calls home
+  sells: composite armour, ...         optional, for the directory
+
+Rules: a non-admin account may create one character per hour (a declined name does not count), and the galaxy
+name filter refuses canon names. Creating an account is a DB write outside the lab accounts: Chuck's call.
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+TOOLS = os.path.dirname(HERE)
+CAST_DIR = os.path.join(HERE, "cast")
+DIRECTORY = os.path.join(HERE, "directory.json")
+LABDIR = os.environ.get("SWG_LABDIR", os.path.expanduser("~/.swg-lab"))
+SWG = os.path.join(TOOLS, "swg")
+SEAT = os.path.join(TOOLS, "seat")
+
+
+def die(msg, code=1):
+    print(f"citizen: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def bench_bin():
+    out = subprocess.run(["git", "-C", TOOLS, "worktree", "list", "--porcelain"], capture_output=True, text=True).stdout
+    first = out.splitlines()[0] if out else ""
+    root = first[len("worktree "):] if first.startswith("worktree ") else os.path.dirname(TOOLS)
+    return os.path.join(root, "MMOCoreORB", "bin")
+
+
+def character_section(citizen):
+    path = os.path.join(CAST_DIR, f"{citizen}.md")
+    if not os.path.exists(path):
+        die(f"no persona at {path}")
+    text = open(path).read()
+    m = re.search(r"^## Character\s*\n(.*?)(?=^## |\Z)", text, re.S | re.M)
+    if not m:
+        die(f"{path} has no '## Character' section (see citizen --help)")
+    fields = {}
+    for line in m.group(1).splitlines():
+        line = line.strip().lstrip("-* ")
+        if ":" in line and not line.startswith("#"):
+            k, v = line.split(":", 1)
+            fields[k.strip().lower()] = v.strip()
+    for key in ("account", "name", "race", "profession"):
+        if key not in fields:
+            die(f"{path}: '## Character' lacks '{key}:'")
+    fields["first"] = fields["name"].split()[0]
+    fields["veteran_list"] = [s.strip() for s in fields.get("veteran", "").split(",") if s.strip()]
+    return fields
+
+
+def mysql(query):
+    return subprocess.run(["mysql", "-N", "swgemu", "-e", query], capture_output=True, text=True).stdout.strip()
+
+
+def account_exists(user):
+    return mysql(f"SELECT account_id FROM accounts WHERE username='{user}'") != ""
+
+
+def character_exists(first):
+    return mysql(f"SELECT character_oid FROM characters WHERE firstname='{first}'") != ""
+
+
+def lab(fn, timeout=15):
+    out = subprocess.run([SWG, "cmd", f"runLuaFunction FbLabTests:{fn}", "--timeout", str(timeout)], capture_output=True, text=True).stdout
+    return [l for l in out.splitlines() if l.startswith(("INFO", "ERROR"))]
+
+
+def cmd_new(args):
+    citizen = args[0]
+    veteran = "--no-veteran" not in args
+    f = character_section(citizen)
+    account, first = f["account"], f["first"]
+
+    # 1. the account
+    passfile = os.path.join(LABDIR, f"{account}.pass")
+    if account_exists(account):
+        if not os.path.exists(passfile):
+            die(f"account {account} exists but {passfile} is missing: swg account create {account} 0 --reset")
+        print(f"account {account}: exists")
+    else:
+        r = subprocess.run([SWG, "account", "create", account, "0"], capture_output=True, text=True)
+        if r.returncode != 0:
+            die(f"swg account create failed: {r.stdout}{r.stderr}")
+        print(f"account {account}: created (password in {passfile})")
+
+    # 2. the character
+    if character_exists(first):
+        print(f"character {f['name']}: exists")
+    else:
+        client = os.path.join(bench_bin(), "core3client")
+        env = dict(os.environ, CORE3_CLIENT_PASSWORD=open(passfile).read().strip())
+        log = os.path.join(LABDIR, f"citizen-{citizen}.create.log")
+        argv = [client, "--username", account, "--login-host", os.environ.get("SWG_LOGIN_HOST", "127.0.0.1"),
+                "--login-port", os.environ.get("SWG_LOGIN_PORT", "44453"),
+                "--create-character", "--char-name", f["name"], "--char-race", f["race"], "--char-profession", f["profession"],
+                "--wait", "3"]
+        if f.get("hair"):
+            argv += ["--char-hair-template", f["hair"]]
+        with open(log, "wb") as lf:
+            r = subprocess.run(argv, cwd=bench_bin(), env=env, stdout=lf, stderr=subprocess.STDOUT)
+        if r.returncode != 0 or not character_exists(first):
+            tail = subprocess.run(["tail", "-n", "15", log], capture_output=True, text=True).stdout
+            die(f"character creation failed (exit {r.returncode}); log {log}:\n{tail}")
+        print(f"character {f['name']}: created")
+
+    # 3. the veteran start, with the character online on a seat
+    awarded = []
+    if veteran and f["veteran_list"]:
+        seat = f"citizen-{citizen}"
+        r = subprocess.run([SEAT, "start", account, first, "--name", seat, "--timeout", "600"], capture_output=True, text=True)
+        if r.returncode != 0:
+            die(f"seat for the veteran start failed: {r.stdout}{r.stderr}")
+        try:
+            for box in f["veteran_list"]:
+                lines = lab(f"skill:{first}:{box}")
+                ok = any("has=true" in l for l in lines)
+                print(f"  {box}: {'awarded' if ok else 'FAILED ' + ' '.join(lines)}")
+                if ok:
+                    awarded.append(box)
+        finally:
+            subprocess.run([SEAT, "stop", seat], capture_output=True, text=True)
+
+    # 4. remember it
+    state_dir = os.path.join(LABDIR, "citizens", citizen)
+    os.makedirs(state_dir, exist_ok=True)
+    state_path = os.path.join(state_dir, "state.json")
+    try:
+        state = json.load(open(state_path))
+    except (OSError, ValueError):
+        state = {}
+    state.update({"account": account, "character": first, "name": f["name"], "created": time.strftime("%Y-%m-%d %H:%M:%S")})
+    json.dump(state, open(state_path, "w"), indent=1)
+
+    directory = load_directory()
+    directory[citizen] = {
+        "name": f["name"], "character": first, "account": account,
+        "profession": f.get("profession", ""), "faction": f.get("faction", "neutral"),
+        "home": f.get("home", ""), "sells": f.get("sells", ""), "veteran": awarded,
+    }
+    json.dump(directory, open(DIRECTORY, "w"), indent=1, sort_keys=True)
+    print(f"directory: {citizen} recorded in {DIRECTORY}")
+
+
+def load_directory():
+    try:
+        return json.load(open(DIRECTORY))
+    except (OSError, ValueError):
+        return {}
+
+
+def cmd_status(args):
+    citizen = args[0]
+    f = character_section(citizen)
+    print(f"account {f['account']}: {'exists' if account_exists(f['account']) else 'missing'}")
+    print(f"character {f['name']}: {'exists' if character_exists(f['first']) else 'missing'}")
+    for box in f["veteran_list"]:
+        lines = lab(f"hasSkill:{f['first']}:{box}", 8)
+        print(f"  {box}: {' '.join(lines) if lines else 'no answer (server down or character never loaded)'}")
+
+
+def cmd_list(args):
+    directory = load_directory()
+    for fn in sorted(os.listdir(CAST_DIR)):
+        if not fn.endswith(".md"):
+            continue
+        citizen = fn[:-3]
+        entry = directory.get(citizen)
+        print(f"{citizen:<12} {'character ' + entry['character'] + ' on ' + entry['account'] if entry else 'no character yet'}")
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help"):
+        print(__doc__)
+        return 0
+    cmd, args = argv[0], argv[1:]
+    if cmd == "new" and args:
+        return cmd_new(args)
+    if cmd == "status" and args:
+        return cmd_status(args)
+    if cmd == "list":
+        return cmd_list(args)
+    if cmd == "directory":
+        print(json.dumps(load_directory(), indent=1, sort_keys=True))
+        return 0
+    die(f"unknown command '{cmd}' (new, status, list, directory)")
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
