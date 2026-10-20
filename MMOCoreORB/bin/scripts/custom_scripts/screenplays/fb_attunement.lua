@@ -616,9 +616,31 @@ function FbAttunement:sweepVisitor(pNpc)
 	local so = SceneObject(pNpc)
 	if so:getZoneName() == "" then return end
 	local oid = so:getObjectID()
+	printf("FbAttunement: sweeping visitor %d\n", oid)
 	so:destroyObjectFromWorld(true)
 	so:destroyObjectFromDatabase()
 	if FbLabTests ~= nil and FbLabTests.registryRemove ~= nil then FbLabTests.registryRemove(oid) end
+end
+
+-- The Encounter base schedules its despawn with the player as the key, so a timer left by an earlier visit
+-- (the Old Man's first, ten minutes) would despawn a later visitor of the same task. Every visit therefore
+-- carries a generation number, and a despawn event that names another generation is ignored.
+function FbAttunement.visitTaskStart(task, pPlayer)
+	if not task:isPlayerInPositionForEncounter(pPlayer) or CreatureObject(pPlayer):isDead() then return false end
+	if not task:createEncounter(pPlayer) then return false end
+	local gen = getRandomNumber(1000000)
+	writeData(SceneObject(pPlayer):getObjectID() .. ":fbVisitGen:" .. task.taskName, gen)
+	createEvent(task.encounterDespawnTime, task.taskName, "handleDespawnEvent", pPlayer, tostring(gen))
+	return true
+end
+function FbAttunement.visitGen(task, pPlayer) return readData(SceneObject(pPlayer):getObjectID() .. ":fbVisitGen:" .. task.taskName) end
+function FbAttunement.visitHandleDespawn(task, pPlayer, args)
+	if pPlayer == nil then return end
+	if args ~= nil and args ~= "" and tonumber(args) ~= FbAttunement.visitGen(task, pPlayer) then return end   -- an older visit's timer
+	Encounter.handleDespawnEvent(task, pPlayer)
+end
+function FbAttunement.visitScheduleDespawn(task, pPlayer, ms)
+	if pPlayer ~= nil then createEvent(ms or 10000, task.taskName, "handleDespawnEvent", pPlayer, tostring(FbAttunement.visitGen(task, pPlayer))) end
 end
 
 -- ---------------------------------------------------------------- the robed spirit (25 / 50 / 75)
@@ -635,6 +657,8 @@ FbForceGhostVisit = Encounter:new {
 
 -- the Encounter base reads a missing isEncounterFinished as "already finished" and never spawns: say so explicitly
 function FbForceGhostVisit:isEncounterFinished(pPlayer) return false end
+function FbForceGhostVisit:taskStart(pPlayer) return FbAttunement.visitTaskStart(self, pPlayer) end
+function FbForceGhostVisit:handleDespawnEvent(pPlayer, args) FbAttunement.visitHandleDespawn(self, pPlayer, args) end
 function FbForceGhostVisit:onEncounterSpawned(pPlayer, spawned) recordVisitor(pPlayer, spawned, "fb_force_ghost", self.encounterDespawnTime) end
 
 function FbForceGhostVisit:onEncounterInRange(pPlayer, spawned)
@@ -690,6 +714,8 @@ FbOldManVisit = Encounter:new {
 }
 
 function FbOldManVisit:isEncounterFinished(pPlayer) return false end
+function FbOldManVisit:taskStart(pPlayer) return FbAttunement.visitTaskStart(self, pPlayer) end
+function FbOldManVisit:handleDespawnEvent(pPlayer, args) FbAttunement.visitHandleDespawn(self, pPlayer, args) end
 function FbOldManVisit:onEncounterSpawned(pPlayer, spawned) recordVisitor(pPlayer, spawned, "fb_old_man", self.encounterDespawnTime) end
 
 function FbOldManVisit:onEncounterInRange(pPlayer, spawned)
@@ -705,9 +731,7 @@ function FbOldManVisit:belongsTo(pPlayer, pNpc)
 	return SpawnMobiles.isFromSpawn(pPlayer, self.taskName, pNpc)
 end
 
-function FbOldManVisit:scheduleDespawn(pPlayer)
-	if pPlayer ~= nil then createEvent(10 * 1000, self.taskName, "handleDespawnEvent", pPlayer, "") end
-end
+function FbOldManVisit:scheduleDespawn(pPlayer) FbAttunement.visitScheduleDespawn(self, pPlayer, 10 * 1000) end
 
 function FbOldManVisit:doDespawn(pPlayer) despawnVisitors(self, pPlayer) end
 
@@ -728,6 +752,8 @@ FbOldManReturn = Encounter:new {
 }
 
 function FbOldManReturn:isEncounterFinished(pPlayer) return false end
+function FbOldManReturn:taskStart(pPlayer) return FbAttunement.visitTaskStart(self, pPlayer) end
+function FbOldManReturn:handleDespawnEvent(pPlayer, args) FbAttunement.visitHandleDespawn(self, pPlayer, args) end
 function FbOldManReturn:onEncounterSpawned(pPlayer, spawned) recordVisitor(pPlayer, spawned, "fb_old_man", self.encounterDespawnTime) end
 function FbOldManReturn:onEncounterInRange(pPlayer, spawned)
 	if pPlayer == nil or spawned == nil or spawned[1] == nil then return end
@@ -740,9 +766,7 @@ function FbOldManReturn:belongsTo(pPlayer, pNpc)
 	if pPlayer == nil or pNpc == nil then return false end
 	return SpawnMobiles.isFromSpawn(pPlayer, self.taskName, pNpc)
 end
-function FbOldManReturn:scheduleDespawn(pPlayer)
-	if pPlayer ~= nil then createEvent(10 * 1000, self.taskName, "handleDespawnEvent", pPlayer, "") end
-end
+function FbOldManReturn:scheduleDespawn(pPlayer) FbAttunement.visitScheduleDespawn(self, pPlayer, 10 * 1000) end
 function FbOldManReturn:doDespawn(pPlayer) despawnVisitors(self, pPlayer) end
 function FbOldManReturn:onEncounterDespawned(pPlayer)
 	if pPlayer ~= nil then removeQuestStatus("FbAttunement.visit." .. SceneObject(pPlayer):getObjectID()) end
@@ -762,6 +786,8 @@ FbShadowAmbush = Encounter:new {
 }
 
 function FbShadowAmbush:isEncounterFinished(pPlayer) return false end
+function FbShadowAmbush:taskStart(pPlayer) return FbAttunement.visitTaskStart(self, pPlayer) end
+function FbShadowAmbush:handleDespawnEvent(pPlayer, args) FbAttunement.visitHandleDespawn(self, pPlayer, args) end
 
 function FbShadowAmbush:onEncounterSpawned(pPlayer, spawned)
 	if pPlayer == nil or spawned == nil then return end
@@ -808,7 +834,7 @@ function FbShadowAmbush:onShadowDown(pMob, pKiller)
 	if left <= 0 and readData(oid .. ":fbAmbushPlayerDown") ~= 1 then
 		FbAttunement:setFlag(pPlayer, "ambushDone", os.time())
 		FbAttunement:grant(pPlayer, "deeds", "survive:ambush", 3, "shadow_survived")
-		createEvent(15000, self.taskName, "handleDespawnEvent", pPlayer, "")
+		FbAttunement.visitScheduleDespawn(self, pPlayer, 15000)
 	end
 	return 1
 end
@@ -818,7 +844,7 @@ function FbShadowAmbush:onPlayerDown(pPlayer)
 	-- they got you this time: no deed, and they will try again later
 	writeData(SceneObject(pPlayer):getObjectID() .. ":fbAmbushPlayerDown", 1)
 	FbAttunement:setFlag(pPlayer, "ambushDue", os.time() + 1800)
-	createEvent(20000, self.taskName, "handleDespawnEvent", pPlayer, "")
+	FbAttunement.visitScheduleDespawn(self, pPlayer, 20000)
 	return 1
 end
 

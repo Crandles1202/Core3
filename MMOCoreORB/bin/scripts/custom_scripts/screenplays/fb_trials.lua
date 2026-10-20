@@ -266,6 +266,7 @@ local function record(pPlayer, spawned, template, lifetime)
 end
 
 local function unfollowAndDespawn(task, pPlayer)
+	printf("FbTrials: despawning %s for %s\n", task.taskName, CreatureObject(pPlayer):getFirstName())
 	local spawned = SpawnMobiles.getSpawnedMobiles(pPlayer, task.taskName)
 	local oids = {}
 	if spawned ~= nil then
@@ -295,6 +296,8 @@ FbTrialPrisoner = Encounter:new {
 	inRangeValue = 12,
 }
 function FbTrialPrisoner:isEncounterFinished(pPlayer) return false end
+function FbTrialPrisoner:taskStart(pPlayer) return FbAttunement.visitTaskStart(self, pPlayer) end
+function FbTrialPrisoner:handleDespawnEvent(pPlayer, args) FbAttunement.visitHandleDespawn(self, pPlayer, args) end
 function FbTrialPrisoner:onEncounterSpawned(pPlayer, spawned)
 	record(pPlayer, spawned, "fb_prisoner", self.encounterDespawnTime)
 	for _, pNpc in ipairs(spawned or {}) do if pNpc ~= nil then AiAgent(pNpc):addObjectFlag(AI_STATIC) end end
@@ -305,11 +308,11 @@ end
 function FbTrialPrisoner:belongsTo(pPlayer, pNpc) return pPlayer ~= nil and pNpc ~= nil and SpawnMobiles.isFromSpawn(pPlayer, self.taskName, pNpc) end
 function FbTrialPrisoner:runOff(pPlayer, pNpc)
 	if pNpc ~= nil then AiAgent(pNpc):removeObjectFlag(AI_STATIC); AiAgent(pNpc):setAITemplate(); AiAgent(pNpc):runAway(pPlayer, 80) end
-	createEvent(12000, self.taskName, "handleDespawnEvent", pPlayer, "")
+	FbAttunement.visitScheduleDespawn(self, pPlayer, 12000)
 end
 function FbTrialPrisoner:execute(pPlayer, pNpc)
 	if pNpc ~= nil then CreatureObject(pNpc):inflictDamage(pPlayer, 0, 1000000, 1) end
-	createEvent(8000, self.taskName, "handleDespawnEvent", pPlayer, "")
+	FbAttunement.visitScheduleDespawn(self, pPlayer, 8000)
 end
 function FbTrialPrisoner:doDespawn(pPlayer) unfollowAndDespawn(self, pPlayer) end
 
@@ -322,6 +325,8 @@ FbTrialSpirit = Encounter:new {
 	inRangeValue = 9,
 }
 function FbTrialSpirit:isEncounterFinished(pPlayer) return false end
+function FbTrialSpirit:taskStart(pPlayer) return FbAttunement.visitTaskStart(self, pPlayer) end
+function FbTrialSpirit:handleDespawnEvent(pPlayer, args) FbAttunement.visitHandleDespawn(self, pPlayer, args) end
 function FbTrialSpirit:onEncounterSpawned(pPlayer, spawned) record(pPlayer, spawned, "fb_trial_spirit", self.encounterDespawnTime) end
 -- having reached the player, a visitor stands where it is: a follower whose target logs out wanders off
 local function standStill(spawned)
@@ -341,7 +346,7 @@ function FbTrialSpirit:onEncounterInRange(pPlayer, spawned)
 	if spawned ~= nil and spawned[1] ~= nil then standStill(spawned); spatialChat(spawned[1], "@fb_force:spirit_greeting") end
 end
 function FbTrialSpirit:belongsTo(pPlayer, pNpc) return pPlayer ~= nil and pNpc ~= nil and SpawnMobiles.isFromSpawn(pPlayer, self.taskName, pNpc) end
-function FbTrialSpirit:scheduleDespawn(pPlayer) if pPlayer ~= nil then createEvent(8000, self.taskName, "handleDespawnEvent", pPlayer, "") end end
+function FbTrialSpirit:scheduleDespawn(pPlayer) FbAttunement.visitScheduleDespawn(self, pPlayer, 8000) end
 function FbTrialSpirit:doDespawn(pPlayer) unfollowAndDespawn(self, pPlayer) end
 
 -- the duel: one Sith Shadow matched to the character's level
@@ -356,8 +361,9 @@ function FbTrialDuel:isEncounterFinished(pPlayer) return false end
 function FbTrialDuel:taskStart(pPlayer)
 	local lvl = CreatureObject(pPlayer):getLevel()
 	self.spawnObjectList[1].template = lvl >= 65 and "sith_shadow_mercenary" or lvl >= 45 and "sith_shadow_thug" or lvl >= 25 and "sith_shadow_pirate" or "sith_shadow_outlaw"
-	return Encounter.taskStart(self, pPlayer)
+	return FbAttunement.visitTaskStart(self, pPlayer)
 end
+function FbTrialDuel:handleDespawnEvent(pPlayer, args) FbAttunement.visitHandleDespawn(self, pPlayer, args) end
 function FbTrialDuel:onEncounterSpawned(pPlayer, spawned)
 	record(pPlayer, spawned, self.spawnObjectList[1].template, self.encounterDespawnTime)
 	for _, pMob in ipairs(spawned or {}) do if pMob ~= nil then createObserver(OBJECTDESTRUCTION, self.taskName, "onDuelDown", pMob) end end
@@ -381,11 +387,11 @@ function FbTrialDuel:onDuelDown(pMob, pKiller)
 	elseif not CreatureObject(pPlayer):isDead() and not CreatureObject(pPlayer):isIncapacitated() then
 		FbTrials:complete(pPlayer, "duel")
 	end
-	createEvent(10000, self.taskName, "handleDespawnEvent", pPlayer, "")
+	FbAttunement.visitScheduleDespawn(self, pPlayer, 10000)
 	return 1
 end
 function FbTrialDuel:onPlayerDown(pPlayer)
-	if pPlayer ~= nil then createEvent(20000, self.taskName, "handleDespawnEvent", pPlayer, "") end
+	FbAttunement.visitScheduleDespawn(self, pPlayer, 20000)
 	return 1
 end
 function FbTrialDuel:doDespawn(pPlayer) unfollowAndDespawn(self, pPlayer) end

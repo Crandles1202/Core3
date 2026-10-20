@@ -16,6 +16,8 @@ SPIRIT=$(lab "findNpc:fb_trial_spirit" | sed -n 's/.*oid=\([0-9]*\).*/\1/p' | so
 say "--- spirit: $(lab "objectPos:$SPIRIT" | cut -c1-160)"
 say "--- goto: $(lab "gotoNpc:$CHAR:fb_trial_spirit" | tail -n1 | cut -c1-120)"
 say "--- where before logout: $(lab "where:$CHAR" | cut -c1-140)"
+for t in 5 20 40; do sleep 15; say "--- spirit +$t s: $(lab "objectPos:$SPIRIT" | sed 's/.*zone=/zone=/' | cut -c1-80)"; done
+say "--- screenlog mentions: $(grep -a "$SPIRIT" "$REPO/MMOCoreORB/bin/screenlog.0" | grep -av 'runLuaFunction\|INFO' | tail -n2 | cut -c1-160)"
 wait "$BOT_PID"
 sleep 8
 say "--- spirit while logged out: $(lab "objectPos:$SPIRIT" | cut -c1-160)"
