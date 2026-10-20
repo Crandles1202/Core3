@@ -98,6 +98,8 @@
 #include "server/zone/managers/crafting/schematicmap/SchematicMap.h"
 #include "server/zone/managers/director/ScreenPlayObserver.h"
 #include "server/zone/managers/resource/ResourceManager.h"
+#include "server/zone/managers/resource/resourcespawner/resourcemap/ResourceMap.h"
+#include "server/zone/managers/resource/resourcespawner/ResourceSpawner.h"
 #include "server/zone/managers/gcw/observers/SquadObserver.h"
 #include "server/zone/managers/ship/ShipManager.h"
 #include "templates/params/ship/ShipFlag.h"
@@ -520,6 +522,8 @@ void DirectorManager::initializeLuaEngine(Lua* luaEngine) {
 	luaEngine->registerFunction("getTerrainHeight", getTerrainHeight);
 	luaEngine->registerFunction("getTerrainHeightAt", getTerrainHeightAt);
 	luaEngine->registerFunction("findPath", findPath);
+	luaEngine->registerFunction("getResourceSpawns", getResourceSpawns);
+	luaEngine->registerFunction("getResourceDensityAt", getResourceDensityAt);
 	luaEngine->registerFunction("getZoneWeather", getZoneWeather);
 	luaEngine->registerFunction("setZoneWeather", setZoneWeather);
 	luaEngine->registerFunction("awardSkill", awardSkill);
@@ -4145,6 +4149,166 @@ int DirectorManager::findPath(lua_State* L) {
 	}
 
 	delete path;
+	return 1;
+}
+
+// Final Boss (Phase 7.6a): the resource oracle — the citizens' stand-in for the community resource spreadsheet.
+// getResourceSpawns(zoneName) -> { {name, type, family, finalClass, tool, despawn, attributes = {res_x = n, …},
+// best = { {x, y, density}, … (up to 3) } }, … } for every spawn currently in shift on that planet; the best spots
+// come from a 256 m scan of the spawn's concentration map refined to 32 m around each peak (the same noise the
+// survey tool reads). getResourceDensityAt(spawnName, zoneName, x, y) -> 0..1.
+static void fbPushResourceBestSpots(lua_State* L, ResourceSpawn* spawn, const String& zoneName) {
+	const float lo = -8192.f, hi = 8192.f;
+	const float coarse = 256.f;
+	// top three coarse peaks, kept apart by at least 1 km
+	Vector<Vector3> peaks;
+	for (float y = lo; y <= hi; y += coarse) {
+		for (float x = lo; x <= hi; x += coarse) {
+			float d = spawn->getDensityAt(zoneName, x, y);
+			if (d <= 0.05f)
+				continue;
+			bool nearExisting = false;
+			for (int i = 0; i < peaks.size(); ++i) {
+				Vector3& pk = peaks.get(i);
+				if (fabs(pk.getX() - x) < 1000.f && fabs(pk.getY() - y) < 1000.f) {
+					nearExisting = true;
+					if (d > pk.getZ()) {
+						pk.setX(x); pk.setY(y); pk.setZ(d);
+					}
+					break;
+				}
+			}
+			if (nearExisting)
+				continue;
+			if (peaks.size() < 3) {
+				peaks.add(Vector3(x, y, d));
+			} else {
+				int weakest = 0;
+				for (int i = 1; i < 3; ++i)
+					if (peaks.get(i).getZ() < peaks.get(weakest).getZ())
+						weakest = i;
+				if (d > peaks.get(weakest).getZ())
+					peaks.get(weakest) = Vector3(x, y, d);
+			}
+		}
+	}
+	// refine each peak on a 32 m grid within the coarse cell
+	for (int i = 0; i < peaks.size(); ++i) {
+		Vector3 pk = peaks.get(i);
+		Vector3 best = pk;
+		for (float y = pk.getY() - coarse; y <= pk.getY() + coarse; y += 32.f) {
+			for (float x = pk.getX() - coarse; x <= pk.getX() + coarse; x += 32.f) {
+				if (x < lo || x > hi || y < lo || y > hi)
+					continue;
+				float d = spawn->getDensityAt(zoneName, x, y);
+				if (d > best.getZ())
+					best = Vector3(x, y, d);
+			}
+		}
+		peaks.get(i) = best;
+	}
+	// sort descending by density
+	for (int i = 0; i < peaks.size(); ++i)
+		for (int j = i + 1; j < peaks.size(); ++j)
+			if (peaks.get(j).getZ() > peaks.get(i).getZ()) {
+				Vector3 t = peaks.get(i); peaks.get(i) = peaks.get(j); peaks.get(j) = t;
+			}
+
+	lua_newtable(L);
+	for (int i = 0; i < peaks.size(); ++i) {
+		lua_newtable(L);
+		lua_pushnumber(L, peaks.get(i).getX()); lua_setfield(L, -2, "x");
+		lua_pushnumber(L, peaks.get(i).getY()); lua_setfield(L, -2, "y");
+		lua_pushnumber(L, peaks.get(i).getZ()); lua_setfield(L, -2, "density");
+		lua_rawseti(L, -2, i + 1);
+	}
+}
+
+int DirectorManager::getResourceSpawns(lua_State* L) {
+	if (checkArgumentCount(L, 1) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::getResourceSpawns";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	String zoneName = lua_tostring(L, -1);
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	ResourceManager* resourceManager = zoneServer != nullptr ? zoneServer->getResourceManager() : nullptr;
+
+	if (resourceManager == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	Vector<ManagedReference<ResourceSpawn*> > spawns;
+	{
+		ReadLocker locker(resourceManager);
+		ResourceSpawner* spawner = resourceManager->getResourceSpawner();
+		ResourceMap* resourceMap = spawner != nullptr ? spawner->getResourceMap() : nullptr;
+		ZoneResourceMap* zoneMap = resourceMap != nullptr ? resourceMap->getZoneResourceList(zoneName) : nullptr;
+		if (zoneMap != nullptr) {
+			for (int i = 0; i < zoneMap->size(); ++i) {
+				ManagedReference<ResourceSpawn*> spawn = zoneMap->get(i);
+				if (spawn != nullptr && spawn->inShift())
+					spawns.add(spawn);
+			}
+		}
+	}
+
+	lua_newtable(L);
+	for (int i = 0; i < spawns.size(); ++i) {
+		ResourceSpawn* spawn = spawns.get(i);
+		lua_newtable(L);
+		lua_pushstring(L, spawn->getName().toCharArray()); lua_setfield(L, -2, "name");
+		lua_pushstring(L, spawn->getType().toCharArray()); lua_setfield(L, -2, "type");
+		lua_pushstring(L, spawn->getFamilyName().toCharArray()); lua_setfield(L, -2, "family");
+		lua_pushstring(L, spawn->getFinalClass().toCharArray()); lua_setfield(L, -2, "finalClass");
+		lua_pushinteger(L, spawn->getSurveyToolType()); lua_setfield(L, -2, "tool");
+		lua_pushinteger(L, (lua_Integer) spawn->getDespawned()); lua_setfield(L, -2, "despawn");
+
+		lua_newtable(L);
+		for (int a = 0; ; ++a) {
+			String attribute;
+			int value = spawn->getAttributeAndValue(attribute, a);
+			if (attribute.isEmpty())
+				break;
+			lua_pushinteger(L, value);
+			lua_setfield(L, -2, attribute.toCharArray());
+		}
+		lua_setfield(L, -2, "attributes");
+
+		fbPushResourceBestSpots(L, spawn, zoneName);
+		lua_setfield(L, -2, "best");
+
+		lua_rawseti(L, -2, i + 1);
+	}
+	return 1;
+}
+
+int DirectorManager::getResourceDensityAt(lua_State* L) {
+	if (checkArgumentCount(L, 4) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::getResourceDensityAt";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	float y = lua_tonumber(L, -1);
+	float x = lua_tonumber(L, -2);
+	String zoneName = lua_tostring(L, -3);
+	String spawnName = lua_tostring(L, -4);
+
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	ResourceManager* resourceManager = zoneServer != nullptr ? zoneServer->getResourceManager() : nullptr;
+	ManagedReference<ResourceSpawn*> spawn = resourceManager != nullptr ? resourceManager->getResourceSpawn(spawnName) : nullptr;
+
+	if (spawn == nullptr) {
+		lua_pushnumber(L, -1);
+		return 1;
+	}
+
+	lua_pushnumber(L, spawn->getDensityAt(zoneName, x, y));
 	return 1;
 }
 

@@ -2053,6 +2053,37 @@ function FbLabTests:terrainHeights(planet, pts)
 	return tostring(n)
 end
 
+-- resources:<planet>[:<class substring>] → every spawn in shift on that planet (7.6a: the citizens' spreadsheet):
+--   "INFO resource name=… class=… family=… tool=N despawn=<epoch> attrs=res_x=N,… best=x,y,density;…"
+function FbLabTests:resources(planet, filter)
+	if planet == nil then print("ERROR resources: planet [class]"); return "none" end
+	local list = getResourceSpawns(planet)
+	if list == nil then print("ERROR resources: no resource manager / zone " .. tostring(planet)); return "none" end
+	local n = 0
+	for _, r in ipairs(list) do
+		local hay = (r.finalClass or "") .. " " .. (r.type or "") .. " " .. (r.family or "") .. " " .. (r.name or "")
+		if filter == nil or filter == "" or hay:lower():find(filter:lower(), 1, true) then
+			n = n + 1
+			local attrs, best = {}, {}
+			for k, v in pairs(r.attributes or {}) do attrs[#attrs + 1] = k .. "=" .. tostring(v) end
+			table.sort(attrs)
+			for _, b in ipairs(r.best or {}) do best[#best + 1] = string.format("%.0f,%.0f,%.2f", b.x, b.y, b.density) end
+			print(string.format("INFO resource name=%s class=%s family=%s tool=%d despawn=%d attrs=%s best=%s",
+				r.name, r.finalClass or r.type, r.family or "", r.tool or 0, r.despawn or 0, table.concat(attrs, ","), table.concat(best, ";")))
+		end
+	end
+	print(string.format("INFO resources planet=%s n=%d of %d", planet, n, #list))
+	return tostring(n)
+end
+
+-- resourceDensity:<spawn name>:<planet>:<x>:<y> → the concentration 0..1 (what a survey there would read)
+function FbLabTests:resourceDensity(name, planet, x, y)
+	local d = getResourceDensityAt(name, planet, tonumber(x) or 0, tonumber(y) or 0)
+	if d == nil or d < 0 then print("ERROR resourceDensity: no spawn " .. tostring(name)); return "none" end
+	print(string.format("INFO resourceDensity name=%s planet=%s x=%s y=%s density=%.3f", name, planet, x, y, d))
+	return string.format("%.3f", d)
+end
+
 -- pathTo:<planet>:<x1>:<y1>:<x2>:<y2> → the AI pathfinder's outdoor route as "x,z,y;x,z,y;…" (7.1: a seat walks it)
 -- pathTo:<char>:<x2>:<y2> → the same from where that character stands
 function FbLabTests:pathTo(a, b, c, d, e)
