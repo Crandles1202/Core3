@@ -309,6 +309,16 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   prerequisites. The duel opponent is chosen by `CreatureObject:getLevel()` at spawn (the Sith Shadow tiers
   17 / 32 / 51 / 69). The riddle's right option differs per riddle so a client cannot always pick the first;
   the lab reads the chosen riddle from the state and answers accordingly.
+  Three visitor bugs found by the riddle step, each only visible across a client logout: (1) the Village
+  `Encounter` base schedules its despawn with the *player* as the event key, so the ten-minute timer of an
+  earlier visit of the same task (the Old Man's first, a previous spirit) despawns whatever visitor stands
+  when it fires — every visit now writes a generation number (`<oid>:fbVisitGen:<task>`), stamps it into
+  its despawn events, and `handleDespawnEvent` ignores any other or unstamped stamp (the per-object sweep in
+  `recordVisitor` is the backstop); (2) a following agent whose target logs out leashes back to its spawn
+  point (`CLAUDE.md` gotcha) — once in range a visitor stops following, goes `AI_STATIC` and is re-homed where
+  it stands; (3) a follower's own z still carries its spawn height when it arrives, so the new home uses
+  `getTerrainHeightAt`, or the visitor snaps 16 m underground and no conversation can start. The Padawan box
+  is awarded on its own event: the last trial completes inside a kill observer, where `awardSkill` did not take.
 - **2026-10-20 — 4a.2 the shrines.** First feature built the parallel way: worktree `Core3-shrines`, branch
   `feature/shrines`, `swg bench use feature/shrines` to test. Content: 49 lore lines (five per world, four where a
   world has four shrines), keyed by shrine index so a shrine always says the same thing; the Old Man's return

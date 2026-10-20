@@ -301,6 +301,11 @@ Persisted object fields (`containerVolumeLimit`, …) are only read from the tem
   port's pad** (and structure footprints): `findPath` ends at the mesh edge, so `tools/seat` finishes a walk to a
   terminal or shuttle with a straight final leg (players are speed-checked, not collision-checked). `BuildingObject::
   getCell(n)` is keyed by cell *number* (1..N) and `getCellName` wants that number, not the cell's oid.
+  helper's deferred despawn re-schedules forever while the follow stands). Its despawn events are keyed to the
+  *player*, so stamp every visit with a generation (`FbAttunement.visitTaskStart` / `visitHandleDespawn`) or
+  an earlier visit's timer removes the next visitor. A visitor that must survive the player's logout stops
+  following, goes `AI_STATIC` and is re-homed on the terrain where it stands (`FbTrials.standStill`). Encounter
+  spawns are invisible to `findNpc` unless the screenplay adds them to the lab registry itself.
 - gtest's `<<` cannot print an engine3 `String`; use `.toCharArray()` in assertion messages.
 - Lua bindings read arguments from the top of the stack and do not validate: a call with the wrong
   arity (`faceObject(pNpc)` instead of `faceObject(pNpc, true)`) passes garbage/null into C++ and
