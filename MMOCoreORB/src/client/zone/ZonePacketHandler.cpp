@@ -563,8 +563,7 @@ void ZonePacketHandler::sendTeleportAck(BaseClient* client, uint64 objectID, uin
 	ack->insertInt(0x80CE5E46);   // ObjControllerMessage
 	ack->insertInt(0x1B);
 	ack->insertInt(0x13F);        // TeleportAck
-	ack->insertLong(objectID);
-	ack->insertInt(0);
+	ack->insertLong(objectID);   // no size/pad int: the server reads the counter right after the oid
 	ack->insertInt(moveCount);
 	client->sendPacket(ack);
 }

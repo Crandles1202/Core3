@@ -39,8 +39,7 @@ public:
 		insertInt(0x80CE5E46);   // ObjControllerMessage
 		insertInt(0x1B);         // priority
 		insertInt(0x71);         // DataTransform
-		insertLong(playerOid);
-		insertInt(0);
+		insertLong(playerOid);   // ObjectControllerMessageCallback::parse reads priority, type, oid — then the payload at once
 		insertInt(timeStamp);
 		insertInt(moveCount);
 		insertFloat(0.f);                       // direction: yaw about y
