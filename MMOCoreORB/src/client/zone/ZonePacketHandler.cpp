@@ -55,6 +55,27 @@ void ZonePacketHandler::handleMessage(Message* pack) {
 		case 0xD44B7259: what = "SuiCreatePageMessage";
 			handleSuiCreatePageMessage(pack);
 			break;
+		case 0x877F79AC: { what = "SurveyMessage";   // the survey grid: int count, then x, 0, y, percentage per point (lab: --survey)
+			int count = pack->parseInt();
+			JSONSerializationType grid = JSONSerializationType::array();
+			float bestX = 0, bestY = 0, bestPct = -1;
+			for (int i = 0; i < count && i < 64; ++i) {
+				float x = pack->parseFloat();
+				pack->parseFloat();
+				float y = pack->parseFloat();
+				float pct = pack->parseFloat();
+				JSONSerializationType pt;
+				pt["x"] = x; pt["y"] = y; pt["pct"] = pct;
+				grid.push_back(pt);
+				if (pct > bestPct) { bestPct = pct; bestX = x; bestY = y; }
+			}
+			core->vars[JSONSerializationType::json_pointer("/Survey/grid")] = grid;
+			core->setVar("Survey/bestX", bestX);
+			core->setVar("Survey/bestY", bestY);
+			core->setVar("Survey/bestPct", bestPct);
+			info(true) << "SurveyMessage " << count << " point(s), best " << bestPct << "% at " << bestX << ", " << bestY;
+			break;
+		}
 		}
 		break;
 	case 3:
@@ -130,6 +151,25 @@ void ZonePacketHandler::handleMessage(Message* pack) {
 
 		CASE_OPCODE("UpdatePvpStatusMessage");
 			break;
+		case 0x8A64B1D5: { what = "ResourceListForSurveyMessage";   // what the open survey tool can survey here
+			int count = pack->parseInt();
+			JSONSerializationType list = JSONSerializationType::array();
+			for (int i = 0; i < count && i < 256; ++i) {
+				String name, type;
+				pack->parseAscii(name);
+				uint64 oid = pack->parseLong();
+				pack->parseAscii(type);
+				JSONSerializationType r;
+				r["name"] = name.toCharArray(); r["oid"] = oid; r["type"] = type.toCharArray();
+				list.push_back(r);
+			}
+			String toolType;
+			pack->parseAscii(toolType);
+			core->vars[JSONSerializationType::json_pointer("/Survey/resources")] = list;
+			core->setVar("Survey/toolType", toolType);
+			info(true) << "ResourceListForSurvey: " << count << " resource(s) for " << toolType;
+			break;
+		}
 		}
 		break;
 	case 5:

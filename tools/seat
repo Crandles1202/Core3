@@ -17,6 +17,9 @@ control channel on a unix socket (SeatAction, Phase 7.0). A pilot (7.3) sits on 
   seat wait <name> <signal> [timeoutMs]                block until that packet arrives (SpatialChat, Tell, SuiCreatePage, …)
   seat walk <name> <x> <y> [--speed M/S]              ask the server for a path from where the character stands and walk it
                                                         (real movement packets; the route comes from FbLabTests:pathTo over swg cmd --shared)
+  seat survey <name> <tool oid> <resource> [range]    use the survey tool, survey that resource, print the grid's best point
+  seat sample <name> <resource> [rounds]               sample where the character stands (3 s, then 25 s per extra round)
+  seat resources <planet> [class]                      the resource oracle (FbLabTests:resources over swg cmd --shared)
   seat log <name> [lines]                              tail of the client log
 
 State per seat lives in ~/.swg-lab/seats/<name>/: sock, pid, client.log.
@@ -270,6 +273,16 @@ def main(argv):
         return cmd_stop(args)
     if cmd == "list":
         return cmd_list(args)
+    if cmd == "resources":
+        if not args:
+            die("resources <planet> [class]")
+        swg = os.path.join(HERE, "swg")
+        fn = f"resources:{args[0]}" + (f":{args[1]}" if len(args) > 1 else "")
+        out = subprocess.run([swg, "cmd", "--shared", f"runLuaFunction FbLabTests:{fn}", "--timeout", "40"], capture_output=True, text=True).stdout
+        for line in out.splitlines():
+            if line.startswith(("INFO resource", "ERROR")):
+                print(line[5:] if line.startswith("INFO ") else line)
+        return 0
 
     if not args:
         die(f"{cmd} <name> …")
@@ -327,6 +340,20 @@ def main(argv):
     elif cmd == "wait":
         timeout = int(rest[1]) if len(rest) > 1 else 10000
         reply = s.request({"op": "wait", "signal": rest[0], "timeoutMs": timeout}, timeout=timeout / 1000 + 5)
+    elif cmd == "survey":
+        if len(rest) < 2:
+            die("survey <name> <tool oid> <resource> [range]")
+        fields = {"tool": int(rest[0]), "resource": rest[1]}
+        if len(rest) > 2:
+            fields["range"] = int(rest[2])
+        reply = s.action("survey", **fields)
+    elif cmd == "sample":
+        if not rest:
+            die("sample <name> <resource> [rounds]")
+        fields = {"resource": rest[0]}
+        if len(rest) > 1:
+            fields["rounds"] = int(rest[1])
+        reply = s.action("sample", **fields)
     elif cmd == "walk":
         if len(rest) < 2:
             die("walk <name> <x> <y> [--speed M/S]")
