@@ -1,7 +1,7 @@
 #ifndef TRANSFORM_H_
 #define TRANSFORM_H_
 
-// #define TRANSFORM_DEBUG
+#define TRANSFORM_DEBUG   // TEMPORARY (alice): diagnosing dropped seat movement
 
 #include "server/zone/objects/creature/CreatureObject.h"
 
