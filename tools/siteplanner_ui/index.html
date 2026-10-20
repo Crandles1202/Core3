@@ -134,6 +134,8 @@ const DEFAULTS = {
   slopeDeg: 15,              // terrain steeper than this is tinted
   bandMetres: 2,             // contour band spacing
   terrainOpacity: 0.92,
+  terrainStyle: "realistic",  // realistic = the ground colours of the planet, rock on cliffs; relief = height ramp
+  steepOverlay: "on",         // tint ground steeper than slopeDeg, in either style
   steep: "#e63c3c", site: "#c58cff", ok: "#44d17a", warn: "#f0b429", fail: "#ff5c5c", select: "#4cc3ff", edit: "#ff9f43", stockNpc: "#7fb0d0", liveNpc: "#f0b429",
 };
 const C = { ...DEFAULTS };
@@ -387,6 +389,12 @@ function terrainHeightAt(wx, wy) {
   const c0 = Math.floor(c), r0 = Math.floor(r), fx = c - c0, fy = r - r0, H = (rr, cc) => g.h[rr * g.cols + cc];
   return (H(r0, c0) * (1 - fx) + H(r0, c0 + 1) * fx) * (1 - fy) + (H(r0 + 1, c0) * (1 - fx) + H(r0 + 1, c0 + 1) * fx) * fy;
 }
+// ground colours per planet as the game shows them: flat ground, higher ground, bare rock on cliffs
+const PLANET_PALETTE = {
+  tatooine: ["#c9a569", "#dcc08a", "#8e6f4f"], naboo: ["#6f9a4c", "#92b068", "#7d7a6e"], corellia: ["#6e9450", "#8caa6a", "#6f6a60"],
+  talus: ["#6a9050", "#8aaa6a", "#70695c"], rori: ["#6b8a4a", "#88a262", "#6a6a5a"], dantooine: ["#a9b062", "#c5c680", "#8a7d5c"],
+  lok: ["#9a6a46", "#b68c60", "#6e4f3c"], yavin4: ["#3f6b35", "#5f8c4a", "#5c5a50"], endor: ["#3d6a3a", "#5c8852", "#5f5d55"], dathomir: ["#7a4a4a", "#9c6c5c", "#5a3a3a"],
+};
 function hexRgb(h) { const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(h || ""); return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [230, 60, 60]; }
 function renderTerrain(g) {
   // one pixel per grid point: hypsometric bands every 2 m, hillshade from the north-west, red where steep
@@ -395,6 +403,7 @@ function renderTerrain(g) {
   // the colour ramp spans the 5th to 95th percentile, so a mesa at the edge does not flatten the town into one shade
   const sorted = Array.from(g.h).sort((a, b) => a - b), lo = sorted[Math.floor(sorted.length * 0.05)], hi = sorted[Math.floor(sorted.length * 0.95)];
   const steepAt = Math.tan(Math.max(1, C.slopeDeg) * Math.PI / 180), [sr, sg, sb] = hexRgb(C.steep);
+  const realistic = C.terrainStyle === "realistic", pal = (PLANET_PALETTE[g.planet] || PLANET_PALETTE.tatooine).map(hexRgb), rockAt = Math.tan(32 * Math.PI / 180);
   const span = Math.max(2, hi - lo), H = (r, c) => g.h[Math.min(g.rows - 1, Math.max(0, r)) * g.cols + Math.min(g.cols - 1, Math.max(0, c))];
   for (let r = 0; r < g.rows; r++) for (let c = 0; c < g.cols; c++) {
     const h = H(r, c), gx = (H(r, c + 1) - H(r, c - 1)) / (2 * g.step), gy = (H(r + 1, c) - H(r - 1, c)) / (2 * g.step);
@@ -402,9 +411,17 @@ function renderTerrain(g) {
     const shade = Math.max(0, Math.min(1, 0.55 + 0.45 * (-gx * 0.7 + gy * 0.7) / Math.max(0.25, slope)));   // light from the north-west
     const band = Math.floor((h - g.min) / Math.max(0.5, C.bandMetres)) % 2 ? 0.92 : 1.0;   // contour bands
     const t = Math.max(0, Math.min(1, (h - lo) / span));                 // low = dark sand, high = pale
-    let R = 70 + 90 * t, G = 62 + 80 * t, B = 48 + 70 * t;
-    R *= shade * band; G *= shade * band; B *= shade * band;
-    if (slope > steepAt) { const k = Math.min(1, (slope - steepAt) / 0.5); R = R * (1 - k) + sr * k; G = G * (1 - k) + sg * k; B = B * (1 - k) + sb * k; }   // steeper than the setting: no building sits on that
+    let R, G, B;
+    if (realistic) {
+      // flat ground blends into the higher-ground colour with height; cliffs show rock; a gentler band and shade
+      const [g0, g1, rk] = pal, k = Math.min(1, slope / rockAt), rockMix = k * k;
+      R = (g0[0] * (1 - t) + g1[0] * t) * (1 - rockMix) + rk[0] * rockMix; G = (g0[1] * (1 - t) + g1[1] * t) * (1 - rockMix) + rk[1] * rockMix; B = (g0[2] * (1 - t) + g1[2] * t) * (1 - rockMix) + rk[2] * rockMix;
+      const sh = 0.75 + 0.25 * shade, bd = band === 1 ? 1 : 0.96; R *= sh * bd; G *= sh * bd; B *= sh * bd;
+    } else {
+      R = 70 + 90 * t; G = 62 + 80 * t; B = 48 + 70 * t;
+      R *= shade * band; G *= shade * band; B *= shade * band;
+    }
+    if (C.steepOverlay === "on" && slope > steepAt) { const k = Math.min(1, (slope - steepAt) / 0.5); R = R * (1 - k) + sr * k; G = G * (1 - k) + sg * k; B = B * (1 - k) + sb * k; }   // steeper than the setting: no building sits on that
     const i = ((g.rows - 1 - r) * g.cols + c) * 4;                      // row 0 is the south edge: flip for the image
     px[i] = R; px[i + 1] = G; px[i + 2] = B; px[i + 3] = Math.round(255 * C.terrainOpacity);
   }
@@ -979,9 +996,14 @@ const SETTING_FIELDS = [
 ];
 function renderSettings() {
   const box = $("settingsBox"); box.innerHTML = "";
-  const pan = document.createElement("div"); pan.innerHTML = `<label>Map is dragged with</label>`;
-  for (const [v, label] of [["right", "right button (left selects)"], ["left", "left button"]]) { const b = document.createElement("button"); b.textContent = label; b.style.width = "auto"; b.style.margin = "0 6px 0 0"; b.style.padding = "3px 7px"; if (C.panButton === v) b.className = "primary"; b.onclick = () => { C.panButton = v; applySettings(); }; pan.appendChild(b); }
-  box.appendChild(pan);
+  const choice = (title, key, options) => {
+    const div = document.createElement("div"); div.innerHTML = `<label>${title}</label>`;
+    for (const [v, label] of options) { const b = document.createElement("button"); b.textContent = label; b.style.width = "auto"; b.style.margin = "0 6px 4px 0"; b.style.padding = "3px 7px"; if (C[key] === v) b.className = "primary"; b.onclick = () => { C[key] = v; applySettings(); }; div.appendChild(b); }
+    box.appendChild(div);
+  };
+  choice("Terrain colours", "terrainStyle", [["realistic", "as in the game (per planet)"], ["relief", "height ramp"]]);
+  choice("Tint steep ground", "steepOverlay", [["on", "on"], ["off", "off"]]);
+  choice("Map is dragged with", "panButton", [["right", "right button (left selects)"], ["left", "left button"]]);
   for (const [label, key, type] of SETTING_FIELDS) {
     const row = document.createElement("div"); row.className = "row"; row.style.alignItems = "center";
     const l = document.createElement("label"); l.textContent = label; l.style.flex = "1"; l.style.marginTop = "4px";
