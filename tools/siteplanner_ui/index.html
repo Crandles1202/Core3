@@ -18,7 +18,8 @@
   button:hover { border-color:var(--accent); }
   button.primary { background:#1b4a66; border-color:var(--accent); }
   .row { display:flex; gap:6px; } .row > * { flex:1; }
-  canvas { display:block; width:100%; height:100%; background:#0b0d11; cursor:grab; }
+  canvas { display:block; width:100%; height:100%; background:#0b0d11; cursor:default; }
+  canvas.panning { cursor:grabbing; }
   main { position:relative; min-width:0; }
   #hud { position:absolute; left:10px; bottom:8px; color:var(--dim); font-size:12px; pointer-events:none; }
   #help { position:absolute; right:10px; top:8px; color:var(--dim); font-size:12px; text-align:right; pointer-events:none; }
@@ -100,7 +101,7 @@
 
 <main>
   <canvas id="c"></canvas>
-  <div id="help">drag: pan · wheel: zoom · click a building: details · double-click any building: inside view · drag a purple site or your placed shell to move it · drag the entrance knob to rotate · Ctrl+Z undo · <span style="color:#ff9f43">orange = world edit</span><br>
+  <div id="help">right-drag: pan · wheel: zoom · left click a building or prop: details · double-click any building: inside view · drag a purple site or your placed shell to move it · drag the entrance knob to rotate · Ctrl+Z undo · <span style="color:#ff9f43">orange = world edit</span><br>
     <span style="color:#8a94a6">▲ stock building: real outline, rooms faint when zoomed (line = entrance side)</span> · <span style="color:#8a94a6">▲ solid shell: the game's radar outline</span> · <span style="color:#c58cff">■ our site</span> · <span style="color:#44d17a">■ your placed shell</span> (amber/red = lot problem) · <span style="color:#fff">□ selected</span> · <span style="color:#f0b429">● live NPC</span> · <span style="color:#7fb0d0">● stock NPC</span> · <span style="color:#4cc3ff">▣ terminal</span> · <span style="color:#58e0c8">▣ crafting station</span> · <span style="color:#ffd166">▣ vendor / ticket</span> (white edge = server-spawned with the building)</div>
   <div id="hud"></div>
 </main>
@@ -515,9 +516,12 @@ function drawInside() {
 
 // ---------------------------------------------------------------- interaction
 let down = null;
+canvas.addEventListener("contextmenu", e => e.preventDefault());   // the right button pans
 canvas.addEventListener("mousedown", e => {
   const r = canvas.getBoundingClientRect(); const sx = e.clientX - r.left, sy = e.clientY - r.top;
-  down = { sx, sy, moved: false, view: { ...(S.mode === "map" ? S.view : S.ivw) } };
+  down = { sx, sy, moved: false, view: { ...(S.mode === "map" ? S.view : S.ivw) }, button: e.button };
+  // right (or middle) button: pan the map; left button: select, or drag a draft / person / knob
+  if (e.button !== 0) { down.pan = true; canvas.classList.add("panning"); e.preventDefault(); return; }
   const d = S.draft;
   if (d && !S.inspect) {
     // a person under the cursor?
@@ -550,10 +554,12 @@ canvas.addEventListener("mousemove", e => {
   }
   if (down.rotate) { const [wx, wy] = s2w(sx, sy); let h = Math.round((Math.atan2(wx - S.draft.x, wy - S.draft.y) * 180 / Math.PI + 360) % 360); if (!e.altKey) h = Math.round(h / 5) * 5 % 360; S.draft.heading = h; refresh(); return; }
   if (down.building) { const [wx, wy] = s2w(sx, sy); S.draft.x = +(down.building.x + (wx - down.building.wx)).toFixed(1); S.draft.y = +(down.building.y + (wy - down.building.wy)).toFixed(1); refresh(); return; }
-  v.cx = down.view.cx - dx / v.ppm; v.cy = down.view.cy + dy / v.ppm; draw();
+  if (down.pan) { v.cx = down.view.cx - dx / v.ppm; v.cy = down.view.cy + dy / v.ppm; draw(); }
 });
 window.addEventListener("mouseup", e => {
   if (!down) return;
+  canvas.classList.remove("panning");
+  if (down.pan) { down = null; return; }
   const wasClick = !down.moved && !down.person && !down.building && !down.rotate;
   if (down.person || down.building || down.rotate) { const was = down; down = null; remember(S.draft); down = was; }
   const r = canvas.getBoundingClientRect(); const sx = e.clientX - r.left, sy = e.clientY - r.top;
