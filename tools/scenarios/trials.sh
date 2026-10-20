@@ -55,8 +55,9 @@ check "prisoner_stands" "$( [ -n "$PRIS" ] && echo 1 || echo 0 )"
 lab "gotoNpc:$CHAR:fb_prisoner" >/dev/null     # he stands where he was left; the bot client does not walk
 wait "$BOT_PID"
 sleep 8
+PRIS_BEFORE=$(lab "objectPos:$PRIS" | sed 's/.*zone=/zone=/' | cut -c1-70)
 bot --wait 4 --converse "$PRIS" --options 1 --wait 3 >/dev/null 2>&1 || true
-check_eq "prisoner_converse_ok" "$(bot_action_status converse)" "ok" "status: $(bot_action_status converse)"
+check_eq "prisoner_converse_ok" "$(bot_action_status converse)" "ok" "prisoner before: $PRIS_BEFORE; $(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tail -n1); char: $(lab "where:$CHAR" | sed 's/.*zone=/zone=/' | cut -c1-60)"
 T=$(lab "trials:$CHAR")
 check "mercy_done_light" "$(grep -q 'done=stillness,restraint,strength,mercy' <<<"$T" && grep -q 'alignment=light' <<<"$T" && echo 1 || echo 0)" "$T"
 
