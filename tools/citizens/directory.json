@@ -1,0 +1,17 @@
+{
+ "teyla": {
+  "account": "teyla-vosk",
+  "character": "Teyla",
+  "faction": "rebel",
+  "home": "tatooine 3520 -4800",
+  "name": "Teyla Vosk",
+  "profession": "combat_marksman",
+  "sells": "",
+  "veteran": [
+   "combat_marksman_master",
+   "combat_rifleman_accuracy_02",
+   "combat_rifleman_speed_02",
+   "outdoors_scout_novice"
+  ]
+ }
+}
