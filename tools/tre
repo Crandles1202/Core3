@@ -39,10 +39,27 @@ import sys
 import zlib
 
 REPO = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-DEFAULT_SRC = os.path.join(REPO, "tre-src")
+
+
+def _bench():
+    """The main checkout: the server (and its config-local.lua, which is git-ignored) lives there, even when this
+    copy of the tool runs from an agent's worktree (docs/BOARD.md)."""
+    try:
+        import subprocess
+        out = subprocess.run(["git", "-C", REPO, "worktree", "list", "--porcelain"], capture_output=True, text=True, timeout=10).stdout
+        for line in out.splitlines():
+            if line.startswith("worktree "):
+                return line[len("worktree "):]
+    except Exception:   # noqa: BLE001 — no git, no worktrees: the checkout is the bench
+        pass
+    return REPO
+
+
+BENCH = _bench()
+DEFAULT_SRC = os.path.join(REPO, "tre-src")                                    # the strings under test: this checkout
 DEFAULT_OUT = os.path.join(REPO, "MMOCoreORB", "bin", "tre", "finalboss.tre")
-CONFIG_LOCAL = os.path.join(REPO, "MMOCoreORB", "bin", "conf", "config-local.lua")
-CONFIG_MAIN = os.path.join(REPO, "MMOCoreORB", "bin", "conf", "config.lua")
+CONFIG_LOCAL = os.path.join(BENCH, "MMOCoreORB", "bin", "conf", "config-local.lua")   # TrePath etc.: the bench
+CONFIG_MAIN = os.path.join(BENCH, "MMOCoreORB", "bin", "conf", "config.lua")
 LABDIR = os.environ.get("SWG_LABDIR", os.path.join(os.path.expanduser("~"), ".swg-lab"))
 CLIENT_DIR_FILE = os.path.join(LABDIR, "client-dir")
 TRE_NAME = "finalboss.tre"

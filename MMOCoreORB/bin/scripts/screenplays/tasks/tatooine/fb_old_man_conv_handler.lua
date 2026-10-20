@@ -5,6 +5,9 @@ fbOldManConvoHandler = conv_handler:new {}
 
 function fbOldManConvoHandler:getInitialScreen(pPlayer, pNpc, pConvTemplate)
 	local convoTemplate = LuaConversationTemplate(pConvTemplate)
+	if FbOldManReturn ~= nil and FbOldManReturn:belongsTo(pPlayer, pNpc) then
+		return convoTemplate:getScreen("return_intro")
+	end
 	if FbOldManVisit ~= nil and FbOldManVisit:belongsTo(pPlayer, pNpc) then
 		return convoTemplate:getScreen("intro")
 	end
@@ -22,6 +25,14 @@ function fbOldManConvoHandler:runScreenHandlers(pConvTemplate, pPlayer, pNpc, se
 	elseif screenID == "refuse" then
 		CreatureObject(pNpc):clearOptionBit(CONVERSABLE)
 		FbOldManVisit:scheduleDespawn(pPlayer)
+	elseif screenID == "return_trials" then
+		-- the shrine task is complete: 4a.3 reads task=trials
+		FbAttunement:trialsUnlocked(pPlayer)
+		CreatureObject(pNpc):clearOptionBit(CONVERSABLE)
+		FbOldManReturn:scheduleDespawn(pPlayer)
+	elseif screenID == "return_wait" then
+		CreatureObject(pNpc):clearOptionBit(CONVERSABLE)
+		FbOldManReturn:scheduleDespawn(pPlayer)
 	end
 	return pConvScreen
 end

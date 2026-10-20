@@ -56,6 +56,33 @@ refuse = ConvoScreen:new {
 }
 fbOldManConvoTemplate:addScreen(refuse)
 
+return_intro = ConvoScreen:new {
+	id = "return_intro",
+	leftDialog = "@fb_force:oldman_return_intro",
+	stopConversation = "false",
+	options = {
+		{"What comes next?", "return_trials"},
+		{"I need more time.",  "return_wait"},
+	}
+}
+fbOldManConvoTemplate:addScreen(return_intro)
+
+return_trials = ConvoScreen:new {
+	id = "return_trials",
+	leftDialog = "@fb_force:oldman_return_trials",
+	stopConversation = "true",
+	options = {}
+}
+fbOldManConvoTemplate:addScreen(return_trials)
+
+return_wait = ConvoScreen:new {
+	id = "return_wait",
+	leftDialog = "@fb_force:oldman_return_wait",
+	stopConversation = "true",
+	options = {}
+}
+fbOldManConvoTemplate:addScreen(return_wait)
+
 nothing = ConvoScreen:new {
 	id = "nothing",
 	leftDialog = "@fb_force:oldman_nothing",

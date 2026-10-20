@@ -186,6 +186,21 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-20 — 4a.2 the shrines.** First feature built the parallel way: worktree `Core3-shrines`, branch
+  `feature/shrines`, `swg bench use feature/shrines` to test. Content: 49 lore lines (five per world, four where a
+  world has four shrines), keyed by shrine index so a shrine always says the same thing; the Old Man's return
+  reuses the 4a.1 NPC and conversation with `return_*` screens (the handler picks the screen by which encounter
+  owns the NPC); the ambush reuses the stock `sith_shadow_outlaw` and the stock recipe (follow, then
+  `addDefender` + a threaten line in range). Kill credit: `OBJECTDESTRUCTION` on each shadow gives the killer as
+  the argument, which is a pet or the lab as often as the player, so each shadow carries `<oid>:fbAmbushFor`
+  (writeData) naming the player it was sent for. The lab's lore check reads `../../tre-src/…` relative to
+  `bin/`, i.e. the bench's source tree — fine while the bench is deployed at the commit under test.
+  Worktree traps found by running the whole gate from one: `tools/tre` read the server config (and so the
+  TrePath) from the worktree, where the git-ignored `config-local.lua` does not exist; the site-preview
+  scenario and the planner wrote `tasks/sites/.preview/preview.lua` into the worktree while the server reads
+  the bench. Rule of thumb now in every tool: **source** (strings, scenarios, site files to commit) comes from
+  the checkout the tool runs in; **runtime** (config, console log, client binary, files the server reads at
+  runtime) comes from the bench.
 - **2026-10-20 — 0.7 working in parallel.** Design: the thing agents fight over is not the code (git worktrees
   solve that for free) but the *one* server with its one ODB, console and lab accounts — so the main checkout
   becomes "the bench" nobody edits, every agent gets `~/workspace/Core3-<name>` on `feature/<name>` with its

@@ -563,7 +563,7 @@ def terrain_heights(planet, pts):
 
 # ---------------------------------------------------------------- the game loop (2.12d): preview, checks, teleport
 
-PREVIEW_DIR = os.path.join(SITES_DIR, ".preview")   # outside the loader's *.lua glob; git-ignored
+PREVIEW_DIR = os.path.join(ls.fbtre.BENCH, "MMOCoreORB", "bin", "scripts", "screenplays", "tasks", "sites", ".preview")   # the server reads the bench; outside the loader's *.lua glob; git-ignored
 
 
 def swg_lua(call, timeout=8, shared=False):
