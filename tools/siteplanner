@@ -15,6 +15,7 @@ Endpoints (all JSON):
   GET  /api/npcs                                         the Final Boss NPC templates with their display names
   GET  /api/live?filter=…                                live NPC positions from the running server (tools/swg), best effort
   GET  /api/terrain?planet=&pts=x,y;x,y                   terrain heights from the running server (the lot report's slope check)
+  GET  /api/mapimage?planet=                               the in-game planet map as PNG (texture/ui_map_<planet>.dds decoded, cached)
   GET  /api/terraingrid?planet=&x=&y=&r=&step=             height grid of the area from the running server (cached in ~/.swg-lab/terrain/)
   GET  /api/world?planet=                                  the planet's world edits (tre-src/world/<planet>.json) with the stock node each touches
   GET  /api/catalog                                        every stock building template the world places (what an add can clone), with outlines
@@ -635,6 +636,64 @@ def teleport(char, planet, x, y):
 
 
 TERRAIN_DIR = os.path.join(os.path.expanduser("~"), ".swg-lab", "terrain")
+MAPS_DIR = os.path.join(os.path.expanduser("~"), ".swg-lab", "maps")
+
+
+# ---------------------------------------------------------------- the in-game planet map (texture/ui_map_<planet>.dds, DXT1)
+
+def dxt1_decode(data, width, height):
+    """DXT1 blocks -> list of rows of (r, g, b). Pure Python; a 1024² map takes a few seconds, once, then it is cached."""
+    px = [[(0, 0, 0)] * width for _ in range(height)]
+    bw = width // 4
+    pos = 0
+    for by in range(height // 4):
+        for bx in range(bw):
+            c0, c1, bits = struct.unpack_from("<HHI", data, pos)
+            pos += 8
+            r0, g0, b0 = (c0 >> 11) * 255 // 31, ((c0 >> 5) & 63) * 255 // 63, (c0 & 31) * 255 // 31
+            r1, g1, b1 = (c1 >> 11) * 255 // 31, ((c1 >> 5) & 63) * 255 // 63, (c1 & 31) * 255 // 31
+            if c0 > c1:
+                pal = ((r0, g0, b0), (r1, g1, b1), ((2 * r0 + r1) // 3, (2 * g0 + g1) // 3, (2 * b0 + b1) // 3), ((r0 + 2 * r1) // 3, (g0 + 2 * g1) // 3, (b0 + 2 * b1) // 3))
+            else:
+                pal = ((r0, g0, b0), (r1, g1, b1), ((r0 + r1) // 2, (g0 + g1) // 2, (b0 + b1) // 2), (0, 0, 0))
+            for j in range(4):
+                row = px[by * 4 + j]
+                for i in range(4):
+                    row[bx * 4 + i] = pal[(bits >> (2 * (j * 4 + i))) & 3]
+    return px
+
+
+def png_encode(rows):
+    """Rows of (r, g, b) -> PNG bytes (stdlib only)."""
+    import zlib
+    h, w = len(rows), len(rows[0])
+    raw = b"".join(b"\x00" + bytes(v for p in row for v in p) for row in rows)
+
+    def chunk(tag, body):
+        c = struct.pack(">I", len(body)) + tag + body
+        return c + struct.pack(">I", zlib.crc32(tag + body) & 0xffffffff)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b"")
+
+
+def map_image(vfs, planet):
+    """PNG of the planet map the game shows in its map window (1024², the whole zone), cached in ~/.swg-lab/maps/."""
+    if planet not in we.PLANETS:
+        return None
+    os.makedirs(MAPS_DIR, exist_ok=True)
+    out = os.path.join(MAPS_DIR, planet + ".png")
+    if not os.path.exists(out):
+        try:
+            d = vfs.read("texture/ui_map_%s.dds" % planet)
+        except FileNotFoundError:
+            return None
+        if d[:4] != b"DDS " or d[84:88] != b"DXT1":
+            return None
+        height, width = struct.unpack_from("<II", d, 12)
+        rows = dxt1_decode(d[128:], width, height)
+        with open(out, "wb") as fh:
+            fh.write(png_encode(rows))
+    with open(out, "rb") as fh:
+        return fh.read()
 
 
 def terrain_grid(planet, x, y, r, step):
@@ -690,6 +749,17 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         sys.stderr.write("siteplanner: " + (fmt % args) + "\n")
 
+    def _bytes(self, body, ctype, code=200):
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "max-age=86400")
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
     def _json(self, obj, code=200):
         body = json.dumps(obj).encode("utf-8")
         try:
@@ -729,6 +799,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(load_sites())
             elif u.path == "/api/npcs":
                 self._json(npc_templates())
+            elif u.path == "/api/mapimage":
+                png = map_image(self.data.vfs, q.get("planet", "tatooine"))
+                if png is None:
+                    self._json(dict(error="no map texture for that planet"), 404)
+                else:
+                    self._bytes(png, "image/png")
             elif u.path == "/api/terraingrid":
                 self._json(terrain_grid(q.get("planet", "tatooine"), float(q.get("x", 0)), float(q.get("y", 0)), float(q.get("r", 300)), int(q.get("step", 4))))
             elif u.path == "/api/world":
@@ -858,6 +934,8 @@ def cmd_selftest(a):
     assert any(c["template"].endswith("shared_filler_building_block_64x16_style_01.iff") and c["count"] >= 20 for c in d.catalog()), "catalog lists the filler blocks"
     assert any(c.get("prop") and "terminal_bazaar" in c["template"] for c in d.catalog()), "catalog lists the bazaar terminals"
     assert all("oid" in p for p in area["props"]), "props carry their snapshot oid"
+    png = map_image(d.vfs, "tatooine")
+    assert png and png[:8] == b"\x89PNG\r\n\x1a\n" and struct.unpack(">II", png[16:24]) == (1024, 1024), "planet map png"
     pth, err = write_preview(open(os.path.join(SITES_DIR, "mos_eisley_trade_hall.lua")).read())
     assert pth and not err and os.path.exists(pth) and all(".preview" not in s["file"] for s in load_sites()), "preview file outside the site list"
     assert any(l.startswith("summary spots=11 fail=0") for l in furniture_check("object/building/tatooine/shared_guild_commerce_tatooine_style_01.iff", pth)), "furniture check through the planner"

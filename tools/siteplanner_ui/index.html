@@ -46,7 +46,8 @@
   <button id="load" class="primary">Load area</button>
   <button id="live">Overlay live NPCs (needs the server)</button>
   <h2>Layers</h2>
-  <label><input type="checkbox" id="L_terrain" checked style="width:auto"> terrain (relief, 2 m bands, red = steep; the server once per area)</label>
+  <label><input type="checkbox" id="L_mapimage" checked style="width:auto"> in-game planet map (the map window texture)</label>
+  <label><input type="checkbox" id="L_terrain" style="width:auto"> terrain relief from the server (bands, steep tint; once per area)</label>
   <label><input type="checkbox" id="L_furniture" checked style="width:auto"> furniture (client layout)</label>
   <label><input type="checkbox" id="L_usables" checked style="width:auto"> terminals, stations, vendors, elevators</label>
   <label><input type="checkbox" id="L_objects" style="width:auto"> other objects (décor, props)</label>
@@ -134,6 +135,8 @@ const DEFAULTS = {
   slopeDeg: 15,              // terrain steeper than this is tinted
   bandMetres: 2,             // contour band spacing
   terrainOpacity: 0.92,
+  mapExtent: 8192,            // the planet map texture spans -mapExtent..+mapExtent metres on both axes
+  mapOpacity: 1,
   terrainStyle: "realistic",  // realistic = the ground colours of the planet, rock on cliffs; relief = height ramp
   steepOverlay: "on",         // tint ground steeper than slopeDeg, in either style
   steep: "#e63c3c", site: "#c58cff", ok: "#44d17a", warn: "#f0b429", fail: "#ff5c5c", select: "#4cc3ff", edit: "#ff9f43", stockNpc: "#7fb0d0", liveNpc: "#f0b429",
@@ -157,6 +160,7 @@ const S = {
   hist: [], histAt: -1,                            // undo history: serialized drafts
   world: { planet: null, ops: [] }, catalog: [],   // world edits of the loaded planet; every stock building template the world places
   terrainGrid: null, terrainImg: null, terrainKey: null, terrainBusy: false, hover: null,   // height grid of the area, its rendered relief, the height under the cursor
+  mapImg: {},                                      // planet -> Image of the in-game planet map (or "none")
   selB: null,                                      // selected map building: { kind: "stock"|"site"|"draft", obj, shell }
   inspect: null,                                   // inside view of something that is not the draft: { shell, tenants, title }
 };
@@ -449,7 +453,17 @@ function drawTerrain() {
   ctx.drawImage(S.terrainImg, sx0, sy0, g.cols * g.step * S.view.ppm, g.rows * g.step * S.view.ppm);
   ctx.imageSmoothingEnabled = true;
 }
+function drawMapImage() {
+  if (!L("L_mapimage")) return;
+  const planet = $("planet").value; let img = S.mapImg[planet];
+  if (!img) { img = new Image(); S.mapImg[planet] = img; img.onload = draw; img.onerror = () => { S.mapImg[planet] = "none"; }; img.src = "/api/mapimage?planet=" + encodeURIComponent(planet); return; }
+  if (img === "none" || !img.complete || !img.naturalWidth) return;
+  // the texture covers the whole zone, north at the top: world (-E, +E) is its top-left corner
+  const E = C.mapExtent, [sx, sy] = w2s(-E, E), size = 2 * E * S.view.ppm;
+  ctx.globalAlpha = C.mapOpacity; ctx.imageSmoothingEnabled = true; ctx.drawImage(img, sx, sy, size, size); ctx.globalAlpha = 1;
+}
 function drawMap() {
+  drawMapImage();
   drawTerrain();
   grid(w2s, s2w, S.view.ppm > 4 ? 10 : 50);
   if (S.area) {
@@ -861,7 +875,7 @@ async function loadPlaces(jumpToFirstCity) {
 renderPlanets();
 $("placeSel").onchange = () => { if (!$("placeSel").value) return; const [x, y, r] = JSON.parse($("placeSel").value); $("cx").value = x; $("cy").value = y; $("radius").value = r; loadArea(); };
 $("allPlanets").onchange = fillShells;
-for (const id of ["L_terrain", "L_furniture", "L_usables", "L_objects", "L_stock", "L_live", "L_labels"]) $(id).onchange = draw;
+for (const id of ["L_mapimage", "L_terrain", "L_furniture", "L_usables", "L_objects", "L_stock", "L_live", "L_labels"]) $(id).onchange = draw;
 const L = id => $(id).checked;
 const KIND_COLOR = { terminal: "#4cc3ff", station: "#58e0c8", vendor: "#ffd166", elevator: "#9ad8ff", furniture: "#b08a30", static: "#55606f", other: "#6c7a8f" };
 $("live").onclick = async () => { status("Asking the server…"); try { S.live = await api("/api/live?filter=fb_"); status(S.live.length + " live NPC(s) overlaid (orange).", "ok"); draw(); } catch (e) { status("No live data: " + e.message, "warn"); } };
@@ -991,7 +1005,7 @@ $("wAdd").onclick = () => { const c = S.catalog.find(x => x.template === $("cata
 const SETTING_FIELDS = [
   ["Steep ground tint", "steep", "color"], ["Our sites", "site", "color"], ["Placed shell: ok", "ok", "color"], ["Placed shell: warning", "warn", "color"], ["Placed shell: problem", "fail", "color"],
   ["Selection", "select", "color"], ["World edits", "edit", "color"], ["Stock NPCs", "stockNpc", "color"], ["Live NPCs", "liveNpc", "color"],
-  ["Steep means more than (degrees)", "slopeDeg", "number"], ["Contour band every (m)", "bandMetres", "number"], ["Terrain opacity (0 to 1)", "terrainOpacity", "number"],
+  ["Planet map opacity (0 to 1)", "mapOpacity", "number"], ["Planet map half-width (m)", "mapExtent", "number"], ["Steep means more than (degrees)", "slopeDeg", "number"], ["Contour band every (m)", "bandMetres", "number"], ["Terrain opacity (0 to 1)", "terrainOpacity", "number"],
   ["Rotate knob snaps to (degrees)", "rotateSnap", "number"], ["r / R and [ / ] step (degrees)", "rotateKeyStep", "number"], ["Arrow keys move (m)", "nudgeStep", "number"], ["Arrow keys with Shift (m)", "nudgeShift", "number"], ["Double-click window (ms)", "dblClickMs", "number"],
 ];
 function renderSettings() {
@@ -1007,7 +1021,7 @@ function renderSettings() {
   for (const [label, key, type] of SETTING_FIELDS) {
     const row = document.createElement("div"); row.className = "row"; row.style.alignItems = "center";
     const l = document.createElement("label"); l.textContent = label; l.style.flex = "1"; l.style.marginTop = "4px";
-    const inp = document.createElement("input"); inp.type = type; inp.value = C[key]; inp.style.width = type === "color" ? "44px" : "70px"; if (type === "number") inp.step = key === "terrainOpacity" ? "0.05" : "1";
+    const inp = document.createElement("input"); inp.type = type; inp.value = C[key]; inp.style.width = type === "color" ? "44px" : "70px"; if (type === "number") inp.step = (key === "terrainOpacity" || key === "mapOpacity") ? "0.05" : "1";
     inp.onchange = () => { C[key] = type === "number" ? +inp.value : inp.value; applySettings(); };
     row.appendChild(l); row.appendChild(inp); box.appendChild(row);
   }

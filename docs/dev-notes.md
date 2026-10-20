@@ -186,6 +186,12 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-19 — the real planet map as backdrop.** `texture/ui_map_<planet>.dds` (patch_03.tre, 1024², DXT1, no
+  mipmaps) is the texture the in-game map window draws; a 60-line DXT1 decoder + PNG writer in the planner serves it
+  (1.2 s once, cached). Orientation: north up, world x → column (x + 8192)/16384, world y → row (8192 − y)/16384 —
+  checked by plotting the seven Tatooine cities, which land in the familiar arrangement. I tried to confirm it
+  against the server's height grid by correlation and could not: the texture is an artist's overview whose fine
+  ridges do not follow the real height field, so expect a backdrop, not a survey (the relief layer is the survey).
 - **2026-10-19 — terrain in the planner (2.12f, first half).** Reimplementing the `.trn` terrain generator in
   Python is a project of its own (procedural layers, affectors, filters), so the server does the work: a Lua
   oracle loops `getTerrainHeightAt` over a box and writes the grid to a file — 15 876 points in well under a
