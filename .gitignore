@@ -14,3 +14,6 @@ __pycache__/
 
 # Site planner: the in-game preview file (2.12d)
 MMOCoreORB/bin/scripts/screenplays/tasks/sites/.preview/
+
+# Per-worktree agent identity (swg agent new)
+.swg-agent
