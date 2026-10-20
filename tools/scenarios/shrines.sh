@@ -67,7 +67,7 @@ check_eq "two_shadows_came" "$(wc -w <<<"$SHADOWS")" "2" "$SHADOWS"
 for oid in $SHADOWS; do lab "killNpc:$CHAR:$oid" >/dev/null; done
 sleep 4
 A=$(lab "attunement:$CHAR")
-check "survived_the_ambush" "$(grep -q 'ambushDone=true' <<<"$A" && grep -q 'deeds=3/3' <<<"$A" && echo 1 || echo 0)" "$A"
+check "survived_the_ambush" "$(grep -q 'ambushDone=true' <<<"$A" && grep -q 'deeds=23/23' <<<"$A" && echo 1 || echo 0)" "$A"
 wait "$BOT_PID"
 check "client_saw_the_threat_and_the_end" "$(grep -aq 'fb_force:shadow_survived' "$BOTLOG" && echo 1 || echo 0)" "$(grep -a 'fb_force\|SpatialChat' "$BOTLOG" | tail -n3 | tr '\n' ' ')"
 lab "attunementSit:$CHAR:stand" >/dev/null
