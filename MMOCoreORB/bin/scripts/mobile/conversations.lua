@@ -343,6 +343,8 @@ includeFile("conversations/tasks/fb_combat_quartermaster_conv.lua")
 includeFile("conversations/tasks/fb_pet_vet_conv.lua")
 includeFile("conversations/tasks/fb_trade_hall_keeper_conv.lua")
 includeFile("conversations/tasks/fb_old_man_conv.lua")
+includeFile("conversations/tasks/fb_prisoner_conv.lua")
+includeFile("conversations/tasks/fb_trial_spirit_conv.lua")
 includeFile("conversations/tasks/fb_smuggler_goods_conv.lua")
 includeFile("conversations/tasks/fb_schematic_broker_conv.lua")   -- Phase 2.2
 includeFile("conversations/tasks/fb_parts_dealer_conv.lua")   -- Phase 2.3

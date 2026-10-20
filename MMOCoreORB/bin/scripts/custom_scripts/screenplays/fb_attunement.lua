@@ -149,7 +149,8 @@ end
 
 function FbAttunement:reset(pPlayer)
 	for _, s in ipairs(self.sources) do deleteScreenPlayData(pPlayer, self.DATA, s) end
-	for _, f in ipairs({ "ghost25", "ghost50", "ghost75", "oldman", "called", "task", "incapAt", "incapDay", "medWorlds", "lore", "return", "trials", "ambushDue", "ambushDone" }) do deleteScreenPlayData(pPlayer, self.DATA, "flag:" .. f) end
+	for _, f in ipairs({ "ghost25", "ghost50", "ghost75", "oldman", "called", "task", "incapAt", "incapDay", "medWorlds", "lore", "return", "trials", "ambushDue", "ambushDone", "alignment", "padawan" }) do deleteScreenPlayData(pPlayer, self.DATA, "flag:" .. f) end
+	if FbTrials ~= nil then FbTrials:reset(pPlayer) end
 	deleteScreenPlayData(pPlayer, self.DATA, "ghostTier")
 	removeQuestStatus("FbAttunement.visit." .. SceneObject(pPlayer):getObjectID())
 	removeQuestStatus("FbAttunement.poll." .. SceneObject(pPlayer):getObjectID())
@@ -166,7 +167,7 @@ function FbAttunement:status(pPlayer)
 	local st = { total = self:total(pPlayer), per = {}, raw = {}, flags = {} }
 	st.tier = self:tier(st.total)
 	for _, s in ipairs(self.sources) do st.per[s], st.raw[s] = self:sourceTotal(pPlayer, s) end
-	for _, f in ipairs({ "ghost25", "ghost50", "ghost75", "called", "task", "medWorlds", "lore", "return", "trials", "ambushDue", "ambushDone" }) do st.flags[f] = self:flag(pPlayer, f) end
+	for _, f in ipairs({ "ghost25", "ghost50", "ghost75", "called", "task", "medWorlds", "lore", "return", "trials", "ambushDue", "ambushDone", "alignment", "padawan" }) do st.flags[f] = self:flag(pPlayer, f) end
 	return st
 end
 
@@ -196,6 +197,7 @@ function FbAttunement:onEnterArea(pArea, pCreature)
 	if key == nil then return 0 end
 	self:grant(pCreature, "places", "visit:" .. key, kind == "shrine" and 3 or 8, "stir_place")
 	if kind == "shrine" then self:startMeditationWatch(pCreature, key) end
+	if kind == "shrine" and FbTrials ~= nil then FbTrials:onShrine(pCreature, key) end
 	self:maybeVisit(pCreature)
 	return 0
 end
@@ -382,6 +384,7 @@ function FbAttunement:onKill(pPlayer, pVictim)
 		self:setFlag(pPlayer, "incapAt", 0)
 	end
 	self:scanItems(pPlayer)
+	if FbTrials ~= nil then FbTrials:onKill(pPlayer, pVictim) end
 	-- the fight may still be on: look again in 20 s
 	createEvent(20000, "FbAttunement", "maybeVisitLater", pPlayer, "")
 	return 0
@@ -411,6 +414,10 @@ function FbAttunement:maybeVisit(pPlayer)
 	end
 	if CreatureObject(pPlayer):isInCombat() or CreatureObject(pPlayer):isDead() or CreatureObject(pPlayer):isIncapacitated() then return false end
 	local total = self:total(pPlayer)
+	-- 4a.3: a trial in progress or due takes the trigger
+	if FbTrials ~= nil and FbTrials:active(pPlayer) then
+		if FbTrials:tick(pPlayer) then return true end
+	end
 	-- 4a.2: the shrine task done → the Old Man returns (once)
 	if self:flag(pPlayer, "called") ~= nil and self:flag(pPlayer, "task") == "shrines" and self:worldCount(pPlayer) >= 6 and self:flag(pPlayer, "return") == nil then
 		if FbOldManReturn:isPlayerInPositionForEncounter(pPlayer) and FbOldManReturn:start(pPlayer) then
@@ -490,6 +497,10 @@ function FbAttunement:showStatus(pPlayer)
 	CreatureObject(pPlayer):sendSystemMessage("@fb_force:tier_" .. st.tier)
 	if st.flags.called ~= nil and st.flags.task == "shrines" then
 		local msg = LuaStringIdChatParameter("@fb_force:called_progress"); msg:setDI(self:worldCount(pPlayer))
+		CreatureObject(pPlayer):sendSystemMessage(msg:_getObject())
+	end
+	if st.flags.task == "trials" and FbTrials ~= nil then
+		local msg = LuaStringIdChatParameter("@fb_force:trials_progress"); msg:setDI(FbTrials:doneCount(pPlayer))
 		CreatureObject(pPlayer):sendSystemMessage(msg:_getObject())
 	end
 	local lore = self:loreCount(pPlayer)

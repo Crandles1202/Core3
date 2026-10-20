@@ -300,6 +300,15 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   fully validated position (one per second), posture upright/sitting/prone ok. 60 m at 4.5 m/s = 34 packets in
   16 s, server position exact. (7) `seat-walk` and `pilot-dry` pass; `pilot-dry` proves the loop, files and the
   seat round trip without a model.
+- **2026-10-20 — 4a.3 the Padawan trials.** Engine: a data table of eight trials and one `tick` that the
+  attunement trigger calls; a trial starts with "word from the old man" and completes through whichever
+  channel fits it (a 5 s position poll inside a shrine, a 10 s outdoors poll that combat resets, the kill hook,
+  a conversation, a shrine entry, an observer on the duel opponent). The visitors reuse the Village `Encounter`
+  recipe from 4a.1/4a.2 with the same two fixes (declare `isEncounterFinished`, stop the follow before
+  despawning). `awardSkill(pPlayer, name)` is the global the Village itself uses for the novice box; it skips
+  prerequisites. The duel opponent is chosen by `CreatureObject:getLevel()` at spawn (the Sith Shadow tiers
+  17 / 32 / 51 / 69). The riddle's right option differs per riddle so a client cannot always pick the first;
+  the lab reads the chosen riddle from the state and answers accordingly.
 - **2026-10-20 — 4a.2 the shrines.** First feature built the parallel way: worktree `Core3-shrines`, branch
   `feature/shrines`, `swg bench use feature/shrines` to test. Content: 49 lore lines (five per world, four where a
   world has four shrines), keyed by shrine index so a shrine always says the same thing; the Old Man's return

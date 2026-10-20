@@ -107,3 +107,59 @@ trials_unlocked = The listening is over. The trials will come to you; be found b
 shadow_threaten = %TT! The old man was seen with you. Whatever he gave you, hand it over, and you may walk away.
 shadow_survived = The dark things are down. Something in you held while they pushed at it.
 shadow_gone = The hunters have melted back into the country. They will not be the last.
+
+# the Padawan trials (4a.3): the Old Man's word when each begins, and the line when it is done
+trial_word_prefix = Word from the old man:
+trial_stillness_word = Go to a quiet place and stand in it. Do not move, not a step, until it stops being hard. A minute will do; it is longer than you think.
+trial_stillness_done = You stood, and the place let you. The first is done.
+trial_restraint_word = Walk the open country for five minutes and kill nothing. Not what attacks you, not what you could. If you fight, the count starts again.
+trial_restraint_reset = The count starts again.
+trial_restraint_done = Five minutes with your hand off the blade. The second is done.
+trial_strength_word = The Sand People east of the city have taken a child's water. Five of them. You know what to do, and you know how to do it without enjoying it.
+trial_strength_done = Five, and no more than five. The third is done.
+trial_mercy_word = Someone is waiting for you on the road with a problem that is yours now. Decide.
+trial_mercy_done = You decided. Nothing I say changes it. The fourth is done.
+trial_farwalk_word = There is a quiet place on this world you have not reached, the farthest from where you stand. Walk to it. The walking is the point.
+trial_farwalk_done = Far enough. The fifth is done.
+trial_insight_word = A spirit will find you with a question. Answer it. If you answer wrong, it will go, and come back when you have thought.
+trial_insight_wrong = No. Think on it. I will ask again.
+trial_insight_done = That is the answer. The sixth is done.
+trial_sacrifice_word = The spirit will come again and ask for what you have. Ten thousand credits. Give them without asking what they are for.
+trial_sacrifice_short = You do not have enough to give. Come back when you do.
+trial_sacrifice_done = Given, and not asked after. The seventh is done.
+trial_duel_word = The last one is simple. One of the hunters will come for you alone. Meet it alone. No companions, no group; if you bring help, it does not count.
+trial_duel_grouped = You were not alone. It does not count. Another will come.
+trial_duel_done = Alone, and still standing. The last is done.
+trials_complete = The trials are over. Something that was always in you has a name now, and the galaxy will treat you differently for it. You are a Padawan of no order, which is the only kind left.
+trials_light = The road you chose on the fourth trial runs toward the light. It will be the harder road.
+trials_dark = The road you chose on the fourth trial runs toward the dark. It will feel like the easier road. It is not.
+
+# the prisoner (trial four)
+prisoner_plea = Please. They left me here for the sand. I did nothing, or nothing that deserves this. Cut me loose and you never see me again.
+prisoner_truth = All right. I ran a crew out of Anchorhead. People got hurt. I am not asking you to forgive it; I am asking you to let me walk.
+prisoner_freed = He runs, badly, and does not look back.
+prisoner_killed = It is quick. Nobody will ask about him.
+
+# the spirit that asks (trials six and seven)
+spirit_greeting = Sit, or stand, as you like. I have a question, and after the question, a request.
+spirit_riddle_1 = I am taken before you can give me, and kept only by letting go. What am I?
+spirit_riddle_1_a = A breath.
+spirit_riddle_1_b = A promise.
+spirit_riddle_1_c = A name.
+spirit_riddle_2 = What grows heavier the longer you refuse to set it down?
+spirit_riddle_2_a = A lightsaber.
+spirit_riddle_2_b = Anger.
+spirit_riddle_2_c = A debt.
+spirit_riddle_3 = Two walk the same road. One arrives first; one arrives whole. Which of them has the Force?
+spirit_riddle_3_a = The first.
+spirit_riddle_3_b = Neither.
+spirit_riddle_3_c = The one who arrived whole.
+spirit_right = Yes.
+spirit_wrong = No.
+spirit_sacrifice = Now the request. Ten thousand credits. Do not ask what for.
+spirit_taken = The credits are gone and the spirit does not say thank you.
+spirit_leaves = The spirit is gone.
+
+# the duel (trial eight)
+duel_threaten = %TT. Alone, finally. Good.
+trials_progress = Trials passed: %DI of 8.
