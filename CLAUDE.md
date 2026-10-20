@@ -11,6 +11,8 @@ runs and tests. Host: WSL2 Debian 12.
   WSL networking, account SQL, gotchas, from-scratch rebuild. DB password and DBSecret are redacted in
   the repo copy (`config-local.lua` holds the real values).
 - [docs/dev-notes.md](docs/dev-notes.md) — the long-form gotchas list and per-session log. Append to it.
+- [docs/Game-Systems.md](docs/Game-Systems.md) — how stock resources, surveying, harvesters, crafting, travel and
+  trade work (from the code), and what each means for an AI citizen. Append when a mechanic is looked up.
 - [docs/Citizens-Cast.md](docs/Citizens-Cast.md) — the Phase 7 cast (ten AI-driven players: persona, profession path,
   life plan, voice) for Chuck to check off; each becomes a pilot persona file.
 

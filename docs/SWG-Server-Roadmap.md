@@ -386,9 +386,17 @@ and Chuck checks each one off; the API key comes from Chuck's Max plan credits.
   sell loot, bank, train at a trainer when XP allows.
 - **7.5 \[M\] Entertainer playbook.** Cantina sets (dance / music, flourishes), buffs for groupmates, tips, the 1.10
   XP rule applies.
-- **7.6 \[L\] Crafter playbook and the gear economy.** Survey, harvesters, resource runs, crafting sessions, bazaar
-  listings, and the request loop: a combat citizen notices worn gear, asks the directory for a crafter, the crafter
-  builds and lists or trades it. Real SUI driving for crafting and structure placement is the hard part.
+- **7.6a \[L\] Gathering and the resource economy.** Resources are galaxy-wide, patchy and transient
+  (`docs/Game-Systems.md`): a *resource oracle* (Lua binding over `ResourceManager`: current spawns per planet with
+  attributes and best spots — the citizens' SWGCraft) + seat primitives `survey` / `sample` (decode `SurveyMessage`
+  and `ResourceListForSurveyMessage`), `travel_to` (`purchaseTicket` + `boardShuttle`), `place_structure`,
+  harvester manage / deposit / empty (`EmptyHopper` 0xED). Playbooks "scout a resource" and "run harvesters" for
+  the two gatherer citizens (Wex Toren, Osra Brenn), who list on the bazaar; crafters survey and sample for small
+  needs.
+- **7.6b \[L\] Crafting sessions and the gear loop.** The crafting session on the wire (request → schematic →
+  slots → ingredients 0x107 → assembly → experiment 0x106 → prototype), resource choice by the schematic's stat
+  weights, an inventory model in the seat; the request loop: a combat citizen notices worn gear, asks the directory
+  for a crafter, the crafter buys resources or gathers, crafts, lists or trades it.
 - **7.7 \[M\] GCW citizens.** Faction choice in the life plan, GCW terminal missions, joining invasions (3.1) and
   skirmishes (3.17), declared citizens fighting the other side's citizens.
 - **7.8 \[L\] The cast.** 8–12 citizens with a scheduler (who is online when, how many at once — the cost dial), a
@@ -396,7 +404,7 @@ and Chuck checks each one off; the API key comes from Chuck's Max plan credits.
 - **7.9 \[XL\] A citizens' city.** A mayor citizen founds a player city with Chuck or other citizens: city hall, lots,
   structures, elections. Needs 7.6's structure placement.
 
-**Order:** 7.0 → 7.1 → 7.2 → 7.3 (first citizen groups with Chuck) → 7.4 → 7.5 → 7.6 → 7.7 → 7.8 → 7.9.
+**Order:** 7.0 → 7.1 → 7.2 → 7.3 (first citizen groups with Chuck) → 7.4 → 7.5 → 7.6a → 7.6b → 7.7 → 7.8 → 7.9.
 **Branch:** `feature/alice` (planning), then `feature/alice-7.N` per item.
 
 **Runtime (checked against the docs 2026-10-20).** A Pro/Max login is for ordinary, individual use of Claude Code;
