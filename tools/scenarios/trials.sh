@@ -52,6 +52,7 @@ check "prisoner_sent" "$(grep -q 'sent=true' <<<"$T" && echo 1 || echo 0)" "$T"
 sleep 6
 PRIS=$(shrine_oid_of fb_prisoner)
 check "prisoner_stands" "$( [ -n "$PRIS" ] && echo 1 || echo 0 )"
+lab "gotoNpc:$CHAR:fb_prisoner" >/dev/null     # he stands where he was left; the bot client does not walk
 wait "$BOT_PID"
 sleep 8
 bot --wait 4 --converse "$PRIS" --options 1 --wait 3 >/dev/null 2>&1 || true
@@ -85,6 +86,7 @@ check "spirit_sent" "$(grep -q 'sent=true' <<<"$T" && echo 1 || echo 0)" "$T"
 sleep 14
 SPIRIT=$(shrine_oid_of fb_trial_spirit)
 check "spirit_stands" "$( [ -n "$SPIRIT" ] && echo 1 || echo 0 )"
+lab "gotoNpc:$CHAR:fb_trial_spirit" >/dev/null
 wait "$BOT_PID"
 sleep 8
 case "$RIDDLE" in 1) RIGHT=0 ;; 2) RIGHT=1 ;; 3) RIGHT=2 ;; *) RIGHT=0 ;; esac
@@ -104,6 +106,7 @@ T=$(lab "trialTick:$CHAR")
 check "spirit_sent_again" "$(grep -q 'sent=true' <<<"$T" && echo 1 || echo 0)" "$T"
 sleep 14
 SPIRIT=$(shrine_oid_of fb_trial_spirit)
+lab "gotoNpc:$CHAR:fb_trial_spirit" >/dev/null
 wait "$BOT_PID"
 sleep 8
 bot --wait 4 --converse "$SPIRIT" --options 0 --wait 3 >/dev/null 2>&1 || true
