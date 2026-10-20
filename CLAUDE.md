@@ -289,11 +289,16 @@ Settings are read at session start, so restart Claude Code after creating it.
 
 ## Current status
 
-_Updated: 2026-10-18 (session 3: Phase 4 design settled with Chuck, 4.0 TRE tooling shipped; Phase 1 done, Phase 2 bar 2.4, Phase 3 bar 3.12 and the time-of-day half of 3.3)_
+_Updated: 2026-10-20 (sessions 3–5: Phase 2.12 tooling complete — Lab Remote, site builder, site planner with game loop, world edits, terrain — and Phase 4 begun with 4a.1 attunement; Phase 1 done, Phase 2 bar 2.4, Phase 3 bar 3.12 / 3.3 time-of-day / 3.11 escort)_
 
-- `unstable` = `origin/unstable`, no local feature branches, stash empty. Each phase went through its own
-  `feature/phaseX.Y-*` branch, a `--no-ff` merge and a push; all seven are **unplay-tested by Chuck** (he
-  tests tonight) — see the checklist in To-do.
+- `unstable` = `origin/unstable` (`95c7107cd7`, 2026-10-20), no local feature branches, stash empty. Every feature
+  went through its own `feature/<name>` branch, a `--no-ff` merge and a push. **Where things stand:** the
+  Phase 1–3 content from 2026-10-17/18 is still unplay-tested by Chuck except what he saw while placing the
+  Trade Hall (2.11 hall, vendors, HoloNet, 2.12 tooling — all good); the Phase 4 content (4a.1) is new today
+  and unseen. **Next:** 4a.2 shrines (the Old Man's task: `FbAttunement` flags `called` / `task=shrines` /
+  `medWorlds` are the input; completion + the stock Sith Shadow ambush after his visit are open), then 4a.3
+  trials; 2.12e world layers when a Phase 4 piece needs one. Design questions are all settled (roadmap, Phase 4
+  decisions block).
 - Shipped today: 1.9 stimpacks heal mind (Lua template override), 1.5 inventory 100 (template + login
   hook + Lua setter), 1.4 mission level/direction hints (C++ `populateMissionList`), 1.10 no-grind
   entertainer XP (C++ `awardEntertainerExperience`), 2.5 config-driven bazaar limits (C++), 2.2 schematic
@@ -305,8 +310,8 @@ _Updated: 2026-10-18 (session 3: Phase 4 design settled with Chuck, 4.0 TRE tool
   block at the top of the roadmap's Phase 4 section is the spec (attunement score with capped sources, Force-ghost
   clues, FRS rank trees as the ladder, Masters in the Yavin 4 enclaves, cosmetic colour crystals, fixer-paid
   bounties). 4.0 custom TRE tooling shipped and installed in Chuck's client (`/mnt/c/EMU/swg - Copy/SWGEmu`). **2.11 Mos Eisley Trade Hall** shipped the same night (server-placed stock building with the 11 square vendors inside, doorman on the square) — the pattern for every later shop/enclave. Next: 4a.1 attunement + Old Man on `feature/phase4a.1-*`; TRE object templates (custom building names) when a shop needs its own name.
-- Binaries: `bin/core3` and `bin/core3client` built 2026-10-17 from this tree (`swg build`).
-- Lab now: 261 unit, planner selftest, ~423 Lua checks (one placement check per live FB spawn), bot, 28 scenarios (+2 manual audits) (`attunement`, `terrain-grid`, `world-edits`, `site-preview`, `site-builder`, `lab-remote`, `trade-hall`, `npc-placement`, `tre-strings`, `stimpack-heals`, `npc-conversation`,
+- Binaries: `bin/core3` built 2026-10-20 (weather clamp, `isMeditating`), `bin/core3client` 2026-10-19, both from this tree (`swg build`).
+- Lab now: 261 unit, planner selftest, ~440 Lua checks (one placement check per live FB spawn), bot, 28 scenarios (+2 manual audits) (`attunement`, `terrain-grid`, `world-edits`, `site-preview`, `site-builder`, `lab-remote`, `trade-hall`, `npc-placement`, `tre-strings`, `stimpack-heals`, `npc-conversation`,
   `inventory-100`, `mission-hints`, `entertainer-xp`, `schematic-broker`, `schematic-broker-ui` (real SUI path),
   `parts-dealer`, `bazaar-listings`, `traveling-merchant`, `ambient-cantina`, `galaxy-chatter`, `story-ticker`, `faction-patrols`, `holonet`, `convoy-ambush`, `sandstorm`, `invasion-bestine`, `territory`; manual: `merchant-stops`, `ambient-locations`). Oracle
   additions today: `inventoryLimit`, `setInventoryLimit`, `loginHook`, `spawnObjectNear`, `destroyObject`,
