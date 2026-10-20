@@ -186,6 +186,20 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-20 (evening) — 7.6a resources: oracle, survey, sample.** Chuck: crafters cannot sit in one town, resources
+  are elsewhere. What the code says is in `docs/Game-Systems.md`. Built: `getResourceSpawns(zone)` /
+  `getResourceDensityAt` Lua bindings (the citizens' spreadsheet: every spawn in shift with attributes and up to
+  three best spots — a 256 m scan of the simplex concentration map refined to 32 m; ~4k noise reads per spawn, ms),
+  lab `resources:<planet>[:<class>]` / `resourceDensity`, seat `survey` / `sample` / `resources`. **Survey on the
+  wire:** radial 20 on the survey tool → `ResourceListForSurveyMessage` (opcount 4, 0x8A64B1D5: int n, n × (ascii
+  name, long oid, ascii type), ascii toolType, long player) — or first the range window (`@survey:select_range`,
+  rows "64m x 3pts" … "384m x 5pts" by skill; after answering, use the tool again) → command `requestsurvey
+  <resource name>` → `SurveyMessage` (opcount 2, 0x877F79AC: int n, n × (x, 0, y, pct)). **Sample:** command
+  `requestcoresample <name>` → `@survey:sample_located` (DI units) after 3 s, then the server re-samples every 25 s
+  on its own until the player moves / fights / cancels; `@survey:trace_amount`, `sample_failed`,
+  `density_below_threshold` are the other verdicts. Yield ≈ density × 25–28 × surveying/100 per sample, so a
+  fresh artisan (surveying 10) gets single digits; the scenario grants `crafting_artisan_survey_04`. Untested on
+  the bench yet (held by the trials agent for hours; `SWG_WAIT` gives up after an hour and the lock is renewed).
 - **2026-10-20 — Phase 7 planned, 7.0 seat daemon.** Chuck's ask: a galaxy that feels alive, and AI "players"
   (real accounts) he can group, trade and talk with. Plan written into the roadmap (Phase 3.13–3.18 galaxy-wide
   life, Phase 7 Citizens: seat / autopilot / playbooks / pilot / cast), cast of ten drafted in
