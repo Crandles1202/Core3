@@ -84,8 +84,12 @@ void ZonePacketHandler::handleMessage(Message* pack) {
 			break;
 		CASE_OPCODE("ChatOnLeaveRoom");
 			break;
-		CASE_OPCODE("SceneDestroyObject");
+		CASE_OPCODE("SceneDestroyObject"); {   // long oid, byte: the object left our view
+			uint64 gone = pack->parseLong();
+			if (zone->getObjectManager() != nullptr)
+				zone->getObjectManager()->destroyObject(gone);
 			break;
+		}
 		case 0x0E61CC92: what = "ItemSoldMessage";              // reply to CreateImmediateAuction
 			handleAuctionStatusMessage(pack, "sold");
 			break;
@@ -546,22 +550,16 @@ void ZonePacketHandler::handleUpdateContainmentMessage(Message* pack) {
 	if (object == nullptr)
 		return;
 
+	Locker lock(object);
+	object->setContainmentType(type);
+
 	if (par == 0) {
-		// remove object from parent
-		parent = object->getParent();
-
-		if (parent != nullptr) {
-			// No container removal needed
-		} else {
-			object->setParent(nullptr);
-		}
-
-		return;
-	} else if (parent == nullptr) {
+		object->setParent(nullptr);
 		return;
 	}
 
-	// No container transfer needed
+	// the parent may be unknown to us (a cell we never saw created); keep the id-less link out then
+	object->setParent(parent);
 }
 
 void ZonePacketHandler::handleCmdSceneReady(Message* pack) {

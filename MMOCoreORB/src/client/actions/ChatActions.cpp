@@ -117,14 +117,12 @@ public:
 		StringBuffer args;
 		args << target << " 0 " << mood << " 0 " << language << " " << text;
 
+		// spatialchatinternal never gets a CommandQueueRemove (the chat itself is the echo), so only an
+		// explicit rejection within a short window counts as failure
 		uint32 err = 0, state = 0;
-		bool ok = sendQueueCommand(core, "spatialchatinternal", 0, UnicodeString(args.toString()), 5, err, state, this);
+		sendQueueCommand(core, "spatialchatinternal", 0, UnicodeString(args.toString()), 1, err, state, this);
 
-		if (err == 0xFFFFFFFF) {
-			result.setError("No CommandQueueRemove for spatialchatinternal within 5s", 3);
-			return;
-		}
-		if (!ok) {
+		if (err != 0xFFFFFFFF && err != 0) {
 			result.setError("say rejected: error=" + String::valueOf(err) + " state=" + String::valueOf(state), 4);
 			return;
 		}
@@ -340,14 +338,11 @@ public:
 		StringBuffer args;
 		args << target << " " << emoteId << " 1 1";
 
+		// like spatial chat, socialinternal sends no CommandQueueRemove; only a rejection counts
 		uint32 err = 0, state = 0;
-		bool ok = sendQueueCommand(core, "socialinternal", 0, UnicodeString(args.toString()), 5, err, state, this);
+		sendQueueCommand(core, "socialinternal", 0, UnicodeString(args.toString()), 1, err, state, this);
 
-		if (err == 0xFFFFFFFF) {
-			result.setError("No CommandQueueRemove for socialinternal within 5s", 3);
-			return;
-		}
-		if (!ok) {
+		if (err != 0xFFFFFFFF && err != 0) {
 			result.setError("emote rejected: error=" + String::valueOf(err) + " state=" + String::valueOf(state), 4);
 			return;
 		}

@@ -100,6 +100,12 @@ SceneObject* ObjectManager::createObject(uint32 objectCRC, uint64 objectID) {
 
 		object = objectFactory.createObject(gameObjectType, &result);
 
+		// every typed class is commented out of registerObjectTypes(), so without this nothing the
+		// server creates is ever kept: a plain SceneObject carries what the seat lists (crc, name,
+		// type, position, parent)
+		if (object == nullptr)
+			object = new SceneObject(&result);
+
 		luaMutex.unlock();
 
 		if (object == nullptr)
@@ -122,6 +128,12 @@ SceneObject* ObjectManager::createObject(uint32 objectCRC, uint64 objectID) {
 	}
 
 	return object;
+}
+
+void ObjectManager::destroyObject(uint64 objectID) {
+	Locker _locker(this);
+
+	objectMap->remove(objectID);
 }
 
 SceneObject* ObjectManager::getObject(uint64 objectID) {

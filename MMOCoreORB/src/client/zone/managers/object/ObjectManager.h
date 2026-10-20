@@ -35,6 +35,8 @@ public:
 
 	SceneObject* getObject(uint64 objectID);
 
+	void destroyObject(uint64 objectID);   // SceneDestroyObject: it left our view
+
 	SceneObject* getObject(const UnicodeString& customName);
 
 	// the seat (SeatAction) lists what the client knows about; lock the manager while iterating
