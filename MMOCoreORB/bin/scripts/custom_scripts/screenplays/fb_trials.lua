@@ -323,8 +323,19 @@ FbTrialSpirit = Encounter:new {
 }
 function FbTrialSpirit:isEncounterFinished(pPlayer) return false end
 function FbTrialSpirit:onEncounterSpawned(pPlayer, spawned) record(pPlayer, spawned, "fb_trial_spirit", self.encounterDespawnTime) end
+-- having reached the player, a visitor stands where it is: a follower whose target logs out wanders off
+local function standStill(spawned)
+	for _, pNpc in ipairs(spawned or {}) do
+		if pNpc ~= nil then
+			AiAgent(pNpc):removeObjectFlag(AI_ESCORT); AiAgent(pNpc):removeObjectFlag(AI_FOLLOW); AiAgent(pNpc):setFollowObject(nil)
+			AiAgent(pNpc):addObjectFlag(AI_STATIC); AiAgent(pNpc):setAITemplate()
+		end
+	end
+end
+FbTrials.standStill = standStill
+
 function FbTrialSpirit:onEncounterInRange(pPlayer, spawned)
-	if spawned ~= nil and spawned[1] ~= nil then spatialChat(spawned[1], "@fb_force:spirit_greeting") end
+	if spawned ~= nil and spawned[1] ~= nil then standStill(spawned); spatialChat(spawned[1], "@fb_force:spirit_greeting") end
 end
 function FbTrialSpirit:belongsTo(pPlayer, pNpc) return pPlayer ~= nil and pNpc ~= nil and SpawnMobiles.isFromSpawn(pPlayer, self.taskName, pNpc) end
 function FbTrialSpirit:scheduleDespawn(pPlayer) if pPlayer ~= nil then createEvent(8000, self.taskName, "handleDespawnEvent", pPlayer, "") end end

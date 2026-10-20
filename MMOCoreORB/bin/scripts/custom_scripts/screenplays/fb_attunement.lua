@@ -694,6 +694,7 @@ function FbOldManVisit:onEncounterSpawned(pPlayer, spawned) recordVisitor(pPlaye
 
 function FbOldManVisit:onEncounterInRange(pPlayer, spawned)
 	if pPlayer == nil or spawned == nil or spawned[1] == nil then return end
+	if FbTrials ~= nil and FbTrials.standStill ~= nil then FbTrials.standStill(spawned) end   -- stays put through a logout
 	local msg = LuaStringIdChatParameter("@fb_force:oldman_greeting")
 	msg:setTT(CreatureObject(pPlayer):getFirstName())
 	spatialChat(spawned[1], msg:_getObject())
@@ -730,6 +731,7 @@ function FbOldManReturn:isEncounterFinished(pPlayer) return false end
 function FbOldManReturn:onEncounterSpawned(pPlayer, spawned) recordVisitor(pPlayer, spawned, "fb_old_man", self.encounterDespawnTime) end
 function FbOldManReturn:onEncounterInRange(pPlayer, spawned)
 	if pPlayer == nil or spawned == nil or spawned[1] == nil then return end
+	if FbTrials ~= nil and FbTrials.standStill ~= nil then FbTrials.standStill(spawned) end   -- stays put through a logout
 	local msg = LuaStringIdChatParameter("@fb_force:oldman_return_greeting")
 	msg:setTT(CreatureObject(pPlayer):getFirstName())
 	spatialChat(spawned[1], msg:_getObject())
