@@ -311,9 +311,7 @@ _Updated: 2026-10-20 (sessions 3–5: Phase 2.12 tooling complete — Lab Remote
   went through its own `feature/<name>` branch, a `--no-ff` merge and a push. **Where things stand:** the
   Phase 1–3 content from 2026-10-17/18 is still unplay-tested by Chuck except what he saw while placing the
   Trade Hall (2.11 hall, vendors, HoloNet, 2.12 tooling — all good); the Phase 4 content (4a.1) is new today
-  and unseen. **Next:** 4a.2 shrines (the Old Man's task: `FbAttunement` flags `called` / `task=shrines` /
-  `medWorlds` are the input; completion + the stock Sith Shadow ambush after his visit are open), then 4a.3
-  trials; 2.12e world layers when a Phase 4 piece needs one. Design questions are all settled (roadmap, Phase 4
+  and unseen. **Next:** 4a.3 Padawan trials (input: `FbAttunement` flags `task=trials` / `trials`; the Old Man said the first trial will be sent for), then 4a.4 visions; 2.12e world layers when a Phase 4 piece needs one. 4a.2 shipped 2026-10-20 (lore fragments, the Old Man's return, the Sith Shadow ambush). Design questions are all settled (roadmap, Phase 4
   decisions block).
 - Shipped today: 1.9 stimpacks heal mind (Lua template override), 1.5 inventory 100 (template + login
   hook + Lua setter), 1.4 mission level/direction hints (C++ `populateMissionList`), 1.10 no-grind

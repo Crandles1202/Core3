@@ -162,6 +162,8 @@ cmd_agent() {
 			if git -C "$BENCH" show-ref -q "refs/heads/$branch" && ! git -C "$BENCH" branch --merged unstable | grep -q " $branch\$"; then
 				die "$branch is not merged into unstable yet (swg bench merge $branch)"
 			fi
+			# the agent may still hold the bench: give it back first (release needs a clean bench checkout)
+			if [ -f "$LOCKFILE" ] && [ "$(lock_field 1)" = "$name" ]; then rm -f "$LOCKFILE"; git -C "$BENCH" checkout -q unstable 2>/dev/null || true; say "bench released (was held by $name)"; fi
 			[ -d "$dir" ] && { git -C "$BENCH" worktree remove "$dir" || die "worktree remove failed (uncommitted work? --force by hand)"; }
 			git -C "$BENCH" branch -d "$branch" 2>/dev/null || true
 			say "agent '$name' retired: worktree and branch removed" ;;

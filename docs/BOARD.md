@@ -52,5 +52,6 @@ tools/swg bench use feature/<name>              # lock + deploy (reload for Lua,
 tools/swg test scenario <yours>                 # iterate: edit in the worktree, commit, bench use again
 tools/swg test all                              # the gate, ~30 min, records a pass for this commit
 tools/swg bench merge feature/<name>            # --no-ff into unstable + push (needs the pass)
-tools/swg bench release                         # bench back on unstable, lock open
+tools/swg bench release                         # bench back on unstable, lock open (before agent done)
+tools/swg agent done <name>                     # retire the worktree; releases the bench if you still hold it
 ```
