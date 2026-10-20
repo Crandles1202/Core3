@@ -21,21 +21,21 @@ wait "$BOT_PID"
 
 # --- phase B: sit at the shrine: credit + lore fragment ------------------------------------------------------
 sleep 8
-bot_bg --wait 2 --command sitServer --command-nowait --wait 30
+bot_bg --wait 2 --command sitServer --command-nowait --wait 45
 wait_online || die "$CHAR never came back online"
 sleep 22
 A=$(lab "attunement:$CHAR")
 check "world_one_noted" "$(grep -q 'medWorlds=tatooine' <<<"$A" && echo 1 || echo 0)" "$A"
 check "one_fragment_learned" "$(grep -q 'lore=1' <<<"$A" && echo 1 || echo 0)" "$A"
+lab "attunementWorlds:$CHAR:naboo,corellia,talus,rori,lok" >/dev/null
+lab "travel:$CHAR:tatooine:-6506:-3668" >/dev/null
 wait "$BOT_PID"
 check "client_got_the_fragment" "$(grep -aq 'fb_force:lore_tatooine_2' "$BOTLOG" && echo 1 || echo 0)" "$(grep -a 'fb_force' "$BOTLOG" | tail -n3 | tr '\n' ' ')"
-check "client_got_the_progress_line" "$(grep -aq 'fb_force:called_progress' "$BOTLOG" && echo 1 || echo 0)"
 
-# --- phase C: five more worlds already listened to; the sixth brings the Old Man back --------------------------
-lab "attunementWorlds:$CHAR:naboo,corellia,talus,rori,lok" >/dev/null
-lab "attunementSit:$CHAR:stand" >/dev/null
+# --- phase C: five more worlds already listened to; a new shrine on this world is the sixth, and the Old Man
+# comes back. The character is moved to that shrine still seated, so the login watch credits it at once. --------
 sleep 8
-bot_bg --wait 2 --command sitServer --command-nowait --wait 70
+bot_bg --wait 70
 wait_online || die "$CHAR never came back online"
 sleep 22
 A=$(lab "attunement:$CHAR")

@@ -2216,6 +2216,10 @@ function FbLabTests:attunementSet(charName, total)
 		if take > 0 then FbAttunement:grant(pPlayer, src, "debug", take, nil) end
 		left = left - take
 	end
+	-- a character set straight to this score has "had" the spirits below it (a real one met them on the way)
+	for _, th in ipairs(FbAttunement.thresholds) do
+		if (tonumber(total) or 0) >= th then FbAttunement:setFlag(pPlayer, "ghost" .. th, os.time()) end
+	end
 	attunementLine(charName, pPlayer)
 	return tostring(FbAttunement:total(pPlayer))
 end
