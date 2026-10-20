@@ -5,7 +5,7 @@
 # Here: the Trade Hall itself, moved 60 m and turned, previewed and then restored.
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-SITES="$REPO/MMOCoreORB/bin/scripts/screenplays/tasks/sites"
+SITES="$BENCH/MMOCoreORB/bin/scripts/screenplays/tasks/sites"   # the server reads the bench's scripts (lib.sh sets BENCH)
 mkdir -p "$SITES/.preview"
 ORIG=$(lab "tradeHall")
 OX=$(sed -n 's/.*[[:space:]]x=\([-0-9.]*\).*/\1/p' <<<"$ORIG" | head -n1)
