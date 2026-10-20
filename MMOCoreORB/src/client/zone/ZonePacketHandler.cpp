@@ -503,15 +503,7 @@ void ZonePacketHandler::handleObjectControllerMessage(Message* pack) {
 				self->setPosition(x, z, y);
 			}
 
-			BaseMessage* ack = new BaseMessage();
-			ack->insertShort(0x05);
-			ack->insertInt(0x80CE5E46);   // ObjControllerMessage
-			ack->insertInt(0x1B);
-			ack->insertInt(0x13F);        // TeleportAck
-			ack->insertLong(objectID);
-			ack->insertInt(0);
-			ack->insertInt(moveCount);
-			((BaseClient*) pack->getClient())->sendPacket(ack);
+			sendTeleportAck((BaseClient*) pack->getClient(), objectID, moveCount);
 
 			core->setVar("Teleport/count", (int) moveCount);
 			core->setVar("Teleport/x", x);
@@ -562,10 +554,28 @@ void ZonePacketHandler::handleUpdateContainmentMessage(Message* pack) {
 	object->setParent(parent);
 }
 
+// TeleportAck (ObjController 0x13F): the server flags a player as teleporting at character select and
+// after every teleport, and drops all of that player's movement packets until this arrives. The real
+// client sends it once the scene has loaded and after each server-side move.
+void ZonePacketHandler::sendTeleportAck(BaseClient* client, uint64 objectID, uint32 moveCount) {
+	BaseMessage* ack = new BaseMessage();
+	ack->insertShort(0x05);
+	ack->insertInt(0x80CE5E46);   // ObjControllerMessage
+	ack->insertInt(0x1B);
+	ack->insertInt(0x13F);        // TeleportAck
+	ack->insertLong(objectID);
+	ack->insertInt(0);
+	ack->insertInt(moveCount);
+	client->sendPacket(ack);
+}
+
 void ZonePacketHandler::handleCmdSceneReady(Message* pack) {
 	info(true) << __FUNCTION__;
 
 	zone->setSceneReady();
+
+	// the login counts as a teleport (SelectCharacterCallback sets teleporting): ack it or we can never move
+	sendTeleportAck((BaseClient*) pack->getClient(), core->selectedCharacterOid, 0);
 }
 
 void ZonePacketHandler::handleClientCreateCharacterSuccess(Message* pack) {

@@ -23,6 +23,7 @@ plan credits through a Console workspace). --dry runs a scripted decider instead
 loop, the seat and the files can be exercised in the lab.
 """
 import argparse
+import importlib.machinery
 import importlib.util
 import json
 import os
@@ -43,9 +44,11 @@ MAX_TOKENS = 2048
 
 
 def load_seat_module():
-    spec = importlib.util.spec_from_file_location("seat", os.path.join(TOOLS, "seat"))
+    # tools/seat has no .py suffix, so name the loader explicitly
+    loader = importlib.machinery.SourceFileLoader("seat", os.path.join(TOOLS, "seat"))
+    spec = importlib.util.spec_from_loader("seat", loader)
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    loader.exec_module(module)
     return module
 
 

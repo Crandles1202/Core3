@@ -30,6 +30,7 @@ public:
 	void handleUpdateContainmentMessage(Message* pack);
 	void handleClientPermissionsMessage(Message* pack);
 	void handleCmdSceneReady(Message* pack);
+	void sendTeleportAck(BaseClient* client, uint64 objectID, uint32 moveCount);
 	void handleClientCreateCharacterSuccess(Message* pack);
 	void handleClientCreateCharacterFailed(Message* pack);
 	void handleClientRandomNameResponse(Message* pack);

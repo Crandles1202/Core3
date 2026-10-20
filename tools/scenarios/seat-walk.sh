@@ -41,7 +41,7 @@ check_ge "took_real_time" "$((T1 - T0))" 8 "60 m at 4.5 m/s is ~13 s"
 POS=$(lab "where:$CHAR" 8 | grep -a '^INFO' | head -n1)
 PX=$(sed -n 's/.*[[:space:]]x=\(-\{0,1\}[0-9.]*\).*/\1/p' <<<"$POS")
 PY=$(sed -n 's/.*[[:space:]]y=\(-\{0,1\}[0-9.]*\).*/\1/p' <<<"$POS")
-DIST=$(awk "BEGIN{d=sqrt((${PX:-0}-$X1)^2+(${PY:-0}-$Y1)^2); printf \"%.1f\", d}")
+DIST=$(awk -v px="${PX:-0}" -v py="${PY:-0}" -v gx="$X1" -v gy="$Y1" 'BEGIN{d=sqrt((px-gx)^2+(py-gy)^2); printf "%.1f", d}')
 check "arrived_on_server" "$(awk "BEGIN{print ($DIST < 3) ? 1 : 0}")" "server says $PX,$PY — $DIST m from the goal"
 
 "$SEAT" stop "$NAME" >/dev/null 2>&1
