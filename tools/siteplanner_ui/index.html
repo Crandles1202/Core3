@@ -97,6 +97,9 @@
   <button id="wApply" class="primary">Apply this world edit (saves to repo)</button>
   <label>Edits on this planet</label><ul id="worldOps"></ul>
   <small>World edits change the snapshot both sides read: they show in game after a server restart with the rebuilt archive and a client restart — tell Claude.</small>
+  <h2>Settings</h2>
+  <button id="settingsToggle">Show / hide settings (colours, terrain, controls)</button>
+  <div id="settingsBox" style="display:none"></div>
   <div id="status"></div>
 </aside>
 
@@ -121,6 +124,22 @@
 const $ = id => document.getElementById(id);
 const canvas = $("c"), ctx = canvas.getContext("2d");
 const GAP = 3, BODY = 0.35, MARGIN = 0.8;
+// ---------------------------------------------------------------- settings (Settings panel; kept in this browser)
+const DEFAULTS = {
+  panButton: "right",        // which mouse button drags the map: "right" (left selects) or "left"
+  rotateSnap: 5,             // degrees the rotate knob snaps to (Alt = free)
+  rotateKeyStep: 15,         // r / R and [ / ] step
+  nudgeStep: 1, nudgeShift: 5,   // arrow keys, metres (plain / Shift)
+  dblClickMs: 650,           // our own double-click window
+  slopeDeg: 15,              // terrain steeper than this is tinted
+  bandMetres: 2,             // contour band spacing
+  terrainOpacity: 0.92,
+  steep: "#e63c3c", site: "#c58cff", ok: "#44d17a", warn: "#f0b429", fail: "#ff5c5c", select: "#4cc3ff", edit: "#ff9f43", stockNpc: "#7fb0d0", liveNpc: "#f0b429",
+};
+const C = { ...DEFAULTS };
+function loadSettings() { try { Object.assign(C, DEFAULTS, JSON.parse(localStorage.getItem("fbPlannerSettings") || "{}")); } catch (e) { Object.assign(C, DEFAULTS); } }
+function saveSettings() { try { localStorage.setItem("fbPlannerSettings", JSON.stringify(C)); } catch (e) {} }
+loadSettings();
 
 window.addEventListener("error", e => { const el = document.getElementById("status"); if (el) { el.textContent = "Script error: " + e.message + " (line " + e.lineno + ")"; el.className = "bad"; } });
 const S = {
@@ -368,24 +387,26 @@ function terrainHeightAt(wx, wy) {
   const c0 = Math.floor(c), r0 = Math.floor(r), fx = c - c0, fy = r - r0, H = (rr, cc) => g.h[rr * g.cols + cc];
   return (H(r0, c0) * (1 - fx) + H(r0, c0 + 1) * fx) * (1 - fy) + (H(r0 + 1, c0) * (1 - fx) + H(r0 + 1, c0 + 1) * fx) * fy;
 }
+function hexRgb(h) { const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(h || ""); return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [230, 60, 60]; }
 function renderTerrain(g) {
   // one pixel per grid point: hypsometric bands every 2 m, hillshade from the north-west, red where steep
   const img = document.createElement("canvas"); img.width = g.cols; img.height = g.rows;
   const ictx = img.getContext("2d"), data = ictx.createImageData(g.cols, g.rows), px = data.data;
   // the colour ramp spans the 5th to 95th percentile, so a mesa at the edge does not flatten the town into one shade
   const sorted = Array.from(g.h).sort((a, b) => a - b), lo = sorted[Math.floor(sorted.length * 0.05)], hi = sorted[Math.floor(sorted.length * 0.95)];
+  const steepAt = Math.tan(Math.max(1, C.slopeDeg) * Math.PI / 180), [sr, sg, sb] = hexRgb(C.steep);
   const span = Math.max(2, hi - lo), H = (r, c) => g.h[Math.min(g.rows - 1, Math.max(0, r)) * g.cols + Math.min(g.cols - 1, Math.max(0, c))];
   for (let r = 0; r < g.rows; r++) for (let c = 0; c < g.cols; c++) {
     const h = H(r, c), gx = (H(r, c + 1) - H(r, c - 1)) / (2 * g.step), gy = (H(r + 1, c) - H(r - 1, c)) / (2 * g.step);
     const slope = Math.hypot(gx, gy);                                   // rise over run
     const shade = Math.max(0, Math.min(1, 0.55 + 0.45 * (-gx * 0.7 + gy * 0.7) / Math.max(0.25, slope)));   // light from the north-west
-    const band = Math.floor((h - g.min) / 2) % 2 ? 0.92 : 1.0;          // 2 m contour bands
+    const band = Math.floor((h - g.min) / Math.max(0.5, C.bandMetres)) % 2 ? 0.92 : 1.0;   // contour bands
     const t = Math.max(0, Math.min(1, (h - lo) / span));                 // low = dark sand, high = pale
     let R = 70 + 90 * t, G = 62 + 80 * t, B = 48 + 70 * t;
     R *= shade * band; G *= shade * band; B *= shade * band;
-    if (slope > 0.27) { const k = Math.min(1, (slope - 0.27) / 0.5); R = R * (1 - k) + 230 * k; G *= (1 - 0.8 * k); B *= (1 - 0.8 * k); }   // over ~15 degrees: no building sits on that
+    if (slope > steepAt) { const k = Math.min(1, (slope - steepAt) / 0.5); R = R * (1 - k) + sr * k; G = G * (1 - k) + sg * k; B = B * (1 - k) + sb * k; }   // steeper than the setting: no building sits on that
     const i = ((g.rows - 1 - r) * g.cols + c) * 4;                      // row 0 is the south edge: flip for the image
-    px[i] = R; px[i + 1] = G; px[i + 2] = B; px[i + 3] = 235;
+    px[i] = R; px[i + 1] = G; px[i + 2] = B; px[i + 3] = Math.round(255 * C.terrainOpacity);
   }
   ictx.putImageData(data, 0, 0); return img;
 }
@@ -418,7 +439,7 @@ function drawMap() {
     for (const p of S.area.props) {
       const usable = p.kind === "terminal" || p.kind === "station" || p.kind === "vendor" || p.kind === "elevator";
       if (usable ? !L("L_usables") : !L("L_objects")) continue;
-      const [sx, sy] = w2s(p.x, p.y); const col = p.edit ? "#ff9f43" : usable ? (KIND_COLOR[p.kind] || "#4cc3ff") : "#3a4250"; const sz = usable || p.edit ? Math.max(3, Math.min(6, S.view.ppm * 1.2)) : 1.5;
+      const [sx, sy] = w2s(p.x, p.y); const col = p.edit ? C.edit : usable ? (KIND_COLOR[p.kind] || C.select) : "#3a4250"; const sz = usable || p.edit ? Math.max(3, Math.min(6, S.view.ppm * 1.2)) : 1.5;
       ctx.save(); ctx.translate(sx, sy); ctx.rotate(-rad(p.heading || 0)); ctx.fillStyle = col; ctx.fillRect(-sz, -sz, 2 * sz, 2 * sz); if (usable) { ctx.strokeStyle = "#0b0d11"; ctx.strokeRect(-sz, -sz, 2 * sz, 2 * sz); } ctx.restore();
       if (usable && L("L_labels") && S.view.ppm > 2.2) { ctx.fillStyle = col; ctx.font = "9px system-ui"; ctx.fillText(p.short.replace(/^terminal_/, "").replace(/^public_/, ""), sx + sz + 2, sy + 3); }
     }
@@ -437,8 +458,8 @@ function drawMap() {
       } else if (b.fp) poly(rectPoly(b.x, b.y, b.heading, b.fp), w2s, "rgba(150,160,180,0.12)", "#5b6678");
       else if (b.box) poly(rectPoly(b.x, b.y, b.heading, b.box), w2s, "rgba(150,160,180,0.14)", "#5b6678");
       else { const [sx, sy] = w2s(b.x, b.y); ctx.beginPath(); ctx.arc(sx, sy, b.radius * S.view.ppm, 0, Math.PI * 2); ctx.fillStyle = "rgba(150,160,180,0.08)"; ctx.fill(); ctx.strokeStyle = "#444d5b"; ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]); }
-      const [sx, sy] = w2s(b.x, b.y); if (L("L_labels")) { ctx.fillStyle = b.edit ? "#ff9f43" : "#8a94a6"; ctx.font = "10px system-ui"; ctx.fillText(b.short + (b.edit ? (b.edit === "add" ? "  (added)" : "  (moved)") : ""), sx + 3, sy - 3); }
-      if (b.edit) { const shape = (sh && sh.exterior && sh.exterior.length) ? sh.exterior : (b.radar && b.radar.length ? b.radar : null); ctx.lineWidth = 2; if (shape) strokeOutline(shape, map, w2s, "#ff9f43"); else poly(rectPoly(b.x, b.y, b.heading, b.fp || b.box || { x0: -b.radius, x1: b.radius, y0: -b.radius, y1: b.radius }), w2s, null, "#ff9f43"); ctx.lineWidth = 1; }
+      const [sx, sy] = w2s(b.x, b.y); if (L("L_labels")) { ctx.fillStyle = b.edit ? C.edit : "#8a94a6"; ctx.font = "10px system-ui"; ctx.fillText(b.short + (b.edit ? (b.edit === "add" ? "  (added)" : "  (moved)") : ""), sx + 3, sy - 3); }
+      if (b.edit) { const shape = (sh && sh.exterior && sh.exterior.length) ? sh.exterior : (b.radar && b.radar.length ? b.radar : null); ctx.lineWidth = 2; if (shape) strokeOutline(shape, map, w2s, C.edit); else poly(rectPoly(b.x, b.y, b.heading, b.fp || b.box || { x0: -b.radius, x1: b.radius, y0: -b.radius, y1: b.radius }), w2s, null, C.edit); ctx.lineWidth = 1; }
       if (b.fp) { const [ex, ey] = toWorld(b.x, b.y, b.heading, 0, b.fp.y1); const [tx, ty] = w2s(ex, ey); ctx.strokeStyle = "#8a94a6"; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(tx, ty); ctx.stroke(); }
       // what the server spawns with this building (bank terminals, travel terminals, ticket collectors)
       for (const c of b.children || []) {
@@ -454,9 +475,9 @@ function drawMap() {
     // a stock building a world edit removed: its ghost, so the lot it freed stays readable
     const mapG = p => toWorld(g.x, g.y, g.heading, p[0], p[1]);
     ctx.setLineDash([5, 4]);
-    if (g.radar && g.radar.length) strokeOutline(g.radar, mapG, w2s, "#ff5c5c"); else { const [sx, sy] = w2s(g.x, g.y); const rr = g.prop ? 5 : 8 * S.view.ppm; ctx.strokeStyle = "#ff5c5c"; ctx.beginPath(); ctx.moveTo(sx - rr, sy - rr); ctx.lineTo(sx + rr, sy + rr); ctx.moveTo(sx + rr, sy - rr); ctx.lineTo(sx - rr, sy + rr); ctx.stroke(); }
+    if (g.radar && g.radar.length) strokeOutline(g.radar, mapG, w2s, C.fail); else { const [sx, sy] = w2s(g.x, g.y); const rr = g.prop ? 5 : 8 * S.view.ppm; ctx.strokeStyle = C.fail; ctx.beginPath(); ctx.moveTo(sx - rr, sy - rr); ctx.lineTo(sx + rr, sy + rr); ctx.moveTo(sx + rr, sy - rr); ctx.lineTo(sx - rr, sy + rr); ctx.stroke(); }
     ctx.setLineDash([]);
-    const [gx, gy] = w2s(g.x, g.y); ctx.fillStyle = "#ff5c5c"; ctx.font = "10px system-ui"; ctx.fillText(g.short + "  (deleted)", gx + 3, gy - 3);
+    const [gx, gy] = w2s(g.x, g.y); ctx.fillStyle = C.fail; ctx.font = "10px system-ui"; ctx.fillText(g.short + "  (deleted)", gx + 3, gy - 3);
   }
   for (const s of S.sites) {
     const sh = S.shells.find(x => x.server === s.template || x.template === s.template);
@@ -464,28 +485,28 @@ function drawMap() {
     const outlineS = sh.exterior && sh.exterior.length ? sh.exterior : (sh.radar || []);
     const mapS = p => toWorld(s.x, s.y, s.heading, p[0], p[1]);
     for (const t of outlineS) poly(t.map(mapS), w2s, "rgba(197,140,255,0.18)", null);
-    if (outlineS.length) strokeOutline(outlineS, mapS, w2s, "#c58cff");
-    poly(rectPoly(s.x, s.y, s.heading, sh.fp), w2s, sh.exterior && sh.exterior.length ? null : "rgba(197,140,255,0.15)", "#c58cff");
+    if (outlineS.length) strokeOutline(outlineS, mapS, w2s, C.site);
+    poly(rectPoly(s.x, s.y, s.heading, sh.fp), w2s, sh.exterior && sh.exterior.length ? null : "rgba(197,140,255,0.15)", C.site);
     if (S.view.ppm > 1.6) drawShellRooms(sh, s.x, s.y, s.heading, w2s, false, true);
-    const [sx, sy] = w2s(s.x, s.y); ctx.fillStyle = "#c58cff"; ctx.fillText("site " + s.name, sx + 3, sy - 3);
-    for (const o of s.outside) drawPerson(o, w2s, p => p, "#c58cff", false, o.template);
+    const [sx, sy] = w2s(s.x, s.y); ctx.fillStyle = C.site; ctx.fillText("site " + s.name, sx + 3, sy - 3);
+    for (const o of s.outside) drawPerson(o, w2s, p => p, C.site, false, o.template);
   }
   if (S.selB && S.selB.kind !== "draft") {
     const o = S.selB.obj, sel = S.selB; const sh = sel.shell;
     const mapO = q => toWorld(o.x, o.y, o.heading, q[0], q[1]);
     ctx.lineWidth = 3;
-    if (sel.kind === "prop") { const [sx, sy] = w2s(o.x, o.y); const r = Math.max(8, 1.5 * S.view.ppm); ctx.strokeStyle = "#4cc3ff"; ctx.strokeRect(sx - r, sy - r, 2 * r, 2 * r); }
-    else if (sh && sh.exterior && sh.exterior.length) strokeOutline(sh.exterior, mapO, w2s, "#4cc3ff", 3);
-    else if (o.radar && o.radar.length) strokeOutline(o.radar, mapO, w2s, "#4cc3ff", 3);
-    else if (o.fp || o.box || (sh && sh.fp)) poly(rectPoly(o.x, o.y, o.heading, o.fp || o.box || sh.fp), w2s, null, "#4cc3ff");
-    else { const [sx, sy] = w2s(o.x, o.y); ctx.beginPath(); ctx.arc(sx, sy, (o.radius || 20) * S.view.ppm, 0, Math.PI * 2); ctx.strokeStyle = "#4cc3ff"; ctx.stroke(); }
+    if (sel.kind === "prop") { const [sx, sy] = w2s(o.x, o.y); const r = Math.max(8, 1.5 * S.view.ppm); ctx.strokeStyle = C.select; ctx.strokeRect(sx - r, sy - r, 2 * r, 2 * r); }
+    else if (sh && sh.exterior && sh.exterior.length) strokeOutline(sh.exterior, mapO, w2s, C.select, 3);
+    else if (o.radar && o.radar.length) strokeOutline(o.radar, mapO, w2s, C.select, 3);
+    else if (o.fp || o.box || (sh && sh.fp)) poly(rectPoly(o.x, o.y, o.heading, o.fp || o.box || sh.fp), w2s, null, C.select);
+    else { const [sx, sy] = w2s(o.x, o.y); ctx.beginPath(); ctx.arc(sx, sy, (o.radius || 20) * S.view.ppm, 0, Math.PI * 2); ctx.strokeStyle = C.select; ctx.stroke(); }
     ctx.lineWidth = 1;
   }
-  if (S.area && L("L_stock")) for (const n of S.area.npcs || []) { const [sx, sy] = w2s(n.x, n.y); ctx.fillStyle = "#7fb0d0"; ctx.beginPath(); ctx.arc(sx, sy, 2.5, 0, Math.PI * 2); ctx.fill(); if (L("L_labels") && S.view.ppm > 3) { ctx.font = "10px system-ui"; ctx.fillText(n.template, sx + 4, sy + 3); } }
-  if (L("L_live")) for (const n of S.live) { if (n.zone !== $("planet").value) continue; const [sx, sy] = w2s(n.x, n.y); ctx.fillStyle = "#f0b429"; ctx.beginPath(); ctx.arc(sx, sy, 3, 0, Math.PI * 2); ctx.fill(); if (L("L_labels")) ctx.fillText(n.name, sx + 5, sy + 4); }
+  if (S.area && L("L_stock")) for (const n of S.area.npcs || []) { const [sx, sy] = w2s(n.x, n.y); ctx.fillStyle = C.stockNpc; ctx.beginPath(); ctx.arc(sx, sy, 2.5, 0, Math.PI * 2); ctx.fill(); if (L("L_labels") && S.view.ppm > 3) { ctx.font = "10px system-ui"; ctx.fillText(n.template, sx + 4, sy + 3); } }
+  if (L("L_live")) for (const n of S.live) { if (n.zone !== $("planet").value) continue; const [sx, sy] = w2s(n.x, n.y); ctx.fillStyle = C.liveNpc; ctx.beginPath(); ctx.arc(sx, sy, 3, 0, Math.PI * 2); ctx.fill(); if (L("L_labels")) ctx.fillText(n.name, sx + 5, sy + 4); }
   const d = S.draft;
   if (d) {
-    const lot = S.lot; const col = !lot ? "#4cc3ff" : lot.verdict === "ok" ? "#44d17a" : lot.verdict === "warn" ? "#f0b429" : "#ff5c5c";
+    const lot = S.lot; const col = !lot ? C.select : lot.verdict === "ok" ? C.ok : lot.verdict === "warn" ? C.warn : C.fail;
     const outlineD = d.shell.exterior && d.shell.exterior.length ? d.shell.exterior : (d.shell.radar || []);
     const mapD = p => toWorld(d.x, d.y, d.heading, p[0], p[1]);
     for (const t of outlineD) poly(t.map(mapD), w2s, col + "33", null);
@@ -496,8 +517,8 @@ function drawMap() {
     ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(tx, ty); ctx.stroke(); ctx.lineWidth = 1;
     ctx.beginPath(); ctx.arc(tx, ty, 7, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill(); ctx.strokeStyle = "#fff"; ctx.stroke();
     ctx.fillStyle = col; ctx.font = "12px system-ui"; ctx.fillText((d.kind === "world" ? (d.op === "add" ? "new stock building" : "moving oid " + d.oid) + " · front" : "entrance") + " · drag the knob to rotate (Alt = fine)", tx + 10, ty + 4);
-    d.tenants.forEach((t, i) => drawPerson({ x: t.x, y: t.y, dir: (t.dir + d.heading) % 360 }, w2s, p => toWorld(d.x, d.y, d.heading, p[0], p[1]), "#44d17a", S.sel && S.sel.kind === "tenant" && S.sel.i === i, t.template.replace("fb_", "")));
-    d.outside.forEach((o, i) => drawPerson(o, w2s, p => p, "#4cc3ff", S.sel && S.sel.kind === "outside" && S.sel.i === i, o.template.replace("fb_", "")));
+    d.tenants.forEach((t, i) => drawPerson({ x: t.x, y: t.y, dir: (t.dir + d.heading) % 360 }, w2s, p => toWorld(d.x, d.y, d.heading, p[0], p[1]), C.ok, S.sel && S.sel.kind === "tenant" && S.sel.i === i, t.template.replace("fb_", "")));
+    d.outside.forEach((o, i) => drawPerson(o, w2s, p => p, C.select, S.sel && S.sel.kind === "outside" && S.sel.i === i, o.template.replace("fb_", "")));
   }
   updateHud();
 }
@@ -562,13 +583,13 @@ function drawInside() {
   d.tenants.forEach((t, i) => {
     if (!onLevel(d.shell, t.z, t.room)) return;
     const c = furnitureClearance(d.shell, t.room, t.x, t.y);
-    const col = c.verdict === "ok" ? "#44d17a" : c.verdict === "warn" ? "#f0b429" : "#ff5c5c";
+    const col = c.verdict === "ok" ? C.ok : c.verdict === "warn" ? C.warn : C.fail;
     drawPerson(t, l2s, p => p, col, !S.inspect && S.sel && S.sel.kind === "tenant" && S.sel.i === i, (t.label || t.template) + "  (" + t.room + ")");
   });
-  if (S.inspect && L("L_stock")) for (const n of S.inspect.stock) if (onLevel(d.shell, n.z, n.room)) drawPerson({ x: n.x, y: n.y, dir: n.heading }, l2s, p => p, "#7fb0d0", false, L("L_labels") ? n.template + "  (" + n.room + ")" : "");
+  if (S.inspect && L("L_stock")) for (const n of S.inspect.stock) if (onLevel(d.shell, n.z, n.room)) drawPerson({ x: n.x, y: n.y, dir: n.heading }, l2s, p => p, C.stockNpc, false, L("L_labels") ? n.template + "  (" + n.room + ")" : "");
   const pose = S.inspect ? S.inspect.pose : (S.draft ? { x: S.draft.x, y: S.draft.y, heading: S.draft.heading } : null);
-  if (pose && L("L_live")) for (const n of liveInside(pose, d.shell.fp)) { const [sx, sy] = l2s(n.x, n.y); ctx.fillStyle = "#f0b429"; ctx.beginPath(); ctx.arc(sx, sy, 4, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#f0b429"; ctx.font = "11px system-ui"; ctx.fillText(n.name, sx + 7, sy + 4); }
-  const [ex, ey] = l2s(0, d.shell.fp.y1 + 2); ctx.fillStyle = "#4cc3ff"; ctx.font = "12px system-ui"; ctx.fillText("▲ entrance side (local +y)", ex + 6, ey);
+  if (pose && L("L_live")) for (const n of liveInside(pose, d.shell.fp)) { const [sx, sy] = l2s(n.x, n.y); ctx.fillStyle = C.liveNpc; ctx.beginPath(); ctx.arc(sx, sy, 4, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = C.liveNpc; ctx.font = "11px system-ui"; ctx.fillText(n.name, sx + 7, sy + 4); }
+  const [ex, ey] = l2s(0, d.shell.fp.y1 + 2); ctx.fillStyle = C.select; ctx.font = "12px system-ui"; ctx.fillText("▲ entrance side (local +y)", ex + 6, ey);
   $("hud").textContent = `inside ${t.title}: ${d.shell.short}${S.inspect ? "  ·  read-only" : ""}  ·  local coordinates (x right, y toward the entrance)  ·  ${S.ivw.ppm.toFixed(1)} px/m`;
 }
 
@@ -579,7 +600,7 @@ canvas.addEventListener("mousedown", e => {
   const r = canvas.getBoundingClientRect(); const sx = e.clientX - r.left, sy = e.clientY - r.top;
   down = { sx, sy, moved: false, view: { ...(S.mode === "map" ? S.view : S.ivw) }, button: e.button };
   // right (or middle) button: pan the map; left button: select, or drag a draft / person / knob
-  if (e.button !== 0) { down.pan = true; canvas.classList.add("panning"); e.preventDefault(); return; }
+  if (C.panButton === "right" ? e.button !== 0 : e.button !== 0 && e.button !== 2) { down.pan = true; canvas.classList.add("panning"); e.preventDefault(); return; }
   const d = S.draft;
   if (d && !S.inspect) {
     // a person under the cursor?
@@ -598,6 +619,7 @@ canvas.addEventListener("mousedown", e => {
     const [wx, wy] = s2w(sx, sy); const hit = buildingAt(wx, wy);
     if (hit && hit.kind === "site" && loadSite(hit.obj, true)) { down.building = { x: S.draft.x, y: S.draft.y, wx, wy }; return; }
   }
+  if (C.panButton === "left") { down.pan = true; canvas.classList.add("panning"); }   // nothing grabbed: the left button drags the map in this mode
 });
 canvas.addEventListener("mousemove", e => {
   const r = canvas.getBoundingClientRect(); const sx = e.clientX - r.left, sy = e.clientY - r.top;
@@ -611,14 +633,14 @@ canvas.addEventListener("mousemove", e => {
     else if (S.mode === "map" && down.person.kind === "outside") { const [wx, wy] = s2w(sx, sy); p.x = +wx.toFixed(1); p.y = +wy.toFixed(1); }
     refresh(); return;
   }
-  if (down.rotate) { const [wx, wy] = s2w(sx, sy); let h = Math.round((Math.atan2(wx - S.draft.x, wy - S.draft.y) * 180 / Math.PI + 360) % 360); if (!e.altKey) h = Math.round(h / 5) * 5 % 360; S.draft.heading = h; refresh(); return; }
+  if (down.rotate) { const [wx, wy] = s2w(sx, sy); let h = Math.round((Math.atan2(wx - S.draft.x, wy - S.draft.y) * 180 / Math.PI + 360) % 360); if (!e.altKey) h = Math.round(h / C.rotateSnap) * C.rotateSnap % 360; S.draft.heading = h; refresh(); return; }
   if (down.building) { const [wx, wy] = s2w(sx, sy); S.draft.x = +(down.building.x + (wx - down.building.wx)).toFixed(1); S.draft.y = +(down.building.y + (wy - down.building.wy)).toFixed(1); refresh(); return; }
   if (down.pan) { v.cx = down.view.cx - dx / v.ppm; v.cy = down.view.cy + dy / v.ppm; draw(); }
 });
 window.addEventListener("mouseup", e => {
   if (!down) return;
   canvas.classList.remove("panning");
-  if (down.pan) { down = null; return; }
+  if (down.pan && (down.moved || down.button !== 0)) { down = null; return; }
   const wasClick = !down.moved && !down.person && !down.building && !down.rotate;
   if (down.person || down.building || down.rotate) { const was = down; down = null; remember(S.draft); down = was; }
   const r = canvas.getBoundingClientRect(); const sx = e.clientX - r.left, sy = e.clientY - r.top;
@@ -626,7 +648,7 @@ window.addEventListener("mouseup", e => {
   if (!wasClick) return;
   // our own double-click: two clicks within 450 ms and 8 px (the dblclick event is unreliable through WSLg)
   const now = performance.now();
-  if (S.lastClick && now - S.lastClick.t < 650 && Math.hypot(sx - S.lastClick.sx, sy - S.lastClick.sy) < 10) { S.lastClick = null; doubleClickAt(sx, sy); return; }
+  if (S.lastClick && now - S.lastClick.t < C.dblClickMs && Math.hypot(sx - S.lastClick.sx, sy - S.lastClick.sy) < 10) { S.lastClick = null; doubleClickAt(sx, sy); return; }
   S.lastClick = { t: now, sx, sy };
   if (S.mode === "map") {
     // a single click selects the building under the cursor (details in the right panel)
@@ -697,15 +719,15 @@ window.addEventListener("keydown", e => {
   if (e.key === "Escape" && S.mode === "inside") { S.mode = "map"; S.inspect = null; S.floor = null; $("floorsBox").style.display = "none"; draw(); return; }
   if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z" || e.key === "y")) { undo(e.key === "y" || (e.key === "Z" && e.shiftKey) ? 1 : -1); e.preventDefault(); return; }
   const d = S.draft; if (!d) return;
-  const step = e.shiftKey ? 5 : 1;
+  const step = e.shiftKey ? C.nudgeShift : C.nudgeStep, rs = C.rotateKeyStep;
   if (S.sel) {
     const p = S.sel.kind === "tenant" ? d.tenants[S.sel.i] : d.outside[S.sel.i];
-    if (e.key === "[") { p.dir = (p.dir - 15 + 360) % 360; refresh(); return; }
-    if (e.key === "]") { p.dir = (p.dir + 15) % 360; refresh(); return; }
+    if (e.key === "[") { p.dir = (p.dir - rs + 360) % 360; refresh(); return; }
+    if (e.key === "]") { p.dir = (p.dir + rs) % 360; refresh(); return; }
     if (e.key === "Delete" || e.key === "Backspace") { (S.sel.kind === "tenant" ? d.tenants : d.outside).splice(S.sel.i, 1); S.sel = null; refresh(); return; }
   }
   if (e.key === "ArrowUp") d.y += step; else if (e.key === "ArrowDown") d.y -= step; else if (e.key === "ArrowLeft") d.x -= step; else if (e.key === "ArrowRight") d.x += step;
-  else if (e.key === "r") d.heading = (d.heading + 15) % 360; else if (e.key === "R") d.heading = (d.heading - 15 + 360) % 360; else return;
+  else if (e.key === "r") d.heading = (d.heading + rs) % 360; else if (e.key === "R") d.heading = (d.heading - rs + 360) % 360; else return;
   e.preventDefault(); refresh();
 });
 
@@ -948,6 +970,34 @@ function fillCatalog() {
 }
 $("catFilter").oninput = fillCatalog;
 $("wAdd").onclick = () => { const c = S.catalog.find(x => x.template === $("catalog").value); if (!c) { status("Pick a building in the catalogue first.", "warn"); return; } startWorldDraft("add", c); };
+// ---------------------------------------------------------------- settings panel
+const SETTING_FIELDS = [
+  ["Steep ground tint", "steep", "color"], ["Our sites", "site", "color"], ["Placed shell: ok", "ok", "color"], ["Placed shell: warning", "warn", "color"], ["Placed shell: problem", "fail", "color"],
+  ["Selection", "select", "color"], ["World edits", "edit", "color"], ["Stock NPCs", "stockNpc", "color"], ["Live NPCs", "liveNpc", "color"],
+  ["Steep means more than (degrees)", "slopeDeg", "number"], ["Contour band every (m)", "bandMetres", "number"], ["Terrain opacity (0 to 1)", "terrainOpacity", "number"],
+  ["Rotate knob snaps to (degrees)", "rotateSnap", "number"], ["r / R and [ / ] step (degrees)", "rotateKeyStep", "number"], ["Arrow keys move (m)", "nudgeStep", "number"], ["Arrow keys with Shift (m)", "nudgeShift", "number"], ["Double-click window (ms)", "dblClickMs", "number"],
+];
+function renderSettings() {
+  const box = $("settingsBox"); box.innerHTML = "";
+  const pan = document.createElement("div"); pan.innerHTML = `<label>Map is dragged with</label>`;
+  for (const [v, label] of [["right", "right button (left selects)"], ["left", "left button"]]) { const b = document.createElement("button"); b.textContent = label; b.style.width = "auto"; b.style.margin = "0 6px 0 0"; b.style.padding = "3px 7px"; if (C.panButton === v) b.className = "primary"; b.onclick = () => { C.panButton = v; applySettings(); }; pan.appendChild(b); }
+  box.appendChild(pan);
+  for (const [label, key, type] of SETTING_FIELDS) {
+    const row = document.createElement("div"); row.className = "row"; row.style.alignItems = "center";
+    const l = document.createElement("label"); l.textContent = label; l.style.flex = "1"; l.style.marginTop = "4px";
+    const inp = document.createElement("input"); inp.type = type; inp.value = C[key]; inp.style.width = type === "color" ? "44px" : "70px"; if (type === "number") inp.step = key === "terrainOpacity" ? "0.05" : "1";
+    inp.onchange = () => { C[key] = type === "number" ? +inp.value : inp.value; applySettings(); };
+    row.appendChild(l); row.appendChild(inp); box.appendChild(row);
+  }
+  const reset = document.createElement("button"); reset.textContent = "Reset to defaults"; reset.onclick = () => { Object.assign(C, DEFAULTS); applySettings(); };
+  box.appendChild(reset);
+}
+function applySettings() {
+  saveSettings(); renderSettings();
+  if (S.terrainGrid) S.terrainImg = renderTerrain(S.terrainGrid);   // the tint, bands and opacity are baked into the image
+  draw();
+}
+$("settingsToggle").onclick = () => { const b = $("settingsBox"); const open = b.style.display === "none"; b.style.display = open ? "block" : "none"; if (open) renderSettings(); };
 function loadSite(s, keepView) {
   const sh = S.shells.find(x => x.server === s.template || x.template === s.template); if (!sh) { status("Shell of that site is not in the catalogue: " + s.template, "bad"); return false; }
   S.draft = { shell: sh, x: s.x, y: s.y, heading: s.heading, tenants: s.tenants.map(t => ({ ...t })), outside: s.outside.map(o => ({ ...o })), name: s.name, label: s.label };
