@@ -350,7 +350,10 @@ grouping, trading, the bazaar, harvesters, houses, GCW declaration. They are the
 NPC); galaxy-wide; everybody gets their own persistent memory and a committed life plan (a citizen building a combat
 character does not wake up an armorsmith); they use the bazaar like players; they may group with Chuck, run lairs,
 craft and set up harvesters, entertain in cantinas, pick a GCW side, found cities with Chuck or each other, and ask a
-crafter citizen for gear when their own is worn. Runtime: see 7.3.
+crafter citizen for gear when their own is worn. Runtime: see 7.3. **Further decisions (2026-10-20):** citizens get a
+veteran start (admin-granted skills to a believable level at creation); the stock GCW rules apply unchanged, so a
+citizen can attack Chuck only when he is on duty for the other side; Claude drafts the cast (`docs/Citizens-Cast.md`)
+and Chuck checks each one off; the API key comes from Chuck's Max plan credits.
 
 **Architecture — four layers, each testable alone:**
 
