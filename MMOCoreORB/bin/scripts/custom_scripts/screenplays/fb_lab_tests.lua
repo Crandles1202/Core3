@@ -2206,9 +2206,10 @@ end
 local function attunementLine(charName, pPlayer)
 	local st = FbAttunement:status(pPlayer)
 	local f = st.flags
-	print(string.format("INFO attunement char=%s total=%d tier=%d places=%d/%d learning=%d/%d deeds=%d/%d quests=%d/%d items=%d/%d ghost25=%s ghost50=%s ghost75=%s called=%s task=%s medWorlds=%s",
+	print(string.format("INFO attunement char=%s total=%d tier=%d places=%d/%d learning=%d/%d deeds=%d/%d quests=%d/%d items=%d/%d ghost25=%s ghost50=%s ghost75=%s called=%s task=%s medWorlds=%s lore=%d returned=%s trials=%s ambushDue=%s ambushDone=%s",
 		charName, st.total, st.tier, st.per.places, st.raw.places, st.per.learning, st.raw.learning, st.per.deeds, st.raw.deeds, st.per.quests, st.raw.quests, st.per.items, st.raw.items,
-		tostring(f.ghost25 ~= nil), tostring(f.ghost50 ~= nil), tostring(f.ghost75 ~= nil), tostring(f.called ~= nil), tostring(f.task or "-"), tostring(f.medWorlds or "-")))
+		tostring(f.ghost25 ~= nil), tostring(f.ghost50 ~= nil), tostring(f.ghost75 ~= nil), tostring(f.called ~= nil), tostring(f.task or "-"), tostring(f.medWorlds or "-"),
+		FbAttunement:loreCount(pPlayer), tostring(f["return"] ~= nil), tostring(f.trials ~= nil), tostring(f.ambushDue or "-"), tostring(f.ambushDone ~= nil)))
 	return st
 end
 
@@ -2249,6 +2250,10 @@ function FbLabTests:attunementSet(charName, total)
 		local take = math.min(left, FbAttunement.caps[src])
 		if take > 0 then FbAttunement:grant(pPlayer, src, "debug", take, nil) end
 		left = left - take
+	end
+	-- a character set straight to this score has "had" the spirits below it (a real one met them on the way)
+	for _, th in ipairs(FbAttunement.thresholds) do
+		if (tonumber(total) or 0) >= th then FbAttunement:setFlag(pPlayer, "ghost" .. th, os.time()) end
 	end
 	attunementLine(charName, pPlayer)
 	return tostring(FbAttunement:total(pPlayer))
@@ -2318,6 +2323,36 @@ function FbLabTests:attunementLogin(charName)
 	return "ok"
 end
 
+-- attunementAccept:<char> → as if the Old Man's offer were accepted in conversation (called, task=shrines, ambush due)
+function FbLabTests:attunementAccept(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	FbAttunement:accept(pPlayer)
+	attunementLine(charName, pPlayer)
+	return "ok"
+end
+
+-- attunementWorlds:<char>:<planet,planet,…> → set the worlds meditated on (the shrine task's progress)
+function FbLabTests:attunementWorlds(charName, worlds)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	FbAttunement:setFlag(pPlayer, "medWorlds", tostring(worlds or ""))
+	attunementLine(charName, pPlayer)
+	return tostring(FbAttunement:worldCount(pPlayer))
+end
+
+-- attunementAmbush:<char> → make the ambush due now and run the trigger
+function FbLabTests:attunementAmbush(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	FbAttunement:setFlag(pPlayer, "ambushDue", os.time() - 1)
+	deleteScreenPlayData(pPlayer, FbAttunement.DATA, "flag:ambushDone")
+	local sent = FbAttunement:maybeVisit(pPlayer)
+	print("INFO attunementAmbush sent=" .. tostring(sent))
+	attunementLine(charName, pPlayer)
+	return tostring(sent)
+end
+
 -- attunementSit:<char>[:stand] → seat (or stand) the character server-side, the way /sit would
 function FbLabTests:attunementSit(charName, stand)
 	local pPlayer = loadedPlayer(charName)
@@ -2352,5 +2387,20 @@ function FbLabTests.checkAttunement()
 	for _, b in ipairs(FbAttunement.badgeSites) do if _G[b[1]:upper()] == nil then bad[#bad + 1] = b[1] end end
 	check("attunement.badge_names_exist", #bad == 0, #bad == 0 and "all badge globals present" or ("unknown badges: " .. table.concat(bad, ", ")))
 	check("attunement.status_command_wrapped", VillageJediManager == nil or VillageJediManager.checkForceStatusCommand ~= nil)
+	-- 4a.2: every shrine has a lore line in the string source (the server reads the packed table; the source is the truth)
+	local f = io.open("../../tre-src/string/en/fb_force.stf.txt", "r")
+	if f == nil then
+		print("WARN attunement.lore_strings — tre-src not reachable from " .. (os.getenv("PWD") or "?"))
+	else
+		local text = f:read("a"); f:close()
+		local missing = {}
+		for _, s in ipairs(FbAttunement.shrines) do
+			local planet, n = s[1]:match("^(%a+%d*)_force_shrine_(%d+)$")
+			n = math.min(tonumber(n), 5)
+			if not text:find(string.format("\nlore_%s_%d = ", planet, n), 1, true) then missing[#missing + 1] = s[1] end
+		end
+		check("attunement.lore_strings", #missing == 0, #missing == 0 and "a fragment for every shrine" or ("no lore for: " .. table.concat(missing, ", ")))
+	end
+	check("attunement.4a2_loaded", FbOldManReturn ~= nil and FbShadowAmbush ~= nil and FbAttunement.trialsUnlocked ~= nil)
 end
 

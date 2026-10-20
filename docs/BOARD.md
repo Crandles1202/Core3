@@ -10,8 +10,8 @@ borrowing with a lock; this file carries the intent.
 | Agent | Branch | Task (roadmap item) | Status | Bench | Updated |
 |---|---|---|---|---|---|
 | chuck | — | play-testing, design calls, merges by request | ongoing | as needed | 2026-10-20 |
-| alice | `feature/alice` | Phase 7 Citizens: 7.0 seat, 7.1 walk, 7.3 pilot skeleton done; next 7.2 citizen accounts, 7.3 model decider (needs Chuck's key) | gate | holds | 2026-10-20 |
-| shrines | `feature/shrines` | Phase 4a.2 shrines | testing | holds | 2026-10-20 |
+| alice | `feature/alice` | Phase 7 Citizens: 7.0 seat, 7.1 walk, 7.3 pilot skeleton, 7.2 tooling done; next: Teyla's character + veteran start, model-driven wake (needs Chuck's key) | ready to merge (Chuck runs the merge) | no | 2026-10-20 |
+| claude (main session) | feature/shrines | 4a.2 shrines | testing | holds while testing | 2026-10-20 |
 | _(add a row with `swg agent new <name>`)_ | | | | | |
 
 Status words: `planning`, `coding`, `testing` (holds the bench), `gate` (running `swg test all`), `ready to merge`,
@@ -53,5 +53,6 @@ tools/swg bench use feature/<name>              # lock + deploy (reload for Lua,
 tools/swg test scenario <yours>                 # iterate: edit in the worktree, commit, bench use again
 tools/swg test all                              # the gate, ~30 min, records a pass for this commit
 tools/swg bench merge feature/<name>            # --no-ff into unstable + push (needs the pass)
-tools/swg bench release                         # bench back on unstable, lock open
+tools/swg bench release                         # bench back on unstable, lock open (before agent done)
+tools/swg agent done <name>                     # retire the worktree; releases the bench if you still hold it
 ```

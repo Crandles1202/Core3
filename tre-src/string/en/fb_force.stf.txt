@@ -43,3 +43,67 @@ oldman_leaves = The old man walks away into the glare and does not look back.
 oldman_waypoint = A quiet place
 called_task = You have been called. Sit and meditate at a Force shrine on six different worlds, then wait to be found.
 called_progress = Worlds where you have meditated at a shrine: %DI of 6.
+
+# lore fragments: one per shrine meditation (lore_<planet>_<shrine index>; 4a.2)
+lore_tatooine_1 = Two suns, and the sand remembers every step. The first Jedi came here to hide, and found they could not hide from themselves.
+lore_tatooine_2 = The Force is not a weapon. It was here before weapons, in the heat on the stone.
+lore_tatooine_3 = A farm boy once sat where you sit and did not know what he was. Neither do you. That is correct.
+lore_tatooine_4 = Patience is not waiting. It is the refusal to be hurried by fear.
+lore_tatooine_5 = Everything that lives in this desert survives by stillness at the right hour. So will you.
+lore_naboo_1 = Water teaches the first lesson: it yields, and it is never defeated.
+lore_naboo_2 = A queen walked these fields and knelt to the Gungans. Humility is strength that has stopped performing.
+lore_naboo_3 = The living Force is loudest where life is thickest. Listen to the marsh; it is never quiet, and it is never in a hurry.
+lore_naboo_4 = Anger is a river in flood. It goes somewhere; it just does not go where you meant.
+lore_corellia_1 = Pilots say the Force is luck. Pilots are half right.
+lore_corellia_2 = A city of ten million, and the Force runs through every one of them, used or not.
+lore_corellia_3 = The Jedi were not kings. The day they forgot that, the galaxy forgot them.
+lore_corellia_4 = Your hands will want to act before your mind has heard. Teach them to wait a breath.
+lore_corellia_5 = There is no shame in fear. There is only what you do while afraid.
+lore_talus_1 = Small worlds keep old truths best. Nobody comes to argue with them.
+lore_talus_2 = The Force connects, it does not command. A master who commands has already lost the thread.
+lore_talus_3 = Stone, sea, grass: three teachers, one lesson. Be what you are, fully.
+lore_talus_4 = The dark side is quicker. It is quicker the way a fall is quicker than a climb.
+lore_rori_1 = The swamp eats what stands still too long and what thrashes. Move with purpose, rest with purpose.
+lore_rori_2 = A Padawan asked how to feel the Force. The master said: stop deciding what it must feel like.
+lore_rori_3 = Fog hides the far shore. The far shore is still there.
+lore_rori_4 = Compassion is not softness. It is the hardest discipline on the list.
+lore_rori_5 = You will be offered power that costs nothing today. Everything that costs nothing is on credit.
+lore_dantooine_1 = Here the Jedi built an enclave, and here they buried it. Both were acts of faith.
+lore_dantooine_2 = The crystal caves hum because the Force hums. You were never not hearing it.
+lore_dantooine_3 = Mastery is not the end of learning. It is the point where learning stops hurting.
+lore_dantooine_4 = A lightsaber is a tool for a person already at peace. In other hands it is only a torch.
+lore_dantooine_5 = The grasslands bend in the wind and stand again. That is the whole teaching.
+lore_lok_1 = A pirate world, and the Force is here too. It does not pick its ground.
+lore_lok_2 = What you destroy in anger you will meet again, wearing a different face.
+lore_lok_3 = The volcano does not hate the valley. Power without malice is still power; watch what yours does.
+lore_lok_4 = The ones who hunt Jedi are not evil to themselves. Understand them, and you are harder to kill.
+lore_lok_5 = Heat makes the air shimmer. Fear does the same to judgement.
+lore_yavin4_1 = Exar Kun built a temple to his own name here. It is a ruin. Names are.
+lore_yavin4_2 = The light enclave and the dark one stand on the same moon and drink the same rain.
+lore_yavin4_3 = Rebels won a battle above this world with help they never measured. Neither will you measure yours.
+lore_yavin4_4 = The jungle grows over everything, light and dark alike. Time is the only impartial judge.
+lore_endor_1 = The small ones here feel the Force in every tree and have no word for it. Envy them.
+lore_endor_2 = A machine of a moon died in this sky. The forest did not notice. Keep your victories that size.
+lore_endor_3 = Fear leads to anger, anger to hate. The old warning is old because it keeps being true.
+lore_endor_4 = Redemption came to a monster in this system. Do not decide who is past it.
+lore_endor_5 = Walk softly. Everything here can hear you.
+lore_dathomir_1 = The witches bent the Force to their will and called it theirs. It let them, for a while.
+lore_dathomir_2 = A Nightsister and a Jedi draw from the same well with different buckets. The water does not care.
+lore_dathomir_3 = This world is red because it refuses to be anything else. Know what you refuse to be.
+lore_dathomir_4 = The village in the hills teaches nothing you need. Pass it, or do not. The Force is not kept there.
+lore_dathomir_5 = What whispers to you at the edge of sleep is not always the Force. Learn the difference early.
+lore_learned = A fragment of something old settles into your memory.
+lore_count = %DI fragment(s) of the old lore are yours.
+
+# the Old Man returns when six worlds have been listened to
+oldman_return_greeting = Six worlds. Good. Sit a moment, %TT; the listening is done.
+oldman_return_intro = You heard what the quiet places had to say, and you kept walking afterwards. Most people do one or the other. That is the whole reason I am here and not somewhere safer.
+oldman_return_trials = What comes next is not listening. It is being tested: small things, deliberately chosen, that will show both of us what you are made of. I will send word of the first when it is ready. Rest until then; you will not get much after.
+oldman_return_wait = Then rest. The road does not care how long you take, only that you come back to it.
+oldman_return_bye = The old man nods once and walks off into the dusk, no faster than before.
+trials_unlocked = The listening is over. The trials will come to you; be found by them.
+
+# the ambush he warned about
+shadow_threaten = %TT! The old man was seen with you. Whatever he gave you, hand it over, and you may walk away.
+shadow_survived = The dark things are down. Something in you held while they pushed at it.
+shadow_gone = The hunters have melted back into the country. They will not be the last.
