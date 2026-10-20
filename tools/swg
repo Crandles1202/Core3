@@ -187,7 +187,13 @@ cmd_bench() {
 			local target=${1:-}; [ -n "$target" ] || die "usage: swg bench use <branch|commit>"
 			local commit; commit=$(git -C "$BENCH" rev-parse --verify -q "$target^{commit}") || die "unknown branch/commit $target"
 			[ -z "$(git -C "$BENCH" status --porcelain)" ] || die "the bench checkout is dirty ($BENCH): nobody edits files there; commit or stash by hand"
-			if lock_is_stale || [ "$(lock_field 1)" = "$(agent_name)" ]; then cmd_lock "bench use $target" --minutes 90 >/dev/null; else die "bench $(lock_describe)"; fi
+			local tries=0
+			while ! lock_is_stale && [ "$(lock_field 1)" != "$(agent_name)" ]; do   # SWG_WAIT=1 queues behind another agent's hold
+				[ "${SWG_WAIT:-0}" = 1 ] && (( tries < 720 )) || die "bench $(lock_describe)"
+				(( tries % 12 == 0 )) && warn "bench $(lock_describe) — waiting"
+				sleep 5; tries=$((tries + 1))
+			done
+			cmd_lock "bench use $target" --minutes 90 >/dev/null
 			local was; was=$(git -C "$BENCH" rev-parse HEAD)
 			git -C "$BENCH" checkout -q --detach "$commit" || die "checkout failed"
 			say "bench now at $(git -C "$BENCH" rev-parse --short HEAD) ($target)"

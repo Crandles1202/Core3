@@ -11,6 +11,8 @@ runs and tests. Host: WSL2 Debian 12.
   WSL networking, account SQL, gotchas, from-scratch rebuild. DB password and DBSecret are redacted in
   the repo copy (`config-local.lua` holds the real values).
 - [docs/dev-notes.md](docs/dev-notes.md) — the long-form gotchas list and per-session log. Append to it.
+- [docs/Citizens-Cast.md](docs/Citizens-Cast.md) — the Phase 7 cast (ten AI-driven players: persona, profession path,
+  life plan, voice) for Chuck to check off; each becomes a pilot persona file.
 
 ## Paths
 
@@ -131,6 +133,8 @@ tools/swg test planner          # headless check of the site planner's data path
 tools/swg whoami | lock [purpose] [--minutes N] | unlock [--force]   # the bench lock (docs/BOARD.md)
 tools/swg agent new <name> | list | done <name>                      # a worktree + branch per agent
 tools/swg bench status | use <branch> | release | merge <branch>     # deploy on the bench, gate, merge
+tools/seat start <user> <char> [--name N] [--timeout S] | stop | list | ping | say | tell | emote | cmd | do | vars | objects | wait | log
+                                # a seat (Phase 7.0): core3client kept logged in, driven over ~/.swg-lab/seats/<name>/sock
 ```
 
 - Lua content checks live in `bin/scripts/custom_scripts/screenplays/fb_lab_tests.lua` (wraps `spawnMobile`
