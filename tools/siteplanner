@@ -529,7 +529,7 @@ def npc_templates():
 
 def live_npcs(filt):
     try:
-        res = subprocess.run([os.path.join(HERE, "swg"), "cmd", "runLuaFunction FbLabTests:findNpc:" + (filt or "fb_"), "--timeout", "8"],
+        res = subprocess.run([os.path.join(HERE, "swg"), "cmd", "--shared", "runLuaFunction FbLabTests:findNpc:" + (filt or "fb_"), "--timeout", "8"],
                              capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.TimeoutExpired):
         return []
@@ -549,7 +549,7 @@ def terrain_heights(planet, pts):
     if not re.fullmatch(r"[-\d.,;| ]{1,2000}", pts or ""):
         return []
     try:
-        res = subprocess.run([os.path.join(HERE, "swg"), "cmd", "runLuaFunction FbLabTests:terrainHeights:%s:%s" % (planet, pts.replace(";", "|")), "--timeout", "8"],
+        res = subprocess.run([os.path.join(HERE, "swg"), "cmd", "--shared", "runLuaFunction FbLabTests:terrainHeights:%s:%s" % (planet, pts.replace(";", "|")), "--timeout", "8"],
                              capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.TimeoutExpired):
         return []
@@ -566,10 +566,11 @@ def terrain_heights(planet, pts):
 PREVIEW_DIR = os.path.join(SITES_DIR, ".preview")   # outside the loader's *.lua glob; git-ignored
 
 
-def swg_lua(call, timeout=8):
-    """Lines a lab oracle printed (runLuaFunction FbLabTests:<call>) on the running server; [] when it is down."""
+def swg_lua(call, timeout=8, shared=False):
+    """Lines a lab oracle printed (runLuaFunction FbLabTests:<call>) on the running server; [] when it is down.
+    shared=True for read-only oracles: they run without taking the bench lock (another agent may be testing)."""
     try:
-        res = subprocess.run([os.path.join(HERE, "swg"), "cmd", "runLuaFunction FbLabTests:" + call, "--timeout", str(timeout)],
+        res = subprocess.run([os.path.join(HERE, "swg"), "cmd"] + (["--shared"] if shared else []) + ["runLuaFunction FbLabTests:" + call, "--timeout", str(timeout)],
                              capture_output=True, text=True, timeout=timeout + 25)
     except (OSError, subprocess.TimeoutExpired):
         return []
@@ -620,7 +621,7 @@ def check_site(lua, template):
     lines = furniture_check(template, path) if template else []
     m = re.search(r'name = "([a-z0-9_]+)"', lua)
     if m:
-        lines += swg_lua("sitePlacement:" + m.group(1), 20) or ["INFO placement: the game server is not up, or this site is not spawned (Spawn preview first)"]
+        lines += swg_lua("sitePlacement:" + m.group(1), 20, shared=True) or ["INFO placement: the game server is not up, or this site is not spawned (Spawn preview first)"]
     ok = not any(l.startswith(("ERROR", "FAIL")) for l in lines)
     return dict(ok=ok, lines=lines)
 
@@ -711,7 +712,7 @@ def terrain_grid(planet, x, y, r, step):
     os.makedirs(TERRAIN_DIR, exist_ok=True)
     path = os.path.join(TERRAIN_DIR, "%s_%d_%d_%d_%d_%d.txt" % (planet, x0, y0, x1, y1, step))
     if not os.path.exists(path):
-        lines = swg_lua("terrainGrid:%s:%d:%d:%d:%d:%d:%s" % (planet, x0, y0, x1, y1, step, path), 90)
+        lines = swg_lua("terrainGrid:%s:%d:%d:%d:%d:%d:%s" % (planet, x0, y0, x1, y1, step, path), 90, shared=True)
         if not any(l.startswith("INFO terrainGrid") for l in lines):
             return dict(error=(lines[0] if lines else "the game server did not answer (terrain needs tools/swg start)"))
     with open(path, encoding="utf-8") as fh:
@@ -741,7 +742,7 @@ def terrain_tile(planet, step, tx, ty):
     os.makedirs(TERRAIN_DIR, exist_ok=True)
     path = os.path.join(TERRAIN_DIR, "%s_t%d_%d_%d.txt" % (planet, step, tx, ty))
     if not os.path.exists(path):
-        lines = swg_lua("terrainGrid:%s:%d:%d:%d:%d:%d:%s" % (planet, x0, y0, x1, y1, step, path), 60)
+        lines = swg_lua("terrainGrid:%s:%d:%d:%d:%d:%d:%s" % (planet, x0, y0, x1, y1, step, path), 60, shared=True)
         if not any(l.startswith("INFO terrainGrid") for l in lines):
             return dict(error=(lines[0] if lines else "the game server did not answer (terrain needs tools/swg start)"))
     with open(path, encoding="utf-8") as fh:

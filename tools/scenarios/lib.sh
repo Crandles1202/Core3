@@ -15,7 +15,8 @@ set -uo pipefail
 SCENARIO_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 SWG=${SWG:-$SCENARIO_DIR/../swg}
 REPO=$(cd "$SCENARIO_DIR/../.." && pwd)
-BIN="$REPO/MMOCoreORB/bin"
+BENCH=$(git -C "$REPO" worktree list --porcelain 2>/dev/null | head -n1 | sed 's/^worktree //'); [ -n "$BENCH" ] || BENCH=$REPO
+BIN="$BENCH/MMOCoreORB/bin"   # the server and its client live in the bench, not in an agent's worktree
 LABDIR=${SWG_LABDIR:-$HOME/.swg-lab}
 BOT_USER=${SWG_BOT_USER:-claude-player}
 PASSFILE="$LABDIR/$BOT_USER.pass"

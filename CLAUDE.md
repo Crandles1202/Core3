@@ -79,6 +79,18 @@ runs and tests. Host: WSL2 Debian 12.
   randomized missions in their bag logs in), and `[MantisDatabase0] ERROR - 1045: Access denied for user 'swgemu'` (and the
   matching `[Console]` line). Not ours; ignore when diffing ERROR lines.
 
+## Working in parallel (several agents)
+
+See [docs/BOARD.md](docs/BOARD.md): the lanes table (who is on what) and the rules. In short: the main checkout
+`~/workspace/Core3` is **the bench** (the one server runs from it; nobody edits files there); every agent works
+in its own worktree (`swg agent new <name>` → `~/workspace/Core3-<name>` on `feature/<name>`, identity in
+`.swg-agent`); `swg bench use <branch>` locks the bench and deploys a commit (reload / restart / build chosen from
+what changed); every server-touching `swg` command runs under that lock and refuses other agents (`SWG_WAIT=1`
+queues); `swg test all` records a gate pass per commit and `swg bench merge <branch>` merges `--no-ff` + pushes
+only with one; `swg bench release` hands the bench back. `swg status` shows the lock; `swg cmd --shared` is for
+read-only oracles (the planner uses it). A worktree has its own memory directory for Claude, so anything another
+agent must know goes in the repo docs, not in memory.
+
 ## Branch and release rules
 
 - `unstable` is the main branch (tracks `origin/unstable`). Upstream: `swgemu/unstable`.
@@ -116,6 +128,9 @@ tools/swg account prune <user> [--keep N]  # delete oldest Lab* chars of a claud
 tools/swg tre build|install [--client DIR]|patchcfg FILE|status|strings … # finalboss.tre from tre-src/ (see Build)
 tools/swg site save <char> <name> | site list   # write a site drafted in game (Lab Remote → Site builder → Export) into tasks/sites/
 tools/swg test planner          # headless check of the site planner's data path (part of test all, ~20 s, no server)
+tools/swg whoami | lock [purpose] [--minutes N] | unlock [--force]   # the bench lock (docs/BOARD.md)
+tools/swg agent new <name> | list | done <name>                      # a worktree + branch per agent
+tools/swg bench status | use <branch> | release | merge <branch>     # deploy on the bench, gate, merge
 ```
 
 - Lua content checks live in `bin/scripts/custom_scripts/screenplays/fb_lab_tests.lua` (wraps `spawnMobile`

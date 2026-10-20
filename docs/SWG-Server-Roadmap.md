@@ -56,6 +56,7 @@ Lock in the dev environment so we don't shoot ourselves in the foot.
 - **0.3 \[S\] Set up database backups.** Cronjob inside Debian to `mysqldump swgemu` to `~/backups/` daily, keep last 7 days. One bad migration without backups \= full restart.  
 - **0.4 \[S\] Set up a sane branching strategy.** Stay on `unstable` as the base. Each feature on a `feature/<name>` branch. Tag stable known-good commits as `chuck-stable-YYYYMMDD`.  
 - **0.5 \[T\] Feature-flag everything.** Add a `~/workspace/Core3/MMOCoreORB/bin/conf/custom-features.lua` that any of our customizations check before activating. Lets us turn things off without rolling back code.  
+- **0.7 \[M\] Working in parallel.** ✅ 2026-10-20 — one bench server, a worktree and branch per agent, a lock around every server-touching `swg` command, `swg bench use` to deploy a commit, a gate pass per commit before `swg bench merge`, and `docs/BOARD.md` as the shared lane table. Asked for by Chuck ("run multiple agents in parallel without them fighting … everybody on the same page"). Upgrade path when the bench becomes the bottleneck: a second server instance per agent (RAM allows two to three: 31 GB, 5.7 GB each).
 - **0.6 \[S\] Set up an admin character that's separate from your "play" character.** Standard practice — admin-level 15 character used only for ops, level-0 character for playing.
 
 ### Phase 1 — Quick wins (build momentum, see real changes fast)
