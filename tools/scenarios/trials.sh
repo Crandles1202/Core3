@@ -65,7 +65,7 @@ sleep 8
 bot_bg --wait 160
 wait_online || die "$CHAR never came back online"
 T=$(lab "trialTick:$CHAR")
-check "word_farwalk" "$(grep -q 'current=farwalk target=tatooine_force_shrine' <<<"$T" && echo 1 || echo 0)" "$T"
+check "word_farwalk" "$(grep -q 'current=farwalk' <<<"$T" && grep -q 'target=tatooine_force_shrine' <<<"$T" && echo 1 || echo 0)" "$T"
 TARGET=$(sed -n 's/.*target=\(tatooine_force_shrine_0[0-9]\).*/\1/p' <<<"$T" | head -n1)
 case "$TARGET" in
 	tatooine_force_shrine_01) XY="-6506:-3668" ;; tatooine_force_shrine_02) XY="5264:113" ;; tatooine_force_shrine_03) XY="-3623:5281" ;;
@@ -81,8 +81,8 @@ check "farwalk_done" "$(grep -q 'done=stillness,restraint,strength,mercy,farwalk
 T=$(lab "trialTick:$CHAR")
 check "word_insight" "$(grep -q 'current=insight' <<<"$T" && echo 1 || echo 0)" "$T"
 RIDDLE=$(sed -n 's/.*riddle=\([1-3]\).*/\1/p' <<<"$T" | head -n1)
-T=$(lab "trialTick:$CHAR")
-check "spirit_sent" "$(grep -q 'sent=true' <<<"$T" && echo 1 || echo 0)" "$T"
+# reaching the far shrine was itself a trigger, so the word (and often the spirit) may already have come
+lab "trialTick:$CHAR" >/dev/null
 sleep 14
 SPIRIT=$(shrine_oid_of fb_trial_spirit)
 check "spirit_stands" "$( [ -n "$SPIRIT" ] && echo 1 || echo 0 )"

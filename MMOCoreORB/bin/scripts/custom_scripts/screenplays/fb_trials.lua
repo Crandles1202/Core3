@@ -120,10 +120,18 @@ end
 function FbTrials:finishAll(pPlayer)
 	FbAttunement:setFlag(pPlayer, "padawan", os.time())
 	FbAttunement:setFlag(pPlayer, "task", "padawan")
-	if not CreatureObject(pPlayer):hasSkill("force_title_jedi_novice") then awardSkill(pPlayer, "force_title_jedi_novice") end
 	say(pPlayer, "trials_complete")
 	local a = FbAttunement:flag(pPlayer, "alignment")
 	if a == "light" then say(pPlayer, "trials_light") elseif a == "dark" then say(pPlayer, "trials_dark") end
+	-- the award is done on its own event: the last trial completes inside a kill observer, where the skill
+	-- manager's locks are not ours to take
+	createEvent(1500, "FbTrials", "awardNovice", pPlayer, "")
+end
+
+function FbTrials:awardNovice(pPlayer)
+	if pPlayer == nil then return end
+	if not CreatureObject(pPlayer):hasSkill("force_title_jedi_novice") then awardSkill(pPlayer, "force_title_jedi_novice") end
+	printf("FbTrials: %s padawan box: %s\n", CreatureObject(pPlayer):getFirstName(), tostring(CreatureObject(pPlayer):hasSkill("force_title_jedi_novice")))
 end
 
 -- the fourth trial's choice
