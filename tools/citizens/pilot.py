@@ -298,7 +298,7 @@ class DryDecider:
     """No model: answer tells and nearby greetings with the persona's first voice line, then rest."""
 
     def __init__(self, persona_text):
-        m = re.search(r"^- \*\*Voice:\*\*\s*\n\s*- \"(.*?)\"", persona_text, re.S | re.M)
+        m = re.search(r"^## Voice\s*\n\s*- \"(.*?)\"", persona_text, re.S | re.M)
         self.line = m.group(1) if m else "Well met."
 
     def decide(self, system_blocks, perception, tools_schema, run_tool, log):
