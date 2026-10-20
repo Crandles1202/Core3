@@ -1,0 +1,308 @@
+#!/usr/bin/env python3
+"""
+tools/seat — drive a seat: a core3client kept logged in as one character, serving a JSON-lines
+control channel on a unix socket (SeatAction, Phase 7.0). A pilot (7.3) sits on top of this.
+
+  seat start <user> <char> [--timeout S] [--name N]   log the character in and open the channel
+                                                        (password from ~/.swg-lab/<user>.pass; seat name defaults to the character)
+  seat stop <name>                                     ask the seat to quit (logout follows) and wait for the client to exit
+  seat list                                            seats with a live socket
+  seat ping <name>                                     round trip
+  seat send <name> '<json request>'                    raw request, prints the reply
+  seat do <name> <action> [key=value …]                {"op":"action","action":{"action":<action>,…}}; values parse as JSON when they can
+  seat say <name> <text> | tell <name> <who> <text> | emote <name> <emote> [target]
+  seat cmd <name> <command> [args] [--target oid] [--nowait]
+  seat vars <name> [path]                              the client's var store (SpatialChat, SystemMessages, Tells, Sui, …)
+  seat objects <name> [--near]                         what the client has in view (creation positions)
+  seat wait <name> <signal> [timeoutMs]                block until that packet arrives (SpatialChat, Tell, SuiCreatePage, …)
+  seat log <name> [lines]                              tail of the client log
+
+State per seat lives in ~/.swg-lab/seats/<name>/: sock, pid, client.log.
+"""
+import json
+import os
+import re
+import socket
+import subprocess
+import sys
+import time
+
+LABDIR = os.environ.get("SWG_LABDIR", os.path.expanduser("~/.swg-lab"))
+SEATS = os.path.join(LABDIR, "seats")
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(HERE)
+
+# the server and its client live in the bench (the main checkout), not in an agent's worktree
+def bench():
+    try:
+        out = subprocess.run(["git", "-C", REPO, "worktree", "list", "--porcelain"], capture_output=True, text=True).stdout
+        first = out.splitlines()[0]
+        if first.startswith("worktree "):
+            return first[len("worktree "):]
+    except Exception:
+        pass
+    return REPO
+
+BIN = os.path.join(bench(), "MMOCoreORB", "bin")
+
+# social emotes by canonical name -> row number of datatables/chat/social_types.iff (1-based, the ids
+# ChatManager::loadSocialTypes assigns); tools/seat_emotes.json is generated from the stock table
+def load_emotes():
+    try:
+        with open(os.path.join(HERE, "seat_emotes.json")) as f:
+            return json.load(f)
+    except OSError:
+        return {}
+
+EMOTES = load_emotes()
+
+
+def seat_dir(name):
+    d = os.path.join(SEATS, name)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def sock_path(name):
+    return os.path.join(seat_dir(name), "sock")
+
+
+def die(msg, code=1):
+    print(f"seat: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+class Seat:
+    """One connection to a seat's channel."""
+
+    def __init__(self, name, timeout=30.0):
+        self.name = name
+        self.path = sock_path(name)
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.settimeout(timeout)
+        try:
+            self.sock.connect(self.path)
+        except OSError as e:
+            die(f"no seat '{name}' listening at {self.path} ({e})")
+        self.buf = b""
+        self.seq = 0
+
+    def request(self, req, timeout=None):
+        self.seq += 1
+        req = dict(req)
+        req.setdefault("id", self.seq)
+        if timeout is not None:
+            self.sock.settimeout(timeout)
+        self.sock.sendall((json.dumps(req) + "\n").encode())
+        while b"\n" not in self.buf:
+            chunk = self.sock.recv(65536)
+            if not chunk:
+                die(f"seat '{self.name}' closed the channel")
+            self.buf += chunk
+        line, self.buf = self.buf.split(b"\n", 1)
+        return json.loads(line.decode())
+
+    def action(self, action, **fields):
+        body = {"action": action}
+        body.update(fields)
+        return self.request({"op": "action", "action": body}, timeout=120)
+
+    def close(self):
+        self.sock.close()
+
+
+def parse_kv(args):
+    out = {}
+    for a in args:
+        if "=" not in a:
+            die(f"expected key=value, got '{a}'")
+        k, v = a.split("=", 1)
+        try:
+            out[k] = json.loads(v)
+        except ValueError:
+            out[k] = v
+    return out
+
+
+def cmd_start(args):
+    if len(args) < 2:
+        die("start <user> <char> [--timeout S] [--name N]")
+    user, char = args[0], args[1]
+    timeout = 0
+    name = char
+    i = 2
+    while i < len(args):
+        if args[i] == "--timeout" and i + 1 < len(args):
+            timeout = int(args[i + 1]); i += 2
+        elif args[i] == "--name" and i + 1 < len(args):
+            name = args[i + 1]; i += 2
+        else:
+            die(f"unknown option {args[i]}")
+
+    passfile = os.path.join(LABDIR, f"{user}.pass")
+    if not os.path.exists(passfile):
+        die(f"no credentials at {passfile} (swg account create {user} …)")
+    client = os.path.join(BIN, "core3client")
+    if not os.access(client, os.X_OK):
+        die(f"{client} missing — build with the client on (swg build)")
+
+    d = seat_dir(name)
+    sp = sock_path(name)
+    if os.path.exists(sp):
+        try:
+            Seat(name, timeout=3).request({"op": "ping"})
+            die(f"seat '{name}' is already running")
+        except SystemExit:
+            os.unlink(sp)
+    log = open(os.path.join(d, "client.log"), "wb")
+    env = dict(os.environ)
+    env["CORE3_CLIENT_PASSWORD"] = open(passfile).read().strip()
+    argv = [client, "--username", user,
+            "--login-host", os.environ.get("SWG_LOGIN_HOST", "127.0.0.1"),
+            "--login-port", os.environ.get("SWG_LOGIN_PORT", "44453"),
+            "--character-firstname", char,
+            "--seat", sp, "--seat-timeout", str(timeout)]
+    proc = subprocess.Popen(argv, cwd=BIN, env=env, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
+    with open(os.path.join(d, "pid"), "w") as f:
+        f.write(str(proc.pid))
+
+    # wait for the socket (login + zone-in takes a few seconds)
+    for _ in range(90):
+        if proc.poll() is not None:
+            die(f"client exited with {proc.returncode} before the seat opened — see {os.path.join(d, 'client.log')}", proc.returncode)
+        if os.path.exists(sp):
+            try:
+                reply = Seat(name, timeout=5).request({"op": "ping"})
+                print(f"seat '{name}' up: character {reply.get('character')} pid {proc.pid} socket {sp}")
+                return
+            except SystemExit:
+                pass
+        time.sleep(1)
+    die(f"seat '{name}' did not open within 90 s — see {os.path.join(d, 'client.log')}")
+
+
+def cmd_stop(args):
+    if not args:
+        die("stop <name>")
+    name = args[0]
+    d = seat_dir(name)
+    pidfile = os.path.join(d, "pid")
+    pid = int(open(pidfile).read()) if os.path.exists(pidfile) else None
+    try:
+        s = Seat(name, timeout=5)
+        s.request({"op": "quit"})
+        s.close()
+    except SystemExit:
+        print(f"seat '{name}' was not listening")
+    if pid:
+        for _ in range(60):
+            try:
+                os.kill(pid, 0)
+            except OSError:
+                break
+            time.sleep(1)
+        else:
+            print(f"client pid {pid} still running after 60 s (it logs out on quit; check {os.path.join(d, 'client.log')})")
+    for f in ("sock", "pid"):
+        p = os.path.join(d, f)
+        if os.path.exists(p):
+            os.unlink(p)
+    print(f"seat '{name}' stopped")
+
+
+def cmd_list(args):
+    if not os.path.isdir(SEATS):
+        return
+    for name in sorted(os.listdir(SEATS)):
+        sp = sock_path(name)
+        if not os.path.exists(sp):
+            continue
+        try:
+            r = Seat(name, timeout=3).request({"op": "ping"})
+            print(f"{name}\tcharacter {r.get('character')}\tup {r.get('uptimeMs', 0) // 1000}s\t{r.get('requests')} requests")
+        except SystemExit:
+            print(f"{name}\t(socket present, not answering)")
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help"):
+        print(__doc__)
+        return 0
+    cmd, args = argv[0], argv[1:]
+
+    if cmd == "start":
+        return cmd_start(args)
+    if cmd == "stop":
+        return cmd_stop(args)
+    if cmd == "list":
+        return cmd_list(args)
+
+    if not args:
+        die(f"{cmd} <name> …")
+    name = args[0]
+    rest = args[1:]
+    s = Seat(name)
+
+    if cmd == "ping":
+        reply = s.request({"op": "ping"})
+    elif cmd == "send":
+        reply = s.request(json.loads(rest[0]), timeout=120)
+    elif cmd == "do":
+        reply = s.action(rest[0], **parse_kv(rest[1:]))
+    elif cmd == "say":
+        reply = s.action("say", text=" ".join(rest))
+    elif cmd == "tell":
+        reply = s.action("tell", name=rest[0], text=" ".join(rest[1:]))
+    elif cmd == "emote":
+        emote = rest[0]
+        eid = int(emote) if emote.isdigit() else EMOTES.get(emote)
+        if eid is None:
+            die(f"unknown emote '{emote}' (known: {', '.join(sorted(EMOTES))}, or a row number)")
+        fields = {"id": eid}
+        if len(rest) > 1:
+            fields["target"] = int(rest[1])
+        reply = s.action("emote", **fields)
+    elif cmd == "cmd":
+        fields = {"name": rest[0]}
+        words = []
+        i = 1
+        while i < len(rest):
+            if rest[i] == "--target" and i + 1 < len(rest):
+                fields["target"] = rest[i + 1]; i += 2
+            elif rest[i] == "--nowait":
+                fields["nowait"] = True; i += 1
+            else:
+                words.append(rest[i]); i += 1
+        if words:
+            fields["args"] = " ".join(words)
+        reply = s.action("command", **fields)
+    elif cmd == "vars":
+        req = {"op": "vars"}
+        if rest:
+            req["path"] = rest[0] if rest[0].startswith("/") else "/" + rest[0]
+        reply = s.request(req)
+    elif cmd == "objects":
+        reply = s.request({"op": "objects"})
+        if reply.get("ok"):
+            objs = reply["objects"]
+            objs.sort(key=lambda o: (o["type"], o["name"]))
+            for o in objs:
+                print(f"{o['oid']:>12}  type 0x{o['type']:x}  {o['name']:<40} {o['x']:8.1f} {o['y']:8.1f} {o['z']:6.1f}  parent {o['parent']}")
+            print(f"{len(objs)} objects")
+            return 0
+    elif cmd == "wait":
+        timeout = int(rest[1]) if len(rest) > 1 else 10000
+        reply = s.request({"op": "wait", "signal": rest[0], "timeoutMs": timeout}, timeout=timeout / 1000 + 5)
+    elif cmd == "log":
+        n = int(rest[0]) if rest else 40
+        subprocess.run(["tail", "-n", str(n), os.path.join(seat_dir(name), "client.log")])
+        return 0
+    else:
+        die(f"unknown command '{cmd}'")
+
+    print(json.dumps(reply, indent=1))
+    return 0 if reply.get("ok") else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

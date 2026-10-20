@@ -11,6 +11,7 @@
  */
 
 #include "client/ActionBase.h"
+#include "client/actions/CommandQueueSend.h"
 #include "client/ActionResult.h"
 #include "client/ActionManager.h"
 #include "client/ClientCore.h"
@@ -229,3 +230,7 @@ public:
 
 static bool _registered_command =
 	(ActionManager::registerAction("command", CommandAction::factory, CommandAction::fromArgs, CommandAction::fromJSON), true);
+
+bool sendQueueCommand(ClientCore& core, const String& name, uint64 target, const UnicodeString& args, int timeoutSeconds, uint32& outError, uint32& outState, Logger* log) {
+	return CommandAction::send(core, name, target, args, timeoutSeconds, outError, outState, log);
+}

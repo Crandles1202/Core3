@@ -37,6 +37,11 @@ public:
 
 	SceneObject* getObject(const UnicodeString& customName);
 
+	// the seat (SeatAction) lists what the client knows about; lock the manager while iterating
+	inline ObjectMap* getObjectMap() {
+		return objectMap;
+	}
+
 	inline void setZone(Zone* zn) {
 		zone = zn;
 		spaceZone = nullptr;

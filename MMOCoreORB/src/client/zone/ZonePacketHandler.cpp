@@ -94,6 +94,14 @@ void ZonePacketHandler::handleMessage(Message* pack) {
 		case 0x9499EF8C: what = "RetrieveAuctionItemResponseMessage"; // reply to RetrieveAuctionItem
 			handleAuctionStatusMessage(pack, "retrieve");
 			break;
+		case 0x88DBB381: { what = "ChatOnSendInstantMessage";       // the server's verdict on our /tell (lab: --tell)
+			int tellResult = pack->parseInt();
+			uint32 sequence = pack->parseInt();
+			core->setVar("Tell/c" + String::valueOf(sequence) + "/result", tellResult);
+			info(true) << "ChatOnSendInstantMessage seq=" << sequence << " result=" << tellResult;
+			zone->signal(STRING_HASHCODE("ChatOnSendInstantMessage"));
+			break;
+		}
 		}
 		break;
 
@@ -248,6 +256,7 @@ void ZonePacketHandler::handleSceneObjectCreateMessage(Message* pack) {
 	}
 
 	object->setClient(zone->getZoneClient());
+	object->initializePosition(x, z, y);   // where the server put it when it entered our view (the seat lists this)
 }
 
 void ZonePacketHandler::handleBaselineMessage(Message* pack) {
@@ -296,6 +305,15 @@ void ZonePacketHandler::handleChatInstantMessageToClient(Message* pack) {
 	StringBuffer infoMsg;
 	infoMsg << "instant message from [" << name << "] : " << message.toString();
 	client->info(infoMsg.toString());
+
+	// keep the last 50 tells so a seat can read them: "<sender>: <text>"
+	auto& kept = core->vars[JSONSerializationType::json_pointer("/Tells")];
+	if (!kept.is_array())
+		kept = JSONSerializationType::array();
+	if (kept.size() >= 50)
+		kept.erase(kept.begin());
+	kept.push_back(std::string(name.toCharArray()) + ": " + std::string(message.toString().toCharArray()));
+	zone->signal(STRING_HASHCODE("Tell"));
 }
 
 void ZonePacketHandler::handleChatSystemMessage(Message* pack) {

@@ -252,6 +252,18 @@ public:
 		return objectID;
 	}
 
+	inline uint32 getObjectCRC() {
+		return objectCRC;
+	}
+
+	inline int getGameObjectType() {
+		return gameObjectType;
+	}
+
+	inline int getContainmentType() {
+		return containmentType;
+	}
+
 	inline uint32 getMovementCounter() {
 		return movementCounter;
 	}
