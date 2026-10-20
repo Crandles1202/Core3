@@ -879,6 +879,8 @@ includeFile("quest/tatooine/fb_armor_droid.lua")
 includeFile("quest/tatooine/fb_combat_quartermaster.lua")
 includeFile("quest/tatooine/fb_pet_vet.lua")
 includeFile("quest/tatooine/fb_trade_hall_keeper.lua")
+includeFile("quest/tatooine/fb_force_ghost.lua")
+includeFile("quest/tatooine/fb_old_man.lua")
 includeFile("quest/tatooine/fb_smuggler_goods.lua")
 includeFile("quest/tatooine/fb_schematic_broker.lua")   -- Phase 2.2
 includeFile("quest/tatooine/fb_parts_dealer.lua")   -- Phase 2.3

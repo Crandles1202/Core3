@@ -113,6 +113,7 @@ namespace creature {
 		int getCurrentSpeed(lua_State* L);
 		int isInvisible(lua_State* L);
 		int isInCombat(lua_State* L);
+		int isMeditating(lua_State* L);   // Final Boss: shrine meditation (Phase 4a.1)
 		int healDamage(lua_State* L);
 		int getGroupID(lua_State* L);
 		int enhanceCharacter(lua_State* L);

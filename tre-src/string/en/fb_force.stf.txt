@@ -1,0 +1,45 @@
+# fb_force.stf — Phase 4a.1: Force attunement, the Force ghosts and the Old Man.
+# Keys are referenced as @fb_force:<key> from Lua (custom_scripts/screenplays/fb_attunement.lua).
+
+# /checkForceStatus tiers (vague on purpose: the score is never shown)
+tier_0 = You feel nothing out of the ordinary.
+tier_1 = Now and then, in the quiet after a fight or in an empty place, something seems to notice you. You cannot say what.
+tier_2 = There is a stirring you can no longer mistake for imagination. Old places pull at you. Dreams come back in daylight.
+tier_3 = The galaxy hums under your feet. You have been seen, and you are being measured. Whatever is coming is close.
+tier_4 = You have been called. The old man has found you; the path is yours to walk or refuse.
+
+# subtle feedback when a source pays out
+stir_place = A stillness settles over this place, and over you.
+stir_meditate = In the quiet, something answers.
+stir_deed = Something in you did not break when it should have.
+stir_quest = What you did there mattered more than you knew.
+stir_item = The thing in your pack is warm to the touch, though nothing warms it.
+
+# Force ghost at 25
+ghost_25_1 = Do not be afraid. I am not here for you. Not yet.
+ghost_25_2 = You walk heavier than you did. The ground remembers you now.
+ghost_25_3 = There is a quiet place %TT. Go and sit in it. Listen.
+# at 50
+ghost_50_1 = You again. I thought so.
+ghost_50_2 = Half of what you are is already turned toward us. The other half is still arguing.
+ghost_50_3 = %TT there is somewhere the arguing stops. Find it.
+# at 75
+ghost_75_1 = Soon now.
+ghost_75_2 = Others have watched you too. Some of them do not wish you well. Keep your eyes open on the road.
+ghost_75_3 = One more quiet place, %TT. After that, he will come himself.
+ghost_hint_here = on this world, %TT
+ghost_hint_other = on %TT
+ghost_fades = The robed figure is gone, as if it had never stood there.
+
+# the Old Man at 100
+oldman_greeting = %TT. Yes. I know the name. Walk with me a moment.
+oldman_intro = You have been walking toward this for a long time, though you only noticed the road lately. The places you stood in, the things you did not die of, the work you finished when no one asked you to: all of it was heard.
+oldman_who = Who I am matters less than who you are about to become. Call me an old man; it is what I am, and it is what the people who hunt us expect to overlook.
+oldman_task = Here is what I ask. There are quiet places on every world; you have found some. Sit in them, on six worlds, and listen until the listening answers. When you have done that, I will find you again, and we will talk about the rest.
+oldman_warning = One more thing. You were not the only one watching yourself. If dark things come looking for you on the road, do not be surprised, and do not be gentle.
+oldman_refuse = Then I was wrong about you, and I am rarely wrong. The road will still be there when you change your mind.
+oldman_nothing = The old man looks through you as if you were not there.
+oldman_leaves = The old man walks away into the glare and does not look back.
+oldman_waypoint = A quiet place
+called_task = You have been called. Sit and meditate at a Force shrine on six different worlds, then wait to be found.
+called_progress = Worlds where you have meditated at a shrine: %DI of 6.
