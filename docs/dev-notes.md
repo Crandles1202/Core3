@@ -186,6 +186,15 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-19 — a blank map, and how to see page errors from here.** Replacing the terrain block "from the
+  relief marker up to `function drawMap()`" also swallowed the planet-map function that sat between them;
+  `drawMap` then threw `drawMapImage is not defined` inside the async start-up, which `window.onerror` never
+  sees — the page looked fine except for an empty map. Now `unhandledrejection` is reported too, both to the
+  status line and to `POST /api/clientlog` (printed on the planner's stderr). To reproduce without a desktop:
+  `tools/siteplanner serve --port 8766 > log 2>&1 &`, then `firefox-esr --headless --new-instance --profile
+  <empty dir> http://127.0.0.1:8766/` for ~45 s (no `--screenshot`: that exits at the load event, before the
+  async loads run) and grep the log for `page reports`. Chuck's profile is locked by his own Firefox, hence
+  the private profile.
 - **2026-10-19 — terrain tiles by zoom.** Chuck asked whether scaling up our own grid beats the painted map: it
   does, because the heights are exact. The relief now loads 128² tiles whose step follows the zoom (1 m when
   close), one console call each, served and cached per tile; the page keeps coarser tiles under finer ones so

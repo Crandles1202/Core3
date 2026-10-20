@@ -881,6 +881,9 @@ class Handler(BaseHTTPRequestHandler):
                     errors = ["ERROR %s" % e]
                 we.write_lua_twin()
                 self._json(dict(ok=not errors, message=("%d edit(s) saved to tre-src/world/%s.json" % (len(saved), planet)) + ("" if not errors else "; " + "; ".join(errors)), ops=saved))
+        elif u.path == "/api/clientlog":
+            sys.stderr.write("siteplanner: page reports: %s\n" % str(body.get("text", ""))[:2000])
+            self._json(dict(ok=True))
         elif u.path == "/api/teleport":
             self._json(teleport(body.get("char", ""), body.get("planet", ""), body.get("x"), body.get("y")))
         else:

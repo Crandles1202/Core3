@@ -146,7 +146,12 @@ function loadSettings() { try { Object.assign(C, DEFAULTS, JSON.parse(localStora
 function saveSettings() { try { localStorage.setItem("fbPlannerSettings", JSON.stringify(C)); } catch (e) {} }
 loadSettings();
 
-window.addEventListener("error", e => { const el = document.getElementById("status"); if (el) { el.textContent = "Script error: " + e.message + " (line " + e.lineno + ")"; el.className = "bad"; } });
+function reportError(text) {
+  const el = document.getElementById("status"); if (el) { el.textContent = text; el.className = "bad"; }
+  try { fetch("/api/clientlog", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) }); } catch (e) {}
+}
+window.addEventListener("error", e => reportError("Script error: " + e.message + " (line " + e.lineno + ")"));
+window.addEventListener("unhandledrejection", e => reportError("Script error (async): " + (e.reason && e.reason.stack || e.reason)));
 const S = {
   area: null, shells: [], npcs: [], sites: [], live: [],
   view: { cx: 3520, cy: -4810, ppm: 2 },          // map view: centre and pixels per metre
@@ -487,6 +492,15 @@ function drawTerrain() {
     }
   }
   if (S.tileQueue.length) { status(`Loading terrain: ${S.tileQueue.length} tile(s) at ${step} m…`); pumpTiles(); }
+}
+function drawMapImage() {
+  if (!L("L_mapimage")) return;
+  const planet = $("planet").value; let img = S.mapImg[planet];
+  if (!img) { img = new Image(); S.mapImg[planet] = img; img.onload = draw; img.onerror = () => { S.mapImg[planet] = "none"; }; img.src = "/api/mapimage?planet=" + encodeURIComponent(planet); return; }
+  if (img === "none" || !img.complete || !img.naturalWidth) return;
+  // the texture covers the whole zone, north at the top: world (-E, +E) is its top-left corner
+  const E = C.mapExtent, [sx, sy] = w2s(-E, E), size = 2 * E * S.view.ppm;
+  ctx.globalAlpha = C.mapOpacity; ctx.imageSmoothingEnabled = true; ctx.drawImage(img, sx, sy, size, size); ctx.globalAlpha = 1;
 }
 function drawMap() {
   drawMapImage();
