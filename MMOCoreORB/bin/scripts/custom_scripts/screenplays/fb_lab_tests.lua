@@ -2117,3 +2117,32 @@ function FbLabTests.checkWorldEdits()
 	if n == 0 then print("INFO worldedit: no edits to check") end
 end
 
+-- terrainGrid:<planet>:<x0>:<y0>:<x1>:<y1>:<step>:<path> → writes the terrain heights of the box (south-west to
+-- north-east corner, every <step> m, rows from y0 northwards) into <path> as text: a header line
+-- "planet x0 y0 x1 y1 step cols rows" then one row per line of %.2f heights. The site planner draws it as relief.
+function FbLabTests:terrainGrid(planet, x0, y0, x1, y1, step, path)
+	x0, y0, x1, y1, step = tonumber(x0), tonumber(y0), tonumber(x1), tonumber(y1), tonumber(step) or 4
+	if planet == nil or x0 == nil or y0 == nil or x1 == nil or y1 == nil or path == nil or step <= 0 then print("ERROR terrainGrid: planet x0 y0 x1 y1 step path"); return "none" end
+	if not isZoneEnabled(planet) then print("ERROR terrainGrid: zone " .. tostring(planet) .. " is not enabled"); return "none" end
+	local cols, rows = math.floor((x1 - x0) / step) + 1, math.floor((y1 - y0) / step) + 1
+	if cols * rows > 160000 then print(string.format("ERROR terrainGrid: %d points is too many (coarser step)", cols * rows)); return "none" end
+	local f, err = io.open(path, "w")
+	if f == nil then print("ERROR terrainGrid: cannot write " .. tostring(path) .. ": " .. tostring(err)); return "none" end
+	f:write(string.format("%s %.1f %.1f %.1f %.1f %g %d %d\n", planet, x0, y0, x1, y1, step, cols, rows))
+	local lo, hi = math.huge, -math.huge
+	for r = 0, rows - 1 do
+		local y = y0 + r * step
+		local line = {}
+		for c = 0, cols - 1 do
+			local h = getTerrainHeightAt(planet, x0 + c * step, y)
+			if h < lo then lo = h end
+			if h > hi then hi = h end
+			line[c + 1] = string.format("%.2f", h)
+		end
+		f:write(table.concat(line, " "), "\n")
+	end
+	f:close()
+	print(string.format("INFO terrainGrid planet=%s cols=%d rows=%d step=%g min=%.2f max=%.2f path=%s", planet, cols, rows, step, lo, hi, path))
+	return tostring(cols * rows)
+end
+

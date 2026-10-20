@@ -15,6 +15,7 @@ Endpoints (all JSON):
   GET  /api/npcs                                         the Final Boss NPC templates with their display names
   GET  /api/live?filter=…                                live NPC positions from the running server (tools/swg), best effort
   GET  /api/terrain?planet=&pts=x,y;x,y                   terrain heights from the running server (the lot report's slope check)
+  GET  /api/terraingrid?planet=&x=&y=&r=&step=             height grid of the area from the running server (cached in ~/.swg-lab/terrain/)
   GET  /api/world?planet=                                  the planet's world edits (tre-src/world/<planet>.json) with the stock node each touches
   GET  /api/catalog                                        every stock building template the world places (what an add can clone), with outlines
   POST /api/world/save {planet, ops}                      write the planet's world edits (adds get their object ids); tre build packs them
@@ -633,6 +634,38 @@ def teleport(char, planet, x, y):
     return dict(ok=any(l.startswith("INFO travel") for l in lines), lines=lines or ["ERROR the game server did not answer, or %s is not online" % char])
 
 
+TERRAIN_DIR = os.path.join(os.path.expanduser("~"), ".swg-lab", "terrain")
+
+
+def terrain_grid(planet, x, y, r, step):
+    """Heights of the square around (x, y) every step m, from the running server (FbLabTests:terrainGrid) and cached
+    on disk — terrain never changes. {x0, y0, step, cols, rows, min, max, h: [row-major, south to north]} or an error."""
+    if planet not in we.PLANETS:
+        return dict(error="unknown planet")
+    step = max(1, min(32, int(step)))
+    r = max(50, min(2000, int(r)))
+    x0, y0 = int(round((x - r) / step) * step), int(round((y - r) / step) * step)
+    x1, y1 = x0 + int(2 * r / step) * step, y0 + int(2 * r / step) * step
+    if ((x1 - x0) // step + 1) ** 2 > 160000:
+        return dict(error="too many points: a coarser step or a smaller radius")
+    os.makedirs(TERRAIN_DIR, exist_ok=True)
+    path = os.path.join(TERRAIN_DIR, "%s_%d_%d_%d_%d_%d.txt" % (planet, x0, y0, x1, y1, step))
+    if not os.path.exists(path):
+        lines = swg_lua("terrainGrid:%s:%d:%d:%d:%d:%d:%s" % (planet, x0, y0, x1, y1, step, path), 90)
+        if not any(l.startswith("INFO terrainGrid") for l in lines):
+            return dict(error=(lines[0] if lines else "the game server did not answer (terrain needs tools/swg start)"))
+    with open(path, encoding="utf-8") as fh:
+        head = fh.readline().split()
+        cols, rows = int(head[6]), int(head[7])
+        h = []
+        for line in fh:
+            h.extend(float(v) for v in line.split())
+    if len(h) != cols * rows:
+        os.remove(path)
+        return dict(error="corrupt grid file removed; ask again")
+    return dict(planet=planet, x0=x0, y0=y0, step=step, cols=cols, rows=rows, min=min(h), max=max(h), h=h)
+
+
 def save_site(name, lua, force):
     name = re.sub(r"[^a-z0-9_]", "_", name.lower())
     if not name:
@@ -696,6 +729,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(load_sites())
             elif u.path == "/api/npcs":
                 self._json(npc_templates())
+            elif u.path == "/api/terraingrid":
+                self._json(terrain_grid(q.get("planet", "tatooine"), float(q.get("x", 0)), float(q.get("y", 0)), float(q.get("r", 300)), int(q.get("step", 4))))
             elif u.path == "/api/world":
                 self._json(self.data.world(q.get("planet", "tatooine")))
             elif u.path == "/api/catalog":
