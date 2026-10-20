@@ -371,15 +371,15 @@ and Chuck checks each one off; the API key comes from Chuck's Max plan credits.
   to ask for gear. A life plan is a document with milestones; it changes only with a logged reason. A **directory** of
   citizens (profession, faction, home city, what they sell) lets pilots find each other.
 
-- **7.0 \[L\] Seat daemon.** `core3client --seat <socket>`: stays logged in, accepts primitives on the channel, streams
+- **7.0 \[L\] Seat daemon.** ✅ 2026-10-20 (the channel; `objects` lists creation positions, others' movement is 7.2). `core3client --seat <socket>`: stays logged in, accepts primitives on the channel, streams
   perception. New packets to decode (positions of others, HAM deltas, combat results, group, loot) and to send
   (chat, movement acknowledgements). `tools/seat` drives it from Python. Scenario: a seat walks, speaks and attacks.
-- **7.1 \[M\] Autopilot.** The server-side walk command for player creatures + follow + leash; lab oracle to watch it.
+- **7.1 \[M\] Autopilot.** ✅ 2026-10-20 as a *client-side* walk on real movement packets over a server-computed path (`findPath` + `walk`), which keeps citizens honest players; follow / leash are 7.2. The server-side walk command for player creatures + follow + leash; lab oracle to watch it.
 - **7.2 \[M\] Citizen accounts and cast tooling.** `swg citizen new <name>` creates the account and character
   (`swg account create`, the one-char-per-hour rule and the name filter apply), the persona file, the memory file and
   the directory entry; `swg citizen list|status|stop`. Optional veteran start (admin-granted skills to a believable
   level) so a cast is not all newbies on day one.
-- **7.3 \[L\] Pilot v1 — one citizen.** Persona, memory, life plan, event loop, tool set = seat primitives + playbooks.
+- **7.3 \[L\] Pilot v1 — one citizen.** ⏳ skeleton 2026-10-20 (loop, files, tools, dry decider tested; model decider waits for the key). Persona, memory, life plan, event loop, tool set = seat primitives + playbooks.
   First citizen: a combat character who answers a `/tell`, groups with Chuck, follows, assists, loots, remembers the
   session. Runtime decided by the subscription question (below).
 - **7.4 \[M\] Combat playbook.** Missions from terminals (the 1.4 hints are its map), lairs, heal and rest, repair,

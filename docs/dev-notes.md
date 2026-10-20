@@ -211,6 +211,25 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   canon/profanity regexes in `managers/name/name_manager.lua` can be run from Python (`re`, case-insensitive) to
   vet names before character creation; some patterns are broad (anything with a `k` + vowel, words starting with
   `p`), so pick names that match none. Scenario `seat-daemon` covers the channel end to end.
+  **Lab run lessons (same day):** (1) `tools/tre` resolved `TrePath` from its own checkout's conf — a worktree has no
+  `config-local.lua`, so `swg start` from a worktree tried to install the archive into the upstream default path;
+  it now reads the bench's conf. (2) The client's `ObjectManager::registerObjectTypes()` has every typed class
+  commented out, so `createObject` returned null for everything and the ObjectMap stayed empty; a plain
+  `SceneObject` is created instead now. (3) `spatialchatinternal` and `socialinternal` never get a
+  `CommandQueueRemove`: only an explicit rejection counts. (4) **Movement:** the server flags a player as
+  *teleporting* at character select and after every `teleport()` and silently drops every `DataTransform` until a
+  `TeleportAck` (ObjController 0x13F, int counter) arrives — the real client sends one after loading; the bot now
+  acks on `CmdSceneReady` and on every server move. (5) **Client→server ObjController payloads have no pad int
+  after the oid**: `ObjectControllerMessageCallback::parse` reads priority, type, oid and hands the rest to the
+  sub-callback. The server's *outbound* `ObjectControllerMessage` carries an extra int, and `CommandQueueEnqueue`'s
+  parser happens to read one as "size", which is why the command action got away with it — the walk's transform
+  arrived shifted by four bytes (timestamp 0, speed = y) and was dropped as "deltaTime". `#define TRANSFORM_DEBUG`
+  in `packets/object/transform/Transform.h` prints the server's verdict per packet (`DT ---- …` in the console
+  log); worth a temporary build when movement is silently ignored. (6) Movement rules that hold now: ≥ 200 ms
+  between packets and ≥ 400 ms unless speed/yaw change, average speed ≤ run speed × 1.05 measured against the last
+  fully validated position (one per second), posture upright/sitting/prone ok. 60 m at 4.5 m/s = 34 packets in
+  16 s, server position exact. (7) `seat-walk` and `pilot-dry` pass; `pilot-dry` proves the loop, files and the
+  seat round trip without a model.
 - **2026-10-20 — 0.7 working in parallel.** Design: the thing agents fight over is not the code (git worktrees
   solve that for free) but the *one* server with its one ODB, console and lab accounts — so the main checkout
   becomes "the bench" nobody edits, every agent gets `~/workspace/Core3-<name>` on `feature/<name>` with its
