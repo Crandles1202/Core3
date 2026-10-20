@@ -335,8 +335,10 @@ local function standStill(spawned)
 			AiAgent(pNpc):removeObjectFlag(AI_ESCORT); AiAgent(pNpc):removeObjectFlag(AI_FOLLOW); AiAgent(pNpc):setFollowObject(nil)
 			AiAgent(pNpc):addObjectFlag(AI_STATIC); AiAgent(pNpc):setAITemplate()
 			-- and its home is here now: an agent leashes back to its spawn point when its follow target logs out
+			-- the ground height under it, not its own z: a follower still carries its spawn height when it arrives
 			local so = SceneObject(pNpc)
-			AiAgent(pNpc):setHomeLocation(so:getWorldPositionX(), so:getWorldPositionZ(), so:getWorldPositionY(), nil)
+			local x, y = so:getWorldPositionX(), so:getWorldPositionY()
+			AiAgent(pNpc):setHomeLocation(x, getTerrainHeightAt(so:getZoneName(), x, y), y, nil)
 		end
 	end
 end
