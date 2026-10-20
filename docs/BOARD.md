@@ -10,6 +10,8 @@ borrowing with a lock; this file carries the intent.
 | Agent | Branch | Task (roadmap item) | Status | Bench | Updated |
 |---|---|---|---|---|---|
 | chuck | — | play-testing, design calls, merges by request | ongoing | as needed | 2026-10-20 |
+| alice | `feature/alice` | Phase 7 Citizens (AI players) + Phase 3.13–3.18 galaxy-wide life — planning with Chuck, then 7.0 seat daemon | planning | no | 2026-10-20 |
+| shrines | `feature/shrines` | Phase 4a.2 shrines | testing | holds | 2026-10-20 |
 | _(add a row with `swg agent new <name>`)_ | | | | | |
 
 Status words: `planning`, `coding`, `testing` (holds the bench), `gate` (running `swg test all`), `ready to merge`,
