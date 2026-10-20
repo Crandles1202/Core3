@@ -186,6 +186,13 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-19 — terrain in the planner (2.12f, first half).** Reimplementing the `.trn` terrain generator in
+  Python is a project of its own (procedural layers, affectors, filters), so the server does the work: a Lua
+  oracle loops `getTerrainHeightAt` over a box and writes the grid to a file — 15 876 points in well under a
+  second on the main thread, so the console hitch is invisible. The planner caches each box forever under
+  `~/.swg-lab/terrain/`. Rendering is one canvas pixel per grid point (hillshade + bands + slope tint) drawn
+  scaled under the map; smoothing on when zoomed out, crisp cells when zoomed in. Percentile ramp because
+  the mesas east of Mos Eisley (180 m) would otherwise flatten the town (5 m) into one colour.
 - **2026-10-19 — the sandstorm scenario's `client_saw_the_storm` flake, explained.** `WeatherManager::sendWeatherTo`
   computes `map.getWeatherAt(x, y) + baseWeather` and upstream set anything above 4 to **0**. `setZoneWeather(4)`
   therefore showed *clear* to any player standing where the local map was above 0 — the scenario passed only
