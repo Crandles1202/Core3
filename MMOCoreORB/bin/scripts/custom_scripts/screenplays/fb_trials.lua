@@ -49,7 +49,10 @@ end
 
 function FbTrials:reset(pPlayer)
 	for _, k in ipairs({ "done", "current", "prog", "target", "riddle", "startedAt", "lastX", "lastY" }) do self:clear(pPlayer, k) end
-	for _, V in ipairs({ FbTrialPrisoner, FbTrialSpirit, FbTrialDuel }) do if V:hasTaskStarted(pPlayer) then V:finish(pPlayer) end end
+	-- a visitor still standing must go through the spawn helper's despawn, or its bookkeeping refuses the next one
+	for _, V in ipairs({ FbTrialPrisoner, FbTrialSpirit, FbTrialDuel }) do
+		if SpawnMobiles.getSpawnedMobiles(pPlayer, V.taskName) ~= nil then V:doDespawn(pPlayer) elseif V:hasTaskStarted(pPlayer) then V:finish(pPlayer) end
+	end
 end
 
 -- ---------------------------------------------------------------- starting and finishing trials

@@ -154,8 +154,11 @@ function FbAttunement:reset(pPlayer)
 	deleteScreenPlayData(pPlayer, self.DATA, "ghostTier")
 	removeQuestStatus("FbAttunement.visit." .. SceneObject(pPlayer):getObjectID())
 	removeQuestStatus("FbAttunement.poll." .. SceneObject(pPlayer):getObjectID())
-	if FbForceGhostVisit ~= nil then clearStaleVisit(FbForceGhostVisit, pPlayer) end
-	if FbOldManVisit ~= nil then clearStaleVisit(FbOldManVisit, pPlayer) end
+	for _, V in ipairs({ FbForceGhostVisit, FbOldManVisit, FbOldManReturn, FbShadowAmbush }) do
+		if V ~= nil then
+			if SpawnMobiles.getSpawnedMobiles(pPlayer, V.taskName) ~= nil then V:doDespawn(pPlayer) else clearStaleVisit(V, pPlayer) end
+		end
+	end
 end
 
 function FbAttunement:tier(total)
