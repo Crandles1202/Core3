@@ -329,6 +329,9 @@ local function standStill(spawned)
 		if pNpc ~= nil then
 			AiAgent(pNpc):removeObjectFlag(AI_ESCORT); AiAgent(pNpc):removeObjectFlag(AI_FOLLOW); AiAgent(pNpc):setFollowObject(nil)
 			AiAgent(pNpc):addObjectFlag(AI_STATIC); AiAgent(pNpc):setAITemplate()
+			-- and its home is here now: an agent leashes back to its spawn point when its follow target logs out
+			local so = SceneObject(pNpc)
+			AiAgent(pNpc):setHomeLocation(so:getWorldPositionX(), so:getWorldPositionZ(), so:getWorldPositionY(), nil)
 		end
 	end
 end
