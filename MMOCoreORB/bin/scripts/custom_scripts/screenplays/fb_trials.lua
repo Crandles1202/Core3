@@ -321,17 +321,25 @@ FbTrialSpirit = Encounter:new {
 	taskName = "FbTrialSpirit",
 	encounterDespawnTime = 10 * 60 * 1000,
 	despawnMessage = "@fb_force:spirit_leaves",
-	spawnObjectList = { { template = "fb_trial_spirit", minimumDistance = 18, maximumDistance = 28, referencePoint = 0, followPlayer = true, setNotAttackable = true } },
-	inRangeValue = 9,
+	spawnObjectList = { { template = "fb_trial_spirit", minimumDistance = 14, maximumDistance = 22, referencePoint = 0, followPlayer = true, setNotAttackable = true } },
+	inRangeValue = 12,
 }
 function FbTrialSpirit:isEncounterFinished(pPlayer) return false end
 function FbTrialSpirit:taskStart(pPlayer) return FbAttunement.visitTaskStart(self, pPlayer) end
 function FbTrialSpirit:handleDespawnEvent(pPlayer, args) FbAttunement.visitHandleDespawn(self, pPlayer, args) end
-function FbTrialSpirit:onEncounterSpawned(pPlayer, spawned) record(pPlayer, spawned, "fb_trial_spirit", self.encounterDespawnTime) end
+function FbTrialSpirit:onEncounterSpawned(pPlayer, spawned)
+	record(pPlayer, spawned, "fb_trial_spirit", self.encounterDespawnTime)
+	-- it walks toward the player; if the ground never lets it within range, it settles where it got to
+	createEvent(30000, self.taskName, "settle", pPlayer, "")
+end
+function FbTrialSpirit:settle(pPlayer)
+	if pPlayer == nil then return end
+	standStill(SpawnMobiles.getSpawnedMobiles(pPlayer, self.taskName))
+end
 -- having reached the player, a visitor stands where it is: a follower whose target logs out wanders off
 local function standStill(spawned)
 	for _, pNpc in ipairs(spawned or {}) do
-		if pNpc ~= nil then
+		if SpawnMobiles.isValidMobile(pNpc) then
 			AiAgent(pNpc):removeObjectFlag(AI_ESCORT); AiAgent(pNpc):removeObjectFlag(AI_FOLLOW); AiAgent(pNpc):setFollowObject(nil)
 			AiAgent(pNpc):addObjectFlag(AI_STATIC); AiAgent(pNpc):setAITemplate()
 			-- and its home is here now: an agent leashes back to its spawn point when its follow target logs out

@@ -92,7 +92,7 @@ wait "$BOT_PID"
 sleep 8
 case "$RIDDLE" in 1) RIGHT=0 ;; 2) RIGHT=1 ;; 3) RIGHT=2 ;; *) RIGHT=0 ;; esac
 bot --wait 4 --converse "$SPIRIT" --options "$RIGHT" --wait 3 >/dev/null 2>&1 || true
-check_eq "riddle_converse_ok" "$(bot_action_status converse)" "ok" "riddle $RIDDLE option $RIGHT: $(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tail -n1)"
+check_eq "riddle_converse_ok" "$(bot_action_status converse)" "ok" "riddle $RIDDLE option $RIGHT: $(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tail -n1); spirit: $(lab "objectPos:$SPIRIT" | sed 's/.*zone=/zone=/' | cut -c1-70); char: $(lab "where:$CHAR" | sed 's/.*zone=/zone=/' | cut -c1-60)"
 T=$(lab "trials:$CHAR")
 check "insight_done" "$(grep -q 'done=stillness,restraint,strength,mercy,farwalk,insight' <<<"$T" && echo 1 || echo 0)" "$T"
 

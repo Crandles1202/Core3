@@ -718,7 +718,13 @@ FbOldManVisit = Encounter:new {
 function FbOldManVisit:isEncounterFinished(pPlayer) return false end
 function FbOldManVisit:taskStart(pPlayer) return FbAttunement.visitTaskStart(self, pPlayer) end
 function FbOldManVisit:handleDespawnEvent(pPlayer, args) FbAttunement.visitHandleDespawn(self, pPlayer, args) end
-function FbOldManVisit:onEncounterSpawned(pPlayer, spawned) recordVisitor(pPlayer, spawned, "fb_old_man", self.encounterDespawnTime) end
+function FbOldManVisit:onEncounterSpawned(pPlayer, spawned)
+	recordVisitor(pPlayer, spawned, "fb_old_man", self.encounterDespawnTime)
+	createEvent(30000, self.taskName, "settle", pPlayer, "")   -- settles where it got to if the ground never lets it in range
+end
+function FbOldManVisit:settle(pPlayer)
+	if pPlayer ~= nil and FbTrials ~= nil and FbTrials.standStill ~= nil then FbTrials.standStill(SpawnMobiles.getSpawnedMobiles(pPlayer, self.taskName)) end
+end
 
 function FbOldManVisit:onEncounterInRange(pPlayer, spawned)
 	if pPlayer == nil or spawned == nil or spawned[1] == nil then return end
@@ -756,7 +762,13 @@ FbOldManReturn = Encounter:new {
 function FbOldManReturn:isEncounterFinished(pPlayer) return false end
 function FbOldManReturn:taskStart(pPlayer) return FbAttunement.visitTaskStart(self, pPlayer) end
 function FbOldManReturn:handleDespawnEvent(pPlayer, args) FbAttunement.visitHandleDespawn(self, pPlayer, args) end
-function FbOldManReturn:onEncounterSpawned(pPlayer, spawned) recordVisitor(pPlayer, spawned, "fb_old_man", self.encounterDespawnTime) end
+function FbOldManReturn:onEncounterSpawned(pPlayer, spawned)
+	recordVisitor(pPlayer, spawned, "fb_old_man", self.encounterDespawnTime)
+	createEvent(30000, self.taskName, "settle", pPlayer, "")   -- settles where it got to if the ground never lets it in range
+end
+function FbOldManReturn:settle(pPlayer)
+	if pPlayer ~= nil and FbTrials ~= nil and FbTrials.standStill ~= nil then FbTrials.standStill(SpawnMobiles.getSpawnedMobiles(pPlayer, self.taskName)) end
+end
 function FbOldManReturn:onEncounterInRange(pPlayer, spawned)
 	if pPlayer == nil or spawned == nil or spawned[1] == nil then return end
 	if FbTrials ~= nil and FbTrials.standStill ~= nil then FbTrials.standStill(spawned) end   -- stays put through a logout
