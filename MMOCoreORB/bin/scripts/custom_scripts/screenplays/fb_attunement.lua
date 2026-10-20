@@ -636,7 +636,9 @@ end
 function FbAttunement.visitGen(task, pPlayer) return readData(SceneObject(pPlayer):getObjectID() .. ":fbVisitGen:" .. task.taskName) end
 function FbAttunement.visitHandleDespawn(task, pPlayer, args)
 	if pPlayer == nil then return end
-	if args ~= nil and args ~= "" and tonumber(args) ~= FbAttunement.visitGen(task, pPlayer) then return end   -- an older visit's timer
+	-- our visits always stamp their timers; an unstamped one is a leftover of the stock base (or of an older
+	-- build) and is ignored — the per-object sweep in recordVisitor is the backstop for anything stuck
+	if args == nil or args == "" or tonumber(args) ~= FbAttunement.visitGen(task, pPlayer) then return end
 	Encounter.handleDespawnEvent(task, pPlayer)
 end
 function FbAttunement.visitScheduleDespawn(task, pPlayer, ms)
