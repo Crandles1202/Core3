@@ -41,8 +41,25 @@ import zlib
 REPO = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 DEFAULT_SRC = os.path.join(REPO, "tre-src")
 DEFAULT_OUT = os.path.join(REPO, "MMOCoreORB", "bin", "tre", "finalboss.tre")
-CONFIG_LOCAL = os.path.join(REPO, "MMOCoreORB", "bin", "conf", "config-local.lua")
-CONFIG_MAIN = os.path.join(REPO, "MMOCoreORB", "bin", "conf", "config.lua")
+
+
+def _bench():
+    """The main checkout: the one server runs from it, and only it has config-local.lua (an agent's
+    worktree has the sources, not the runtime conf)."""
+    try:
+        import subprocess
+        out = subprocess.run(["git", "-C", REPO, "worktree", "list", "--porcelain"], capture_output=True, text=True).stdout
+        first = out.splitlines()[0] if out else ""
+        if first.startswith("worktree "):
+            return first[len("worktree "):]
+    except Exception:
+        pass
+    return REPO
+
+
+BENCH = _bench()
+CONFIG_LOCAL = os.path.join(BENCH, "MMOCoreORB", "bin", "conf", "config-local.lua")
+CONFIG_MAIN = os.path.join(BENCH, "MMOCoreORB", "bin", "conf", "config.lua")
 LABDIR = os.environ.get("SWG_LABDIR", os.path.join(os.path.expanduser("~"), ".swg-lab"))
 CLIENT_DIR_FILE = os.path.join(LABDIR, "client-dir")
 TRE_NAME = "finalboss.tre"
