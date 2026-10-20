@@ -15,6 +15,8 @@ control channel on a unix socket (SeatAction, Phase 7.0). A pilot (7.3) sits on 
   seat vars <name> [path]                              the client's var store (SpatialChat, SystemMessages, Tells, Sui, …)
   seat objects <name> [--near]                         what the client has in view (creation positions)
   seat wait <name> <signal> [timeoutMs]                block until that packet arrives (SpatialChat, Tell, SuiCreatePage, …)
+  seat walk <name> <x> <y> [--speed M/S]              ask the server for a path from where the character stands and walk it
+                                                        (real movement packets; the route comes from FbLabTests:pathTo over swg cmd --shared)
   seat log <name> [lines]                              tail of the client log
 
 State per seat lives in ~/.swg-lab/seats/<name>/: sock, pid, client.log.
@@ -55,6 +57,36 @@ def load_emotes():
         return {}
 
 EMOTES = load_emotes()
+
+
+def seat_character_name(name):
+    """The character a seat was started as (recorded by `seat start`)."""
+    try:
+        with open(os.path.join(seat_dir(name), "character")) as f:
+            return f.read().strip()
+    except OSError:
+        die(f"seat '{name}' has no recorded character name")
+
+
+def path_from_server(char, x, y):
+    """FbLabTests:pathTo:<char>:<x>:<y> through the console (read-only, no bench lock) -> [[x,z,y],…]."""
+    swg = os.path.join(HERE, "swg")
+    out = subprocess.run([swg, "cmd", "--shared", f"runLuaFunction FbLabTests:pathTo:{char}:{x}:{y}", "--timeout", "15"],
+                         capture_output=True, text=True).stdout
+    m = re.search(r"INFO path .* pts=(\S+)", out)
+    if not m:
+        err = re.search(r"ERROR pathTo[^\n]*", out)
+        if err:
+            print(err.group(0), file=sys.stderr)
+        return []
+    return [[float(v) for v in pt.split(",")] for pt in m.group(1).split(";")]
+
+
+def path_length(points):
+    total = 0.0
+    for a, b in zip(points, points[1:]):
+        total += ((a[0] - b[0]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
+    return total
 
 
 def seat_dir(name):
@@ -165,6 +197,8 @@ def cmd_start(args):
     proc = subprocess.Popen(argv, cwd=BIN, env=env, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
     with open(os.path.join(d, "pid"), "w") as f:
         f.write(str(proc.pid))
+    with open(os.path.join(d, "character"), "w") as f:
+        f.write(char)
 
     # wait for the socket (login + zone-in takes a few seconds)
     for _ in range(90):
@@ -293,6 +327,19 @@ def main(argv):
     elif cmd == "wait":
         timeout = int(rest[1]) if len(rest) > 1 else 10000
         reply = s.request({"op": "wait", "signal": rest[0], "timeoutMs": timeout}, timeout=timeout / 1000 + 5)
+    elif cmd == "walk":
+        if len(rest) < 2:
+            die("walk <name> <x> <y> [--speed M/S]")
+        x, y = float(rest[0]), float(rest[1])
+        speed = 4.5
+        if "--speed" in rest:
+            speed = float(rest[rest.index("--speed") + 1])
+        char = s.request({"op": "ping"}).get("characterName") or seat_character_name(name)
+        points = path_from_server(char, x, y)
+        if not points:
+            die(f"no path for {char} to {x},{y}")
+        print(f"path: {len(points)} points, {path_length(points):.0f} m")
+        reply = s.action("walk", points=points, speed=speed)
     elif cmd == "log":
         n = int(rest[0]) if rest else 40
         subprocess.run(["tail", "-n", str(n), os.path.join(seat_dir(name), "client.log")])

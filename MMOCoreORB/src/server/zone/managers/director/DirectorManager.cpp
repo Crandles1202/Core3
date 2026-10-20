@@ -26,6 +26,7 @@
 #include "server/zone/managers/faction/FactionManager.h"
 #include "server/zone/managers/combat/CombatManager.h"
 #include "server/zone/managers/collision/PathFinderManager.h"
+#include "server/zone/objects/scene/WorldCoordinates.h"
 #include "server/zone/objects/tangible/threat/ThreatMap.h"
 #include "templates/manager/TemplateManager.h"
 #include "server/zone/managers/stringid/StringIdManager.h"
@@ -518,6 +519,7 @@ void DirectorManager::initializeLuaEngine(Lua* luaEngine) {
 	luaEngine->registerFunction("getGCWDiscount", getGCWDiscount);
 	luaEngine->registerFunction("getTerrainHeight", getTerrainHeight);
 	luaEngine->registerFunction("getTerrainHeightAt", getTerrainHeightAt);
+	luaEngine->registerFunction("findPath", findPath);
 	luaEngine->registerFunction("getZoneWeather", getZoneWeather);
 	luaEngine->registerFunction("setZoneWeather", setZoneWeather);
 	luaEngine->registerFunction("awardSkill", awardSkill);
@@ -4089,6 +4091,60 @@ int DirectorManager::getTerrainHeightAt(lua_State* L) {
 	}
 
 	lua_pushnumber(L, zone->getHeight(x, y));
+	return 1;
+}
+
+// Final Boss (Phase 7.1): the AI pathfinder for Lua. findPath(zoneName, x1, y1, x2, y2) returns a table of
+// {x, z, y} waypoints from the first point to the second over the terrain (no cells: outdoor to outdoor),
+// each z the terrain height there, or nil when the zone is unknown or no path exists. A seat walks it.
+int DirectorManager::findPath(lua_State* L) {
+	if (checkArgumentCount(L, 5) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::findPath";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	float y2 = lua_tonumber(L, -1);
+	float x2 = lua_tonumber(L, -2);
+	float y1 = lua_tonumber(L, -3);
+	float x1 = lua_tonumber(L, -4);
+	String zoneName = lua_tostring(L, -5);
+
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	Zone* zone = zoneServer != nullptr ? zoneServer->getZone(zoneName) : nullptr;
+
+	if (zone == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	WorldCoordinates start(Vector3(x1, y1, zone->getHeight(x1, y1)), nullptr);
+	WorldCoordinates end(Vector3(x2, y2, zone->getHeight(x2, y2)), nullptr);
+
+	Vector<WorldCoordinates>* path = PathFinderManager::instance()->findPath(start, end, zone);
+
+	if (path == nullptr || path->size() == 0) {
+		if (path != nullptr)
+			delete path;
+		lua_pushnil(L);
+		return 1;
+	}
+
+	lua_newtable(L);
+	for (int i = 0; i < path->size(); ++i) {
+		const Vector3& p = path->get(i).getPoint();
+		lua_newtable(L);
+		lua_pushnumber(L, p.getX());
+		lua_rawseti(L, -2, 1);
+		lua_pushnumber(L, zone->getHeight(p.getX(), p.getY()));
+		lua_rawseti(L, -2, 2);
+		lua_pushnumber(L, p.getY());
+		lua_rawseti(L, -2, 3);
+		lua_rawseti(L, -2, i + 1);
+	}
+
+	delete path;
 	return 1;
 }
 

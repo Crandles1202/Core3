@@ -1,4 +1,5 @@
 #include "Zone.h"
+#include "engine/service/proto/BaseMessage.h"
 #include "ZonePacketHandler.h"
 #include "ClientCore.h"
 #include "client/zone/objects/scene/SceneObject.h"
@@ -481,6 +482,40 @@ void ZonePacketHandler::handleObjectControllerMessage(Message* pack) {
 				kept.erase(kept.begin());
 			kept.push_back(std::string(String::valueOf(senderID).toCharArray()) + ": " + std::string(text.toCharArray()));
 			zone->signal(STRING_HASHCODE("SpatialChat"));
+			break;
+		}
+		case 0x71:   // DataTransform to us: a teleport (or a position sync) — ack it, or the server drops our movement
+		case 0xF1: { // DataTransformWithParent: the same inside a building
+			if (objectID != core->selectedCharacterOid)
+				break;
+			uint32 moveCount = pack->parseInt();
+			uint64 parentID = header2 == 0xF1 ? pack->parseLong() : 0;
+			float dx = pack->parseFloat(), dy = pack->parseFloat(), dz = pack->parseFloat(), dw = pack->parseFloat();
+			float x = pack->parseFloat(), z = pack->parseFloat(), y = pack->parseFloat();
+
+			SceneObject* self = zone->getObject(objectID);
+			if (self != nullptr) {
+				Locker lock(self);
+				self->setPosition(x, z, y);
+			}
+
+			BaseMessage* ack = new BaseMessage();
+			ack->insertShort(0x05);
+			ack->insertInt(0x80CE5E46);   // ObjControllerMessage
+			ack->insertInt(0x1B);
+			ack->insertInt(0x13F);        // TeleportAck
+			ack->insertLong(objectID);
+			ack->insertInt(0);
+			ack->insertInt(moveCount);
+			((BaseClient*) pack->getClient())->sendPacket(ack);
+
+			core->setVar("Teleport/count", (int) moveCount);
+			core->setVar("Teleport/x", x);
+			core->setVar("Teleport/y", y);
+			core->setVar("Teleport/z", z);
+			core->setVar("Teleport/parent", parentID);
+			info(true) << "server moved us to " << x << ", " << y << " (z " << z << ", parent " << parentID << ", count " << moveCount << ") — acked";
+			zone->signal(STRING_HASHCODE("Teleport"));
 			break;
 		}
 		case 0xDE: { // StopNpcConversation

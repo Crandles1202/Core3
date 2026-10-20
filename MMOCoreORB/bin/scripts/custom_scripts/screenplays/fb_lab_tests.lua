@@ -2044,6 +2044,32 @@ function FbLabTests:terrainHeights(planet, pts)
 	return tostring(n)
 end
 
+-- pathTo:<planet>:<x1>:<y1>:<x2>:<y2> → the AI pathfinder's outdoor route as "x,z,y;x,z,y;…" (7.1: a seat walks it)
+-- pathTo:<char>:<x2>:<y2> → the same from where that character stands
+function FbLabTests:pathTo(a, b, c, d, e)
+	local planet, x1, y1, x2, y2
+	if e ~= nil then
+		planet, x1, y1, x2, y2 = a, tonumber(b), tonumber(c), tonumber(d), tonumber(e)
+	else
+		local pPlayer = getPlayerByName(a)
+		if pPlayer == nil then print("ERROR pathTo: no player " .. tostring(a)); return "none" end
+		planet = SceneObject(pPlayer):getZoneName()
+		x1, y1 = SceneObject(pPlayer):getWorldPositionX(), SceneObject(pPlayer):getWorldPositionY()
+		x2, y2 = tonumber(b), tonumber(c)
+	end
+	if planet == nil or x1 == nil or y1 == nil or x2 == nil or y2 == nil then print("ERROR pathTo: planet x1 y1 x2 y2 (or char x y)"); return "none" end
+	local path = findPath(planet, x1, y1, x2, y2)
+	if path == nil then print(string.format("ERROR pathTo: no path on %s from %.1f,%.1f to %.1f,%.1f", planet, x1, y1, x2, y2)); return "none" end
+	local parts, length, px, py = {}, 0, x1, y1
+	for i, pt in ipairs(path) do
+		parts[#parts + 1] = string.format("%.2f,%.2f,%.2f", pt[1], pt[2], pt[3])
+		length = length + math.sqrt((pt[1] - px) ^ 2 + (pt[3] - py) ^ 2)
+		px, py = pt[1], pt[3]
+	end
+	print(string.format("INFO path planet=%s n=%d length=%.1f pts=%s", planet, #path, length, table.concat(parts, ";")))
+	return tostring(#path)
+end
+
 -- ---------------------------------------------------------------- site preview (2.12d: the planner's game loop)
 
 -- sitePreview:<file> → spawn sites/.preview/<file>.lua in place of the live site of the same name
