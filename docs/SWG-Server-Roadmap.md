@@ -375,7 +375,7 @@ and Chuck checks each one off; the API key comes from Chuck's Max plan credits.
   perception. New packets to decode (positions of others, HAM deltas, combat results, group, loot) and to send
   (chat, movement acknowledgements). `tools/seat` drives it from Python. Scenario: a seat walks, speaks and attacks.
 - **7.1 \[M\] Autopilot.** ✅ 2026-10-20 as a *client-side* walk on real movement packets over a server-computed path (`findPath` + `walk`), which keeps citizens honest players; follow / leash are 7.2. The server-side walk command for player creatures + follow + leash; lab oracle to watch it.
-- **7.2 \[M\] Citizen accounts and cast tooling.** `swg citizen new <name>` creates the account and character
+- **7.2 \[M\] Citizen accounts and cast tooling.** ✅ 2026-10-20 (`tools/citizens/citizen`; Teyla created). `swg citizen new <name>` creates the account and character
   (`swg account create`, the one-char-per-hour rule and the name filter apply), the persona file, the memory file and
   the directory entry; `swg citizen list|status|stop`. Optional veteran start (admin-granted skills to a believable
   level) so a cast is not all newbies on day one.
@@ -386,7 +386,7 @@ and Chuck checks each one off; the API key comes from Chuck's Max plan credits.
   sell loot, bank, train at a trainer when XP allows.
 - **7.5 \[M\] Entertainer playbook.** Cantina sets (dance / music, flourishes), buffs for groupmates, tips, the 1.10
   XP rule applies.
-- **7.6a \[L\] Gathering and the resource economy.** Resources are galaxy-wide, patchy and transient
+- **7.6a \[L\] Gathering and the resource economy.** ⏳ 2026-10-20: oracle, survey, sample done; travel, harvesters, playbooks next. Resources are galaxy-wide, patchy and transient
   (`docs/Game-Systems.md`): a *resource oracle* (Lua binding over `ResourceManager`: current spawns per planet with
   attributes and best spots — the citizens' SWGCraft) + seat primitives `survey` / `sample` (decode `SurveyMessage`
   and `ResourceListForSurveyMessage`), `travel_to` (`purchaseTicket` + `boardShuttle`), `place_structure`,

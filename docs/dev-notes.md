@@ -197,7 +197,14 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   <resource name>` → `SurveyMessage` (opcount 2, 0x877F79AC: int n, n × (x, 0, y, pct)). **Sample:** command
   `requestcoresample <name>` → `@survey:sample_located` (DI units) after 3 s, then the server re-samples every 25 s
   on its own until the player moves / fights / cancels; `@survey:trace_amount`, `sample_failed`,
-  `density_below_threshold` are the other verdicts. Yield ≈ density × 25–28 × surveying/100 per sample, so a
+  `density_below_threshold` are the other verdicts. **String-id system messages** (`ChatSystemMessage(StringIdChatParameter&)`):
+  byte type, int 0 (empty unicode), int size, then `ChatParameter::insertToMessage` writes a **short** (odd-length pad
+  flag), **byte 1** (TYPE_STRINGID), **int** STRINGID, and only then `addToPacketStream` (ascii file, int, ascii id,
+  TU/TT/TO as long + ascii + int + ascii + unicode, int DI, float DF, byte) — the bot read one byte where three fields
+  stood, so every `@file:id` message had arrived empty since the lab was built; fixed with 7.6a. **New characters** land
+  in `characters_dirty` and reach `characters` (which the login server lists) only at the next ODB commit — console
+  `save` forces it; and they wake in the tutorial zone (`FbAttunement: Teyla settled at tutorial`), so `citizen new`
+  sends them home with the lab's `travel`. Yield ≈ density × 25–28 × surveying/100 per sample, so a
   fresh artisan (surveying 10) gets single digits; the scenario grants `crafting_artisan_survey_04`. Untested on
   the bench yet (held by the trials agent for hours; `SWG_WAIT` gives up after an hour and the lock is renewed).
 - **2026-10-20 — Phase 7 planned, 7.0 seat daemon.** Chuck's ask: a galaxy that feels alive, and AI "players"
