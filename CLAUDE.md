@@ -135,6 +135,8 @@ tools/swg agent new <name> | list | done <name>                      # a worktre
 tools/swg bench status | use <branch> | release | merge <branch>     # deploy on the bench, gate, merge
 tools/seat start <user> <char> [--name N] [--timeout S] | stop | list | ping | say | tell | emote | cmd | do | vars | objects | wait | log
                                 # a seat (Phase 7.0): core3client kept logged in, driven over ~/.swg-lab/seats/<name>/sock
+tools/citizens/pilot.py run <citizen> [--seat N] [--dry] [--ticks N] | show <citizen>   # the pilot (7.3) on a seat
+tools/citizens/citizen new <citizen> | status | list | directory    # account + character + veteran start (7.2; new = DB write, ask Chuck)
 ```
 
 - Lua content checks live in `bin/scripts/custom_scripts/screenplays/fb_lab_tests.lua` (wraps `spawnMobile`
