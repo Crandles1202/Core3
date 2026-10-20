@@ -186,6 +186,31 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-20 — Phase 7 planned, 7.0 seat daemon.** Chuck's ask: a galaxy that feels alive, and AI "players"
+  (real accounts) he can group, trade and talk with. Plan written into the roadmap (Phase 3.13–3.18 galaxy-wide
+  life, Phase 7 Citizens: seat / autopilot / playbooks / pilot / cast), cast of ten drafted in
+  `docs/Citizens-Cast.md`. **Subscription vs API:** the docs say Pro/Max OAuth is for ordinary individual use of
+  Claude Code and automated agents must use an API key, but a Max plan includes monthly API credits ($100 / $200)
+  that cover the API and the Agent SDK — link a Console org under claude.ai Settings → Billing, cap a workspace.
+  **7.0 the seat:** `core3client --seat <unix socket>` is just another action in the chain (after the auto-inserted
+  login / zone-in, before the auto-appended logout): it serves JSON lines — `action` runs any registered action from
+  its JSON form through `ActionManager::fromJSON`, `vars` dumps the var store under the packet handler's lock,
+  `objects` walks the ObjectMap, `wait` blocks on `Zone::waitFor(hash)`. New actions `say` (`spatialchatinternal`
+  with `"<target> <chatType> <mood> <flags> <language> <text>"`), `tell` (a `ChatInstantMessageToCharacter` packet:
+  ascii SWG, galaxy, name, unicode text, int 0, int sequence; the verdict comes back as `ChatOnSendInstantMessage`
+  opcount 3 / 0x88DBB381: int result, int seq — 0 delivered, 4 no such player, 5 offline, 6 ignored) and `emote`
+  (`socialinternal` `"<target> <id> 1 1"`). **Emote ids** are the 1-based row numbers of
+  `datatables/chat/social_types.iff` (the newest copy is in `patch_11_02.tre`; 382 rows, DTII with two string
+  columns, the second always empty) — `tools/seat_emotes.json` is generated from it; a guessed table was wrong
+  (wave is 364). The client never set positions on created objects (`SceneCreateObjectByCrc` carries x,z,y; now
+  `initializePosition`); others' movement (`UpdateTransformMessage`) is still not decoded, that is 7.2.
+  **Worktrees have no engine3 submodule** (`MMOCoreORB/utils/engine3` is empty in `Core3-alice`), so a local build
+  is impossible; a syntax check works by taking the compile command for a sibling file from the bench's
+  `build/unix/ninja-debug/compile_commands.json`, rewriting the `-I…/Core3/MMOCoreORB/src` paths to the worktree and
+  running `clang++ … -fsyntax-only` on the new file (the engine3 headers come from the bench). **Name filter:** the
+  canon/profanity regexes in `managers/name/name_manager.lua` can be run from Python (`re`, case-insensitive) to
+  vet names before character creation; some patterns are broad (anything with a `k` + vowel, words starting with
+  `p`), so pick names that match none. Scenario `seat-daemon` covers the channel end to end.
 - **2026-10-20 — 0.7 working in parallel.** Design: the thing agents fight over is not the code (git worktrees
   solve that for free) but the *one* server with its one ODB, console and lab accounts — so the main checkout
   becomes "the bench" nobody edits, every agent gets `~/workspace/Core3-<name>` on `feature/<name>` with its
