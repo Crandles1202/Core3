@@ -53,14 +53,16 @@
 set -uo pipefail
 
 REPO=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
-BIN="$REPO/MMOCoreORB/bin"
+# the server (binary, console log, ODB, client) lives in the main checkout = the bench, even when this copy of
+# the script runs from an agent's worktree
+BENCH=$(git -C "$REPO" worktree list --porcelain 2>/dev/null | head -n1 | sed 's/^worktree //')
+[ -n "$BENCH" ] || BENCH=$REPO
+BIN="$BENCH/MMOCoreORB/bin"
 LOG="$BIN/screenlog.0"
 SESSION=${SWG_TMUX_SESSION:-swg}
 SNAPDIR=${SWG_SNAPDIR:-$HOME/swg-snapshots}
 LABDIR=${SWG_LABDIR:-$HOME/.swg-lab}
 LOCKFILE="$LABDIR/server.lock"
-BENCH=$(git -C "$REPO" worktree list --porcelain 2>/dev/null | head -n1 | sed 's/^worktree //')   # the main checkout: the one the server runs from
-[ -n "$BENCH" ] || BENCH=$REPO
 
 # ---------------------------------------------------------------- agents and the bench lock
 

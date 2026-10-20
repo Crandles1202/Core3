@@ -35,7 +35,8 @@ sleep 6
 wait "$BOT_PID"
 
 check "client_saw_the_storm" "$(grep -aq 'Weather id=4' "$BOTLOG" && echo 1 || echo 0)"
-check "client_saw_it_clear" "$(grep -aq 'Weather id=0' "$BOTLOG" && echo 1 || echo 0)"
+# the base weather is clear again but a player's weather adds the local map's value, so "clear" = no longer extreme
+check "client_saw_it_clear" "$(grep -a 'Weather id=' "$BOTLOG" | tail -n1 | grep -q 'Weather id=4' && echo 0 || echo 1)" "$(grep -a 'Weather id=' "$BOTLOG" | tail -n1 | cut -c1-60)"
 check "client_got_the_warning" "$(grep -aq 'sandstorm is sweeping in' "$BOTLOG" && echo 1 || echo 0)"
 check "client_got_the_all_clear" "$(grep -aq 'sandstorm has passed' "$BOTLOG" && echo 1 || echo 0)"
 finish

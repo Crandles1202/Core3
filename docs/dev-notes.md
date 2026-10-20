@@ -186,6 +186,20 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-20 — 0.7 working in parallel.** Design: the thing agents fight over is not the code (git worktrees
+  solve that for free) but the *one* server with its one ODB, console and lab accounts — so the main checkout
+  becomes "the bench" nobody edits, every agent gets `~/workspace/Core3-<name>` on `feature/<name>` with its
+  identity in a git-ignored `.swg-agent`, and `tools/swg` wraps every server-touching command in a lock
+  (`~/.swg-lab/server.lock`: agent|purpose|pid|since|until; automatic locks die with their process, holds expire).
+  `swg bench use <branch>` checks the bench out detached at that commit and picks reload / restart / build from
+  what changed against the last built and last running commits (`bench.built`, `bench.running`); `swg test all`
+  appends a green commit to `gate.passed`; `swg bench merge` refuses without it. Nested `swg` calls from a
+  scenario pass through because they carry the same agent name. First trap found at once: a worktree's
+  wrapper must still point `BIN` (console log, client binary) at the bench, since only the bench has a
+  server — `BIN` is now derived from `git worktree list`, in `tools/swg` and `scenarios/lib.sh` alike. Second:
+  agents must be created *after* the tooling is on `unstable`, or their worktree carries the old wrapper.
+  Claude's memory directory is per checkout path, so shared knowledge lives in the repo docs (CLAUDE.md,
+  BOARD.md, dev-notes), never only in memory.
 - **2026-10-20 — 4a.1 Force attunement.** What the stock code offers and what had to be added: badges are
   Lua globals named by their datatable key (`datatables/badge/badge_map.iff`: `poi_heromark` is the Mark of
   the Hero, `bdg_thm_park_*` the four theme parks, `warren_*`, `bdg_corvette_*`, `exp_*` the exploration
