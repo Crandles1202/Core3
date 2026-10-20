@@ -186,6 +186,12 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-19 — terrain tiles by zoom.** Chuck asked whether scaling up our own grid beats the painted map: it
+  does, because the heights are exact. The relief now loads 128² tiles whose step follows the zoom (1 m when
+  close), one console call each, served and cached per tile; the page keeps coarser tiles under finer ones so
+  zooming never blanks. Seams were the trap: a percentile ramp per tile recolours each tile differently, and
+  bands relative to a tile minimum break at tile edges — so the ramp is one range per planet (re-rendering every
+  loaded tile when the range shifts by more than 2 m) and bands use absolute height.
 - **2026-10-19 — the real planet map as backdrop.** `texture/ui_map_<planet>.dds` (patch_03.tre, 1024², DXT1, no
   mipmaps) is the texture the in-game map window draws; a 60-line DXT1 decoder + PNG writer in the planner serves it
   (1.2 s once, cached). Orientation: north up, world x → column (x + 8192)/16384, world y → row (8192 − y)/16384 —

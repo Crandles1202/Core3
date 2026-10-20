@@ -16,6 +16,7 @@ Endpoints (all JSON):
   GET  /api/live?filter=…                                live NPC positions from the running server (tools/swg), best effort
   GET  /api/terrain?planet=&pts=x,y;x,y                   terrain heights from the running server (the lot report's slope check)
   GET  /api/mapimage?planet=                               the in-game planet map as PNG (texture/ui_map_<planet>.dds decoded, cached)
+  GET  /api/terraintile?planet=&step=&tx=&ty=              one 128² tile of the height field (step 1..32 m), cached; the relief layer loads these by zoom
   GET  /api/terraingrid?planet=&x=&y=&r=&step=             height grid of the area from the running server (cached in ~/.swg-lab/terrain/)
   GET  /api/world?planet=                                  the planet's world edits (tre-src/world/<planet>.json) with the stock node each touches
   GET  /api/catalog                                        every stock building template the world places (what an add can clone), with outlines
@@ -725,6 +726,36 @@ def terrain_grid(planet, x, y, r, step):
     return dict(planet=planet, x0=x0, y0=y0, step=step, cols=cols, rows=rows, min=min(h), max=max(h), h=h)
 
 
+TILE = 128   # points per tile side; a tile is one console call (~1 s at most on the main thread)
+
+
+def terrain_tile(planet, step, tx, ty):
+    """One tile of the height field: TILE×TILE points every step m, tile (tx, ty) covering x from tx*TILE*step. Cached on disk."""
+    if planet not in we.PLANETS or step not in (1, 2, 4, 8, 16, 32):
+        return dict(error="bad tile request")
+    span = TILE * step
+    x0, y0 = tx * span, ty * span
+    if abs(x0) > 9000 or abs(y0) > 9000:
+        return dict(error="outside the planet")
+    x1, y1 = x0 + (TILE - 1) * step, y0 + (TILE - 1) * step
+    os.makedirs(TERRAIN_DIR, exist_ok=True)
+    path = os.path.join(TERRAIN_DIR, "%s_t%d_%d_%d.txt" % (planet, step, tx, ty))
+    if not os.path.exists(path):
+        lines = swg_lua("terrainGrid:%s:%d:%d:%d:%d:%d:%s" % (planet, x0, y0, x1, y1, step, path), 60)
+        if not any(l.startswith("INFO terrainGrid") for l in lines):
+            return dict(error=(lines[0] if lines else "the game server did not answer (terrain needs tools/swg start)"))
+    with open(path, encoding="utf-8") as fh:
+        head = fh.readline().split()
+        cols, rows = int(head[6]), int(head[7])
+        h = []
+        for line in fh:
+            h.extend(float(v) for v in line.split())
+    if len(h) != cols * rows:
+        os.remove(path)
+        return dict(error="corrupt tile removed; ask again")
+    return dict(planet=planet, x0=x0, y0=y0, step=step, cols=cols, rows=rows, min=min(h), max=max(h), h=h, tx=tx, ty=ty)
+
+
 def save_site(name, lua, force):
     name = re.sub(r"[^a-z0-9_]", "_", name.lower())
     if not name:
@@ -805,6 +836,8 @@ class Handler(BaseHTTPRequestHandler):
                     self._json(dict(error="no map texture for that planet"), 404)
                 else:
                     self._bytes(png, "image/png")
+            elif u.path == "/api/terraintile":
+                self._json(terrain_tile(q.get("planet", "tatooine"), int(q.get("step", 4)), int(q.get("tx", 0)), int(q.get("ty", 0))))
             elif u.path == "/api/terraingrid":
                 self._json(terrain_grid(q.get("planet", "tatooine"), float(q.get("x", 0)), float(q.get("y", 0)), float(q.get("r", 300)), int(q.get("step", 4))))
             elif u.path == "/api/world":

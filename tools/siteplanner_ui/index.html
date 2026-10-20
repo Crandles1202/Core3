@@ -47,7 +47,7 @@
   <button id="live">Overlay live NPCs (needs the server)</button>
   <h2>Layers</h2>
   <label><input type="checkbox" id="L_mapimage" checked style="width:auto"> in-game planet map (the map window texture)</label>
-  <label><input type="checkbox" id="L_terrain" style="width:auto"> terrain relief from the server (bands, steep tint; once per area)</label>
+  <label><input type="checkbox" id="L_terrain" style="width:auto"> terrain relief from the server (tiles by zoom, down to 1 m; cached)</label>
   <label><input type="checkbox" id="L_furniture" checked style="width:auto"> furniture (client layout)</label>
   <label><input type="checkbox" id="L_usables" checked style="width:auto"> terminals, stations, vendors, elevators</label>
   <label><input type="checkbox" id="L_objects" style="width:auto"> other objects (décor, props)</label>
@@ -159,7 +159,7 @@ const S = {
   terrain: null,                                   // last terrain answer for the draft: { worst, centre, corners } | { unknown }
   hist: [], histAt: -1,                            // undo history: serialized drafts
   world: { planet: null, ops: [] }, catalog: [],   // world edits of the loaded planet; every stock building template the world places
-  terrainGrid: null, terrainImg: null, terrainKey: null, terrainBusy: false, hover: null,   // height grid of the area, its rendered relief, the height under the cursor
+  tiles: {}, tileQueue: [], tileBusy: false, tileRange: null, tileErrorShown: false, hover: null,   // terrain tiles by planet|step|tx|ty, the fetch queue, the shared colour range
   mapImg: {},                                      // planet -> Image of the in-game planet map (or "none")
   selB: null,                                      // selected map building: { kind: "stock"|"site"|"draft", obj, shell }
   inspect: null,                                   // inside view of something that is not the draft: { shell, tenants, title }
@@ -385,13 +385,31 @@ function draw() {
   ctx.clearRect(0, 0, W(), H());
   if (S.mode === "map") drawMap(); else drawInside();
 }
-// ---------------------------------------------------------------- terrain relief
+// ---------------------------------------------------------------- terrain relief, tiled by zoom
+// Tiles are TILE×TILE server heights every `step` m (1, 2, 4 … 32). The step follows the zoom so a cell stays a
+// few pixels wide: zoomed out = coarse tiles fast, zoomed in on a lot = one-metre heights. Each tile is fetched
+// once (the planner caches it on disk too) and rendered to a small image; the colour range is shared by every
+// loaded tile of the planet so there are no seams.
+const TILE = 128, STEPS = [1, 2, 4, 8, 16, 32];
+function tileKey(planet, step, tx, ty) { return `${planet}|${step}|${tx}|${ty}`; }
+function tileStep() { for (const st of STEPS) if (st * S.view.ppm >= 2.5) return st; return 32; }
+function visibleTiles(step) {
+  const span = TILE * step, halfW = W() / 2 / S.view.ppm, halfH = H() / 2 / S.view.ppm;
+  const x0 = Math.floor((S.view.cx - halfW) / span), x1 = Math.floor((S.view.cx + halfW) / span), y0 = Math.floor((S.view.cy - halfH) / span), y1 = Math.floor((S.view.cy + halfH) / span);
+  const out = []; for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) if (Math.abs(tx * span) <= 9000 && Math.abs(ty * span) <= 9000) out.push([tx, ty]);
+  return out;
+}
 function terrainHeightAt(wx, wy) {
-  const g = S.terrainGrid; if (!g) return null;
-  const c = (wx - g.x0) / g.step, r = (wy - g.y0) / g.step;
-  if (c < 0 || r < 0 || c >= g.cols - 1 || r >= g.rows - 1) return null;
-  const c0 = Math.floor(c), r0 = Math.floor(r), fx = c - c0, fy = r - r0, H = (rr, cc) => g.h[rr * g.cols + cc];
-  return (H(r0, c0) * (1 - fx) + H(r0, c0 + 1) * fx) * (1 - fy) + (H(r0 + 1, c0) * (1 - fx) + H(r0 + 1, c0 + 1) * fx) * fy;
+  // the finest loaded tile under the point
+  for (const st of STEPS) {
+    const span = TILE * st, t = S.tiles[tileKey($("planet").value, st, Math.floor(wx / span), Math.floor(wy / span))];
+    if (!t || !t.grid) continue;
+    const g = t.grid, c = (wx - g.x0) / g.step, r = (wy - g.y0) / g.step;
+    if (c < 0 || r < 0 || c >= g.cols - 1 || r >= g.rows - 1) continue;
+    const c0 = Math.floor(c), r0 = Math.floor(r), fx = c - c0, fy = r - r0, Hh = (rr, cc) => g.h[rr * g.cols + cc];
+    return (Hh(r0, c0) * (1 - fx) + Hh(r0, c0 + 1) * fx) * (1 - fy) + (Hh(r0 + 1, c0) * (1 - fx) + Hh(r0 + 1, c0 + 1) * fx) * fy;
+  }
+  return null;
 }
 // ground colours per planet as the game shows them: flat ground, higher ground, bare rock on cliffs
 const PLANET_PALETTE = {
@@ -400,24 +418,27 @@ const PLANET_PALETTE = {
   lok: ["#9a6a46", "#b68c60", "#6e4f3c"], yavin4: ["#3f6b35", "#5f8c4a", "#5c5a50"], endor: ["#3d6a3a", "#5c8852", "#5f5d55"], dathomir: ["#7a4a4a", "#9c6c5c", "#5a3a3a"],
 };
 function hexRgb(h) { const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(h || ""); return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [230, 60, 60]; }
-function renderTerrain(g) {
-  // one pixel per grid point: hypsometric bands every 2 m, hillshade from the north-west, red where steep
+function planetRange(planet) {
+  // 5th to 95th percentile of every loaded tile of the planet: one ramp for all tiles, so no seams
+  const samples = [];
+  for (const k in S.tiles) { const t = S.tiles[k]; if (t.grid && t.grid.planet === planet) for (let i = 0; i < t.grid.h.length; i += 7) samples.push(t.grid.h[i]); }
+  if (!samples.length) return [0, 50];
+  samples.sort((a, b) => a - b); return [samples[Math.floor(samples.length * 0.05)], samples[Math.floor(samples.length * 0.95)]];
+}
+function renderTerrain(g, lo, hi) {
   const img = document.createElement("canvas"); img.width = g.cols; img.height = g.rows;
   const ictx = img.getContext("2d"), data = ictx.createImageData(g.cols, g.rows), px = data.data;
-  // the colour ramp spans the 5th to 95th percentile, so a mesa at the edge does not flatten the town into one shade
-  const sorted = Array.from(g.h).sort((a, b) => a - b), lo = sorted[Math.floor(sorted.length * 0.05)], hi = sorted[Math.floor(sorted.length * 0.95)];
+  const span = Math.max(2, hi - lo), H = (r, c) => g.h[Math.min(g.rows - 1, Math.max(0, r)) * g.cols + Math.min(g.cols - 1, Math.max(0, c))];
   const steepAt = Math.tan(Math.max(1, C.slopeDeg) * Math.PI / 180), [sr, sg, sb] = hexRgb(C.steep);
   const realistic = C.terrainStyle === "realistic", pal = (PLANET_PALETTE[g.planet] || PLANET_PALETTE.tatooine).map(hexRgb), rockAt = Math.tan(32 * Math.PI / 180);
-  const span = Math.max(2, hi - lo), H = (r, c) => g.h[Math.min(g.rows - 1, Math.max(0, r)) * g.cols + Math.min(g.cols - 1, Math.max(0, c))];
   for (let r = 0; r < g.rows; r++) for (let c = 0; c < g.cols; c++) {
     const h = H(r, c), gx = (H(r, c + 1) - H(r, c - 1)) / (2 * g.step), gy = (H(r + 1, c) - H(r - 1, c)) / (2 * g.step);
     const slope = Math.hypot(gx, gy);                                   // rise over run
     const shade = Math.max(0, Math.min(1, 0.55 + 0.45 * (-gx * 0.7 + gy * 0.7) / Math.max(0.25, slope)));   // light from the north-west
-    const band = Math.floor((h - g.min) / Math.max(0.5, C.bandMetres)) % 2 ? 0.92 : 1.0;   // contour bands
-    const t = Math.max(0, Math.min(1, (h - lo) / span));                 // low = dark sand, high = pale
+    const band = Math.floor(h / Math.max(0.5, C.bandMetres)) % 2 ? 0.92 : 1.0;   // contour bands, on absolute height so tiles agree
+    const t = Math.max(0, Math.min(1, (h - lo) / span));                 // low = dark, high = pale
     let R, G, B;
     if (realistic) {
-      // flat ground blends into the higher-ground colour with height; cliffs show rock; a gentler band and shade
       const [g0, g1, rk] = pal, k = Math.min(1, slope / rockAt), rockMix = k * k;
       R = (g0[0] * (1 - t) + g1[0] * t) * (1 - rockMix) + rk[0] * rockMix; G = (g0[1] * (1 - t) + g1[1] * t) * (1 - rockMix) + rk[1] * rockMix; B = (g0[2] * (1 - t) + g1[2] * t) * (1 - rockMix) + rk[2] * rockMix;
       const sh = 0.75 + 0.25 * shade, bd = band === 1 ? 1 : 0.96; R *= sh * bd; G *= sh * bd; B *= sh * bd;
@@ -425,42 +446,47 @@ function renderTerrain(g) {
       R = 70 + 90 * t; G = 62 + 80 * t; B = 48 + 70 * t;
       R *= shade * band; G *= shade * band; B *= shade * band;
     }
-    if (C.steepOverlay === "on" && slope > steepAt) { const k = Math.min(1, (slope - steepAt) / 0.5); R = R * (1 - k) + sr * k; G = G * (1 - k) + sg * k; B = B * (1 - k) + sb * k; }   // steeper than the setting: no building sits on that
+    if (C.steepOverlay === "on" && slope > steepAt) { const k = Math.min(1, (slope - steepAt) / 0.5); R = R * (1 - k) + sr * k; G = G * (1 - k) + sg * k; B = B * (1 - k) + sb * k; }
     const i = ((g.rows - 1 - r) * g.cols + c) * 4;                      // row 0 is the south edge: flip for the image
     px[i] = R; px[i + 1] = G; px[i + 2] = B; px[i + 3] = Math.round(255 * C.terrainOpacity);
   }
   ictx.putImageData(data, 0, 0); return img;
 }
-async function ensureTerrain() {
-  if (!S.area || S.terrainBusy) return;
-  const r = +$("radius").value || 300, step = r > 900 ? 16 : r > 450 ? 8 : 4;
-  const key = `${$("planet").value}|${S.area.x}|${S.area.y}|${r}|${step}`;
-  if (S.terrainKey === key) return;
-  S.terrainBusy = true; status("Loading the terrain from the server…");
-  try {
-    const g = await api(`/api/terraingrid?planet=${encodeURIComponent($("planet").value)}&x=${S.area.x}&y=${S.area.y}&r=${r}&step=${step}`);
-    if (g.error) { S.terrainGrid = null; S.terrainImg = null; S.terrainKey = key; status("No terrain: " + g.error, "warn"); }
-    else { S.terrainGrid = g; S.terrainImg = renderTerrain(g); S.terrainKey = key; status(`Terrain loaded: ${g.cols}×${g.rows} points every ${g.step} m, ${g.min.toFixed(1)} to ${g.max.toFixed(1)} m.`, "ok"); }
-  } catch (e) { S.terrainGrid = null; S.terrainImg = null; S.terrainKey = key; status("Terrain failed: " + e.message, "warn"); }
-  S.terrainBusy = false; draw();
+function rerenderTiles() {
+  const planet = $("planet").value, [lo, hi] = planetRange(planet); S.tileRange = [lo, hi];
+  for (const k in S.tiles) { const t = S.tiles[k]; if (t.grid && t.grid.planet === planet) t.img = renderTerrain(t.grid, lo, hi); }
+}
+function pumpTiles() {
+  if (S.tileBusy || !S.tileQueue.length) return;
+  const key = S.tileQueue.shift(), [planet, step, tx, ty] = key.split("|");
+  S.tileBusy = true;
+  api(`/api/terraintile?planet=${encodeURIComponent(planet)}&step=${step}&tx=${tx}&ty=${ty}`).then(g => {
+    if (g.error) { S.tiles[key] = { error: g.error }; if (!S.tileErrorShown) { S.tileErrorShown = true; status("No terrain: " + g.error, "warn"); } }
+    else {
+      S.tiles[key] = { grid: g };
+      const [lo, hi] = planetRange(planet), old = S.tileRange || [0, 0];
+      if (Math.abs(lo - old[0]) > 2 || Math.abs(hi - old[1]) > 2) rerenderTiles(); else S.tiles[key].img = renderTerrain(g, old[0], old[1]);
+    }
+  }).catch(e => { S.tiles[key] = { error: e.message }; }).finally(() => { S.tileBusy = false; draw(); pumpTiles(); });
 }
 function drawTerrain() {
   if (!L("L_terrain")) return;
-  if (!S.terrainImg) { ensureTerrain(); return; }
-  const g = S.terrainGrid;
-  const [sx0, sy0] = w2s(g.x0 - g.step / 2, g.y0 + (g.rows - 1) * g.step + g.step / 2);   // north-west corner of the image
-  ctx.imageSmoothingEnabled = S.view.ppm < g.step;   // smooth when zoomed out, crisp cells when zoomed in
-  ctx.drawImage(S.terrainImg, sx0, sy0, g.cols * g.step * S.view.ppm, g.rows * g.step * S.view.ppm);
-  ctx.imageSmoothingEnabled = true;
-}
-function drawMapImage() {
-  if (!L("L_mapimage")) return;
-  const planet = $("planet").value; let img = S.mapImg[planet];
-  if (!img) { img = new Image(); S.mapImg[planet] = img; img.onload = draw; img.onerror = () => { S.mapImg[planet] = "none"; }; img.src = "/api/mapimage?planet=" + encodeURIComponent(planet); return; }
-  if (img === "none" || !img.complete || !img.naturalWidth) return;
-  // the texture covers the whole zone, north at the top: world (-E, +E) is its top-left corner
-  const E = C.mapExtent, [sx, sy] = w2s(-E, E), size = 2 * E * S.view.ppm;
-  ctx.globalAlpha = C.mapOpacity; ctx.imageSmoothingEnabled = true; ctx.drawImage(img, sx, sy, size, size); ctx.globalAlpha = 1;
+  const planet = $("planet").value, step = tileStep(), want = visibleTiles(step);
+  S.tileQueue = [];
+  for (const [tx, ty] of want) {
+    const key = tileKey(planet, step, tx, ty), t = S.tiles[key];
+    if (!t) { if (!S.tileErrorShown) S.tileQueue.push(key); }
+  }
+  // draw what is loaded: the wanted step, and coarser tiles underneath while fine ones are still arriving
+  for (const st of STEPS.slice().reverse()) {
+    if (st < step) continue;
+    for (const [tx, ty] of visibleTiles(st)) {
+      const t = S.tiles[tileKey(planet, st, tx, ty)]; if (!t || !t.img) continue;
+      const g = t.grid, [sx0, sy0] = w2s(g.x0 - g.step / 2, g.y0 + (g.rows - 1) * g.step + g.step / 2);
+      ctx.imageSmoothingEnabled = S.view.ppm < g.step; ctx.drawImage(t.img, sx0, sy0, g.cols * g.step * S.view.ppm, g.rows * g.step * S.view.ppm); ctx.imageSmoothingEnabled = true;
+    }
+  }
+  if (S.tileQueue.length) { status(`Loading terrain: ${S.tileQueue.length} tile(s) at ${step} m…`); pumpTiles(); }
 }
 function drawMap() {
   drawMapImage();
@@ -654,7 +680,7 @@ canvas.addEventListener("mousedown", e => {
 });
 canvas.addEventListener("mousemove", e => {
   const r = canvas.getBoundingClientRect(); const sx = e.clientX - r.left, sy = e.clientY - r.top;
-  if (S.mode === "map" && S.terrainGrid && !down) { const [wx, wy] = s2w(sx, sy); const h = terrainHeightAt(wx, wy); S.hover = h === null ? null : { wx, wy, h }; updateHud(); }
+  if (S.mode === "map" && !down) { const [wx, wy] = s2w(sx, sy); const h = terrainHeightAt(wx, wy); S.hover = h === null ? null : { wx, wy, h }; updateHud(); }
   if (!down) return;
   const dx = sx - down.sx, dy = sy - down.sy; if (Math.abs(dx) + Math.abs(dy) > 2) down.moved = true;
   const v = S.mode === "map" ? S.view : S.ivw;
@@ -855,7 +881,7 @@ for (const id of ["cx", "cy", "radius"]) $(id).addEventListener("keydown", e => 
 const PLANETS = ["tatooine", "naboo", "corellia", "talus", "rori", "dantooine", "lok", "yavin4", "endor", "dathomir"];
 function renderPlanets() {
   const box = $("planets"); box.innerHTML = "";
-  for (const pl of PLANETS) { const b = document.createElement("button"); b.textContent = pl; b.style.width = "auto"; b.style.margin = "0"; b.style.padding = "3px 7px"; if (pl === $("planet").value) b.className = "primary"; b.onclick = () => { $("planet").value = pl; renderPlanets(); fillShells(); loadPlaces(true); }; box.appendChild(b); }
+  for (const pl of PLANETS) { const b = document.createElement("button"); b.textContent = pl; b.style.width = "auto"; b.style.margin = "0"; b.style.padding = "3px 7px"; if (pl === $("planet").value) b.className = "primary"; b.onclick = () => { $("planet").value = pl; S.tileErrorShown = false; S.tileRange = null; renderPlanets(); fillShells(); loadPlaces(true); }; box.appendChild(b); }
 }
 async function loadPlaces(jumpToFirstCity) {
   const sel = $("placeSel"); sel.innerHTML = "";
@@ -1030,7 +1056,7 @@ function renderSettings() {
 }
 function applySettings() {
   saveSettings(); renderSettings();
-  if (S.terrainGrid) S.terrainImg = renderTerrain(S.terrainGrid);   // the tint, bands and opacity are baked into the image
+  rerenderTiles();   // the tint, bands and opacity are baked into the tile images
   draw();
 }
 $("settingsToggle").onclick = () => { const b = $("settingsBox"); const open = b.style.display === "none"; b.style.display = open ? "block" : "none"; if (open) renderSettings(); };
