@@ -101,8 +101,11 @@ agent must know goes in the repo docs, not in memory.
 - Stable points are tagged `chuck-stable-YYYYMMDD` (the older `stable-20260523` tag predates this convention).
 - Remotes: `origin` (crandles1202/Core3, the only push target), `swgemu` (upstream), `mtg` (ModTheGalaxy),
   `flurry`, `orkwerks` — all non-origin remotes are fetch-only.
-- **Ask Chuck before:** `git push`, merging into `unstable`, loading a snapshot, or any DB write outside
-  the `claude-admin` / `claude-player` accounts.
+- **Ask Chuck before:** loading a snapshot, or touching his own accounts (`Chuckertons`, `chuck`). Since
+  2026-10-20 Chuck's standing permission covers merging into `unstable` through the gate, pushing, and creating
+  citizen accounts (`tools/citizens/citizen new`) — but the auto-mode classifier still refuses a merge into
+  `unstable` from Claude, so Chuck runs `tools/swg bench merge <branch>` (or `! git merge …`) when a gated branch
+  is ready.
 - **Never commit passwords or secrets.** `config-local.lua` (`DBSecret`), `~/.env`, `~/.my.cnf` stay out of git.
 - Commit messages: Chuck uses `Phase X.Y: <what>`; keep that style for roadmap work.
 

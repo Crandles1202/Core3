@@ -37,7 +37,7 @@ TOOLS = os.path.dirname(HERE)
 LABDIR = os.environ.get("SWG_LABDIR", os.path.expanduser("~/.swg-lab"))
 CAST_DIR = os.path.join(HERE, "cast")
 
-DEFAULT_MODEL = "claude-opus-5-5"
+DEFAULT_MODEL = "claude-haiku-5-5"   # Chuck 2026-10-20: cheapest by default; a persona may set "model:" in its ## Character section
 DEFAULT_EFFORT = "low"        # a game character's next move is a chat-sized decision
 MAX_ROUNDS_PER_WAKE = 6       # tool rounds the model may take before the wake ends
 MAX_TOKENS = 2048
@@ -67,6 +67,19 @@ class CitizenFiles:
         self.memory_path = os.path.join(self.dir, "memory.md")
         self.state_path = os.path.join(self.dir, "state.json")
         self.log_path = os.path.join(self.dir, "log.jsonl")
+
+    def character_field(self, key):
+        """A key: value line of the persona's '## Character' section (model, account, …), or None."""
+        if not os.path.exists(self.persona_path):
+            return None
+        m = re.search(r"^## Character\s*\n(.*?)(?=^## |\Z)", open(self.persona_path).read(), re.S | re.M)
+        if not m:
+            return None
+        for line in m.group(1).splitlines():
+            line = line.strip().lstrip("-* ")
+            if line.lower().startswith(key.lower() + ":"):
+                return line.split(":", 1)[1].strip() or None
+        return None
 
     def persona(self):
         if not os.path.exists(self.persona_path):
@@ -346,7 +359,9 @@ def run(args):
         print(f"[{args.citizen}] {name} {json.dumps(inputs, ensure_ascii=False)[:160]} -> {'ok' if result.get('ok') else result.get('error')}")
         return result
 
-    decider = DryDecider(persona) if args.dry else ModelDecider(args.model, args.effort)
+    model = args.model or files.character_field("model") or DEFAULT_MODEL
+    decider = DryDecider(persona) if args.dry else ModelDecider(model, args.effort)
+    print(f"[{args.citizen}] decider: {'dry' if args.dry else model + ' effort ' + args.effort}")
     ticks = 0
     while args.ticks == 0 or ticks < args.ticks:
         ticks += 1
@@ -386,7 +401,7 @@ def main():
     r = sub.add_parser("run")
     r.add_argument("citizen")
     r.add_argument("--seat")
-    r.add_argument("--model", default=DEFAULT_MODEL)
+    r.add_argument("--model", default=None, help=f"model id (default: the persona's model:, else {DEFAULT_MODEL})")
     r.add_argument("--effort", default=DEFAULT_EFFORT, choices=["low", "medium", "high"])
     r.add_argument("--idle", type=int, default=300, help="seconds between wakes when nothing happens")
     r.add_argument("--ticks", type=int, default=0, help="stop after N wakes (0 = run until killed)")
