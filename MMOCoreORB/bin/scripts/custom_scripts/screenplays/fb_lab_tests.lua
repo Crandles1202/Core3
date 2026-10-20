@@ -296,12 +296,24 @@ function FbLabTests.checkStarterGear(charName)
 		charName .. " has " .. tostring(count) .. " items; missing: " .. table.concat(missing, ", "))
 end
 
+-- NPCs that break the usual conventions on purpose: no conversation (a spirit that only speaks), or
+-- spawned on demand by an event instead of at boot (visitors, ambushes). The checks adapt.
+FbLabTests.eventNpcs = {
+	fb_force_ghost = { conversation = false, spawnedAtBoot = false },   -- Phase 4a.1
+	fb_old_man = { spawnedAtBoot = false },                             -- Phase 4a.1
+}
+
 function FbLabTests.checkNpc(npc)
 	local p = npc.template .. "."
+	local ev = FbLabTests.eventNpcs[npc.template] or {}
 
 	check(p .. "mobile_template_registered", creatureTemplateExists(npc.template))
 	check(p .. "included_in_serverobjects", fileContains("scripts/mobile/quest/serverobjects.lua", npc.mobileFile:gsub("^scripts/mobile/", "")))
-	check(p .. "included_in_conversations", fileContains("scripts/mobile/conversations.lua", npc.convoFile:gsub("^scripts/mobile/", "")))
+	if ev.conversation ~= false then
+		check(p .. "included_in_conversations", fileContains("scripts/mobile/conversations.lua", npc.convoFile:gsub("^scripts/mobile/", "")))
+	else
+		report("INFO", p .. "no_conversation", "by design (eventNpcs)")
+	end
 
 	-- mobile template file: lives in CreatureTemplateManager's Lua state, so run it here with a
 	-- stand-in Creature class; unknown globals (MOB_NPC, NONE, INVULNERABLE, ...) read as 0.
@@ -319,6 +331,7 @@ function FbLabTests.checkNpc(npc)
 	if not check(p .. "mobile_file_loads", mchunk ~= nil, merr) then return end
 	local mob = mobEnv[npc.template]
 	local convoName = type(mob) == "table" and mob.conversationTemplate or nil
+	if ev.conversation ~= false then
 	if not check(p .. "mobile_names_conversation", type(convoName) == "string" and convoName ~= "",
 			"global " .. npc.template .. " missing or has no conversationTemplate") then return end
 
@@ -354,6 +367,12 @@ function FbLabTests.checkNpc(npc)
 			"luaClassHandler=" .. tostring(tmpl.luaClassHandler) .. " is not a loaded global")
 		check(p .. "conversation_has_screens", type(tmpl.screens) == "table" and #tmpl.screens > 0,
 			"screens=" .. tostring(tmpl.screens and #tmpl.screens))
+	end
+	end   -- ev.conversation ~= false
+
+	if ev.spawnedAtBoot == false then
+		report("INFO", p .. "spawned", "event NPC, spawned on demand (eventNpcs); its scenario covers the spawn")
+		return
 	end
 
 	-- live spawns recorded by the spawnMobile wrapper
@@ -774,6 +793,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkLabRemote()
 		FbLabTests.checkPlacement()
 		FbLabTests.checkWorldEdits()
+		FbLabTests.checkAttunement()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)
@@ -2144,5 +2164,158 @@ function FbLabTests:terrainGrid(planet, x0, y0, x1, y1, step, path)
 	f:close()
 	print(string.format("INFO terrainGrid planet=%s cols=%d rows=%d step=%g min=%.2f max=%.2f path=%s", planet, cols, rows, step, lo, hi, path))
 	return tostring(cols * rows)
+end
+
+-- ---------------------------------------------------------------- Force attunement (Phase 4a.1)
+
+local function attunementLine(charName, pPlayer)
+	local st = FbAttunement:status(pPlayer)
+	local f = st.flags
+	print(string.format("INFO attunement char=%s total=%d tier=%d places=%d/%d learning=%d/%d deeds=%d/%d quests=%d/%d items=%d/%d ghost25=%s ghost50=%s ghost75=%s called=%s task=%s medWorlds=%s",
+		charName, st.total, st.tier, st.per.places, st.raw.places, st.per.learning, st.raw.learning, st.per.deeds, st.raw.deeds, st.per.quests, st.raw.quests, st.per.items, st.raw.items,
+		tostring(f.ghost25 ~= nil), tostring(f.ghost50 ~= nil), tostring(f.ghost75 ~= nil), tostring(f.called ~= nil), tostring(f.task or "-"), tostring(f.medWorlds or "-")))
+	return st
+end
+
+-- attunement:<char> → the hidden score with its per-source breakdown and flags
+function FbLabTests:attunement(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local st = attunementLine(charName, pPlayer)
+	return tostring(st.total)
+end
+
+-- attunementGrant:<char>:<source>:<key>:<pts> → FbAttunement:grant
+function FbLabTests:attunementGrant(charName, source, key, pts)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local added = FbAttunement:grant(pPlayer, source, key, tonumber(pts) or 0, nil)
+	print("INFO attunementGrant added=" .. tostring(added))
+	attunementLine(charName, pPlayer)
+	return tostring(added)
+end
+
+-- attunementReset:<char>
+function FbLabTests:attunementReset(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	FbAttunement:reset(pPlayer)
+	attunementLine(charName, pPlayer)
+	return "ok"
+end
+
+-- attunementSet:<char>:<total> → reset, then fill debug points across the sources up to their caps
+function FbLabTests:attunementSet(charName, total)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	FbAttunement:reset(pPlayer)
+	local left = tonumber(total) or 0
+	for _, src in ipairs(FbAttunement.sources) do
+		local take = math.min(left, FbAttunement.caps[src])
+		if take > 0 then FbAttunement:grant(pPlayer, src, "debug", take, nil) end
+		left = left - take
+	end
+	attunementLine(charName, pPlayer)
+	return tostring(FbAttunement:total(pPlayer))
+end
+
+-- attunementVisit:<char> → run the trigger now; says whether a visitor was sent
+function FbLabTests:attunementVisit(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local sent = FbAttunement:maybeVisit(pPlayer)
+	print(string.format("INFO attunementVisit sent=%s inPosition=%s combat=%s", tostring(sent), tostring(FbForceGhostVisit:isPlayerInPositionForEncounter(pPlayer)), tostring(CreatureObject(pPlayer):isInCombat())))
+	attunementLine(charName, pPlayer)
+	return tostring(sent)
+end
+
+-- attunementEnter:<char> → the place-entry handler for wherever the character stands (the region observer path minus the region)
+function FbLabTests:attunementEnter(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local so = SceneObject(pPlayer)
+	local key, kind = FbAttunement:placeAt(so:getZoneName(), so:getWorldPositionX(), so:getWorldPositionY())
+	FbAttunement:onEnterArea(nil, pPlayer)
+	print(string.format("INFO attunementEnter place=%s kind=%s", tostring(key), tostring(kind)))
+	attunementLine(charName, pPlayer)
+	return tostring(key)
+end
+
+-- attunementKill:<char>:<template> → spawn that template beside the character, run the kill handler as if the
+-- character had killed it, remove it (nothing fights). attunementIncap:<char> marks an incapacitation just before.
+function FbLabTests:attunementKill(charName, template)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local so = SceneObject(pPlayer)
+	local pMob = spawnMobile(so:getZoneName(), template, 0, so:getWorldPositionX() + 3, so:getWorldPositionZ(), so:getWorldPositionY() + 3, 0, 0)
+	if pMob == nil then print("ERROR attunementKill: spawnMobile failed for " .. tostring(template)); return "none" end
+	FbAttunement:onKill(pPlayer, pMob)
+	local oid = SceneObject(pMob):getObjectID()
+	SceneObject(pMob):destroyObjectFromWorld(true); SceneObject(pMob):destroyObjectFromDatabase()
+	FbLabTests.registryRemove(oid)
+	attunementLine(charName, pPlayer)
+	return "ok"
+end
+
+function FbLabTests:attunementIncap(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	FbAttunement:onIncap(pPlayer, nil)
+	print("INFO attunementIncap at=" .. tostring(FbAttunement:flag(pPlayer, "incapAt")))
+	return "ok"
+end
+
+-- attunementMeditate:<char> → is the character meditating, and is a shrine watch running?
+function FbLabTests:attunementMeditate(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local med = CreatureObject(pPlayer):isMeditating()
+	print(string.format("INFO attunementMeditate meditating=%s posture=%d watch=%s", tostring(med), CreatureObject(pPlayer):getPosture(), tostring(getQuestStatus("FbAttunement.poll." .. SceneObject(pPlayer):getObjectID()) or "-")))
+	return tostring(med)
+end
+
+-- attunementLogin:<char> → run the login hook by hand (observers, silent credit, the deferred shrine check)
+function FbLabTests:attunementLogin(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	FbAttunement:onLogin(pPlayer)
+	print("INFO attunementLogin ran")
+	return "ok"
+end
+
+-- attunementSit:<char>[:stand] → seat (or stand) the character server-side, the way /sit would
+function FbLabTests:attunementSit(charName, stand)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	CreatureObject(pPlayer):setPosture(stand == "stand" and 0 or 8)
+	print("INFO attunementSit posture=" .. CreatureObject(pPlayer):getPosture())
+	return tostring(CreatureObject(pPlayer):getPosture())
+end
+
+-- attunementStatus:<char> → what /checkForceStatus would say (the tier string id)
+function FbLabTests:attunementStatus(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	FbAttunement:showStatus(pPlayer)
+	local st = FbAttunement:status(pPlayer)
+	print("INFO attunementStatus tier=@fb_force:tier_" .. st.tier)
+	return tostring(st.tier)
+end
+
+-- Lab check: every shrine region the attunement watches resolves on an enabled zone, the wiring is loaded
+function FbLabTests.checkAttunement()
+	check("attunement.loaded", FbAttunement ~= nil and FbForceGhostVisit ~= nil and FbOldManVisit ~= nil)
+	if FbAttunement == nil then return end
+	local missing = {}
+	for _, s in ipairs(FbAttunement.shrines) do
+		if isZoneEnabled(s[2]) and getRegion(s[2], s[1]) == nil then missing[#missing + 1] = s[1] end
+	end
+	check("attunement.shrine_regions_resolve", #missing == 0, #missing == 0 and (#FbAttunement.shrines .. " shrines") or ("missing: " .. table.concat(missing, ", ")))
+	check("attunement.caps_sum_to_170", (function() local t = 0; for _, c in pairs(FbAttunement.caps) do t = t + c end; return t end)() == 170)
+	local bad = {}
+	for _, q in ipairs(FbAttunement.questBadges) do for _, n in ipairs(q[3]) do if _G[n:upper()] == nil then bad[#bad + 1] = n end end end
+	for _, b in ipairs(FbAttunement.badgeSites) do if _G[b[1]:upper()] == nil then bad[#bad + 1] = b[1] end end
+	check("attunement.badge_names_exist", #bad == 0, #bad == 0 and "all badge globals present" or ("unknown badges: " .. table.concat(bad, ", ")))
+	check("attunement.status_command_wrapped", VillageJediManager == nil or VillageJediManager.checkForceStatusCommand ~= nil)
 end
 

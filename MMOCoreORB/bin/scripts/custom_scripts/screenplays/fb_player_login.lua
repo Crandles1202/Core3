@@ -28,6 +28,11 @@ function FBLogin.onLogin(pPlayer)
 		local ok2, err2 = pcall(function() FbLabRemote:give(pPlayer) end)
 		if not ok2 then printf("FBLogin: lab remote hand-out failed: %s\n", tostring(err2)) end
 	end
+	-- Phase 4a.1: attunement observers + silent credit for what the character already has
+	if FbAttunement ~= nil then
+		local ok3, err3 = pcall(function() FbAttunement:onLogin(pPlayer) end)
+		if not ok3 then printf("FBLogin: attunement hook failed: %s\n", tostring(err3)) end
+	end
 	printf("FBLogin: fix-ups applied for %s\n", CreatureObject(pPlayer):getFirstName())
 end
 

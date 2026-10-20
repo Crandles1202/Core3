@@ -142,6 +142,7 @@ Luna<LuaCreatureObject>::RegType LuaCreatureObject::Register[] = {
 		{ "getCurrentSpeed", &LuaCreatureObject::getCurrentSpeed },
 		{ "isInvisible", &LuaTangibleObject::isInvisible },
 		{ "isInCombat", &LuaCreatureObject::isInCombat },
+		{ "isMeditating", &LuaCreatureObject::isMeditating },
 		{ "healDamage", &LuaCreatureObject::healDamage },
 		{ "getGroupID", &LuaCreatureObject::getGroupID },
 		{ "enhanceCharacter", &LuaCreatureObject::enhanceCharacter },
@@ -1057,6 +1058,12 @@ int LuaCreatureObject::isInCombat(lua_State* L) {
 	bool retVal = realObject->isInCombat();
 
 	lua_pushboolean(L, retVal);
+
+	return 1;
+}
+
+int LuaCreatureObject::isMeditating(lua_State* L) {
+	lua_pushboolean(L, realObject->isMeditating());
 
 	return 1;
 }

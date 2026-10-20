@@ -186,6 +186,38 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-20 — 4a.1 Force attunement.** What the stock code offers and what had to be added: badges are
+  Lua globals named by their datatable key (`datatables/badge/badge_map.iff`: `poi_heromark` is the Mark of
+  the Hero, `bdg_thm_park_*` the four theme parks, `warren_*`, `bdg_corvette_*`, `exp_*` the exploration
+  badges, every `*_master` the profession masters; `getBadgeListByType("master")` lists the latter); stock
+  `force_shrine` regions resolve with `getRegion(planet, name)` and take an `ENTEREDAREA` observer like any
+  active area (handler gets `(pArea, pCreature)`; the shrine is found again by position, so nothing has to be
+  remembered across Lua states); `KILLEDCREATURE` is notified on the killer (and group) with the victim as
+  the argument; `OBJECTDESTRUCTION` on a player fires at incapacitation; `/meditate` only sets a creature
+  flag (`setMeditateState`, no posture/state Lua could see) → new binding `CreatureObject:isMeditating()`.
+  The Village's `Encounter` base (`quest_tasks/encounter.lua`) does the spawn-near-player-and-follow dance
+  and refuses buildings and NPC cities, which is exactly the "after a fight, outdoors" rule; its per-player
+  started flag lives in `writeData` (in memory), so a visit that never despawns is reset by `maybeVisit`
+  when its quest-status stamp is older than 3 min. `/checkForceStatus` stays with `VillageJediManager` (the
+  progression type is not changed so the Dathomir village keeps working); we replace that one method after
+  load. Mobile templates need `level > 0` or `LuaMobileTemplatesTest` fails — the two new NPCs did not have it.
+  Getting the scenario green took eight rounds; the traps, in order: (1) `writeScreenPlayData(pPlayer,
+  screenplay, key, value)` — I had folded screenplay and key into one string; the bindings read from the stack
+  top, so a missing argument is silent garbage and the score stayed at 0 with no error. (2) Badge keys are
+  Lua globals **in upper case** (`POI_HEROMARK`, `BDG_THM_PARK_JABBA_BADGE`). (3) `Encounter:taskStart` treats a
+  missing `isEncounterFinished` as *finished* (`callFunctionIfNotNil(nil, true)`) and never spawns, while
+  `Task:start` still marks the task started — define it, and only mark a visit sent when `start()` returns
+  true. (4) `SpawnMobiles.despawnMobilesInList` hands a mobile that still *follows* someone to
+  `HelperFuncs:despawnMobileTask`, which re-schedules itself every 10 s for as long as the follow stands — so
+  a follower never despawns: clear `AI_FOLLOW`/`AI_ESCORT` and `setFollowObject(nil)` before despawning
+  (five stale spirits stood in the desert before that). (5) The lab's `findNpc` only sees spawns the
+  `spawnMobile` wrapper recorded from `fb_*` files; encounter spawns come from `utils/spawn_mobiles.lua`, so
+  the visits add themselves to the registry. (6) The bot client cannot `/sit` or `/meditate` as a fresh
+  character; `--command sitServer --command-nowait` (the modifier *follows* the command) is the posture
+  command and works. (7) Posture persists across logins: a seated character logging in at a shrine is
+  credited by the login watch at once — right in game, surprising in a test. (8) Inside the login trigger the
+  zone/position are not final: the shrine check runs 6 s later (`loginSettled`). The `isMeditating` state is
+  what `/meditate` sets, but since the command is Teras Kasi only, sitting for 10 s inside the shrine counts.
 - **2026-10-19 — a blank map, and how to see page errors from here.** Replacing the terrain block "from the
   relief marker up to `function drawMap()`" also swallowed the planet-map function that sat between them;
   `drawMap` then threw `drawMapImage is not defined` inside the async start-up, which `window.onerror` never
