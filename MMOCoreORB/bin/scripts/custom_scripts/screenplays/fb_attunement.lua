@@ -17,6 +17,10 @@
 -- Persistence: screenplay data per player (writeScreenPlayData), one "key=points;…" string per source, plus
 -- flags (ghost thresholds, called, task). Cross-state scratch (meditation polling, active visit) in quest status.
 --
+-- 4a.2: every shrine meditation also teaches a lore fragment (@fb_force:lore_<planet>_<n>, counted in flag
+-- "lore"); at six worlds the Old Man returns (FbOldManReturn) and the trials are unlocked (task=trials); the
+-- ambush he warned about (FbShadowAmbush, two Sith Shadow outlaws) comes 5–15 min after the first visit at the
+-- next trigger outdoors — surviving it is the "survive a Force power" deed (3).
 -- Public (also the lab oracles): FbAttunement:status(pPlayer) → table, :grant(pPlayer, source, key, pts, why),
 -- :reset(pPlayer), :maybeVisit(pPlayer), :questDone(pPlayer, key), :accept(pPlayer), :onLogin(pPlayer).
 
@@ -145,7 +149,7 @@ end
 
 function FbAttunement:reset(pPlayer)
 	for _, s in ipairs(self.sources) do deleteScreenPlayData(pPlayer, self.DATA, s) end
-	for _, f in ipairs({ "ghost25", "ghost50", "ghost75", "oldman", "called", "task", "incapAt", "incapDay", "medWorlds" }) do deleteScreenPlayData(pPlayer, self.DATA, "flag:" .. f) end
+	for _, f in ipairs({ "ghost25", "ghost50", "ghost75", "oldman", "called", "task", "incapAt", "incapDay", "medWorlds", "lore", "return", "trials", "ambushDue", "ambushDone" }) do deleteScreenPlayData(pPlayer, self.DATA, "flag:" .. f) end
 	deleteScreenPlayData(pPlayer, self.DATA, "ghostTier")
 	removeQuestStatus("FbAttunement.visit." .. SceneObject(pPlayer):getObjectID())
 	removeQuestStatus("FbAttunement.poll." .. SceneObject(pPlayer):getObjectID())
@@ -162,7 +166,7 @@ function FbAttunement:status(pPlayer)
 	local st = { total = self:total(pPlayer), per = {}, raw = {}, flags = {} }
 	st.tier = self:tier(st.total)
 	for _, s in ipairs(self.sources) do st.per[s], st.raw[s] = self:sourceTotal(pPlayer, s) end
-	for _, f in ipairs({ "ghost25", "ghost50", "ghost75", "called", "task", "medWorlds" }) do st.flags[f] = self:flag(pPlayer, f) end
+	for _, f in ipairs({ "ghost25", "ghost50", "ghost75", "called", "task", "medWorlds", "lore", "return", "trials", "ambushDue", "ambushDone" }) do st.flags[f] = self:flag(pPlayer, f) end
 	return st
 end
 
@@ -221,13 +225,41 @@ function FbAttunement:pollMeditation(pPlayer)
 	if CreatureObject(pPlayer):isMeditating() or (seated and satBefore) then
 		removeQuestStatus("FbAttunement.poll." .. oid)
 		removeQuestStatus("FbAttunement.sat." .. oid)
-		if self:grant(pPlayer, "places", "meditate:" .. key, 6, "stir_meditate") then self:noteMeditationWorld(pPlayer, so:getZoneName()) end
+		if self:grant(pPlayer, "places", "meditate:" .. key, 6, "stir_meditate") then
+			self:teachLore(pPlayer, key)
+			self:noteMeditationWorld(pPlayer, so:getZoneName())
+		end
 		self:maybeVisit(pPlayer)
 		return
 	end
 	if seated then setQuestStatus("FbAttunement.sat." .. oid, key) else removeQuestStatus("FbAttunement.sat." .. oid) end
 	setQuestStatus("FbAttunement.poll." .. oid, key .. "|" .. (n + 1))
 	createEvent(5000, "FbAttunement", "pollMeditation", pPlayer, "")
+end
+
+-- one fragment of the old lore per shrine (key <planet>_force_shrine_NN → @fb_force:lore_<planet>_<N>)
+function FbAttunement:teachLore(pPlayer, key)
+	local planet, n = key:match("^(%a+%d*)_force_shrine_(%d+)$")
+	if planet == nil then return end
+	n = tonumber(n)
+	if n > 5 then n = 5 end
+	local known = self:flag(pPlayer, "lore") or ""
+	if known:find(key, 1, true) then return end
+	self:setFlag(pPlayer, "lore", known == "" and key or (known .. "," .. key))
+	CreatureObject(pPlayer):sendSystemMessage("@fb_force:lore_learned")
+	CreatureObject(pPlayer):sendSystemMessage(string.format("@fb_force:lore_%s_%d", planet, n))
+end
+
+function FbAttunement:loreCount(pPlayer)
+	local known = self:flag(pPlayer, "lore") or ""
+	if known == "" then return 0 end
+	return select(2, known:gsub(",", ",")) + 1
+end
+
+function FbAttunement:worldCount(pPlayer)
+	local worlds = self:flag(pPlayer, "medWorlds") or ""
+	if worlds == "" then return 0 end
+	return select(2, worlds:gsub(",", ",")) + 1
 end
 
 -- worlds meditated on (the Old Man's task, 4a.2 reads it): "tatooine,naboo,…"
@@ -365,6 +397,8 @@ function FbAttunement:maybeVisit(pPlayer)
 	local oid = SceneObject(pPlayer):getObjectID()
 	clearStaleVisit(FbForceGhostVisit, pPlayer)
 	clearStaleVisit(FbOldManVisit, pPlayer)
+	clearStaleVisit(FbOldManReturn, pPlayer)
+	clearStaleVisit(FbShadowAmbush, pPlayer)
 	local active = getQuestStatus("FbAttunement.visit." .. oid)
 	if active ~= nil and active ~= "" then
 		if os.time() - (tonumber(active) or 0) < 180 then return false end   -- one visitor at a time
@@ -372,9 +406,28 @@ function FbAttunement:maybeVisit(pPlayer)
 		-- a visit that never despawned (spawn failed, server hiccup) would block the next one forever
 		if FbForceGhostVisit:hasTaskStarted(pPlayer) then FbForceGhostVisit:finish(pPlayer) end
 		if FbOldManVisit:hasTaskStarted(pPlayer) then FbOldManVisit:finish(pPlayer) end
+		if FbOldManReturn:hasTaskStarted(pPlayer) then FbOldManReturn:finish(pPlayer) end
+		if FbShadowAmbush:hasTaskStarted(pPlayer) then FbShadowAmbush:finish(pPlayer) end
 	end
 	if CreatureObject(pPlayer):isInCombat() or CreatureObject(pPlayer):isDead() or CreatureObject(pPlayer):isIncapacitated() then return false end
 	local total = self:total(pPlayer)
+	-- 4a.2: the shrine task done → the Old Man returns (once)
+	if self:flag(pPlayer, "called") ~= nil and self:flag(pPlayer, "task") == "shrines" and self:worldCount(pPlayer) >= 6 and self:flag(pPlayer, "return") == nil then
+		if FbOldManReturn:isPlayerInPositionForEncounter(pPlayer) and FbOldManReturn:start(pPlayer) then
+			setQuestStatus("FbAttunement.visit." .. oid, tostring(os.time()))
+			self:setFlag(pPlayer, "return", os.time())
+			return true
+		end
+		return false
+	end
+	-- 4a.2: the ambush the Old Man warned about, once it is due
+	local due = tonumber(self:flag(pPlayer, "ambushDue") or 0)
+	if due > 0 and os.time() >= due and self:flag(pPlayer, "ambushDone") == nil then
+		if FbShadowAmbush:isPlayerInPositionForEncounter(pPlayer) and FbShadowAmbush:start(pPlayer) then
+			setQuestStatus("FbAttunement.visit." .. oid, tostring(os.time()))
+			return true
+		end
+	end
 	if total >= 100 then
 		if self:flag(pPlayer, "called") == nil and self:flag(pPlayer, "oldman") == nil then
 			if FbOldManVisit:isPlayerInPositionForEncounter(pPlayer) and FbOldManVisit:start(pPlayer) then
@@ -404,6 +457,7 @@ end
 function FbAttunement:accept(pPlayer)
 	self:setFlag(pPlayer, "called", os.time())
 	self:setFlag(pPlayer, "task", "shrines")
+	self:setFlag(pPlayer, "ambushDue", os.time() + 300 + getRandomNumber(600))   -- 5–15 min, at the next trigger outdoors
 	CreatureObject(pPlayer):sendSystemMessage("@fb_force:called_task")
 	-- a waypoint to the nearest shrine not yet meditated at
 	local so = SceneObject(pPlayer)
@@ -421,16 +475,26 @@ function FbAttunement:accept(pPlayer)
 	end
 end
 
+-- the Old Man's return accepted: the shrine task is complete, 4a.3 takes over from task=trials
+function FbAttunement:trialsUnlocked(pPlayer)
+	self:setFlag(pPlayer, "task", "trials")
+	self:setFlag(pPlayer, "trials", os.time())
+	CreatureObject(pPlayer):sendSystemMessage("@fb_force:trials_unlocked")
+end
+
 -- ---------------------------------------------------------------- /checkForceStatus
 
 function FbAttunement:showStatus(pPlayer)
 	if pPlayer == nil then return end
 	local st = self:status(pPlayer)
 	CreatureObject(pPlayer):sendSystemMessage("@fb_force:tier_" .. st.tier)
-	if st.flags.called ~= nil then
-		local worlds = st.flags.medWorlds or ""
-		local n = worlds == "" and 0 or select(2, worlds:gsub(",", ",")) + 1
-		local msg = LuaStringIdChatParameter("@fb_force:called_progress"); msg:setDI(n)
+	if st.flags.called ~= nil and st.flags.task == "shrines" then
+		local msg = LuaStringIdChatParameter("@fb_force:called_progress"); msg:setDI(self:worldCount(pPlayer))
+		CreatureObject(pPlayer):sendSystemMessage(msg:_getObject())
+	end
+	local lore = self:loreCount(pPlayer)
+	if lore > 0 then
+		local msg = LuaStringIdChatParameter("@fb_force:lore_count"); msg:setDI(lore)
 		CreatureObject(pPlayer):sendSystemMessage(msg:_getObject())
 	end
 end
@@ -635,3 +699,118 @@ function FbOldManVisit:doDespawn(pPlayer) despawnVisitors(self, pPlayer) end
 function FbOldManVisit:onEncounterDespawned(pPlayer)
 	if pPlayer ~= nil then removeQuestStatus("FbAttunement.visit." .. SceneObject(pPlayer):getObjectID()) end
 end
+
+-- ---------------------------------------------------------------- the Old Man returns (six worlds)
+
+FbOldManReturn = Encounter:new {
+	taskName = "FbOldManReturn",
+	encounterDespawnTime = 10 * 60 * 1000,
+	despawnMessage = "@fb_force:oldman_return_bye",
+	spawnObjectList = {
+		{ template = "fb_old_man", minimumDistance = 30, maximumDistance = 45, referencePoint = 0, followPlayer = true, setNotAttackable = true, runOnDespawn = true }
+	},
+	inRangeValue = 10,
+}
+
+function FbOldManReturn:isEncounterFinished(pPlayer) return false end
+function FbOldManReturn:onEncounterSpawned(pPlayer, spawned) recordVisitor(pPlayer, spawned, "fb_old_man", self.encounterDespawnTime) end
+function FbOldManReturn:onEncounterInRange(pPlayer, spawned)
+	if pPlayer == nil or spawned == nil or spawned[1] == nil then return end
+	local msg = LuaStringIdChatParameter("@fb_force:oldman_return_greeting")
+	msg:setTT(CreatureObject(pPlayer):getFirstName())
+	spatialChat(spawned[1], msg:_getObject())
+end
+function FbOldManReturn:belongsTo(pPlayer, pNpc)
+	if pPlayer == nil or pNpc == nil then return false end
+	return SpawnMobiles.isFromSpawn(pPlayer, self.taskName, pNpc)
+end
+function FbOldManReturn:scheduleDespawn(pPlayer)
+	if pPlayer ~= nil then createEvent(10 * 1000, self.taskName, "handleDespawnEvent", pPlayer, "") end
+end
+function FbOldManReturn:doDespawn(pPlayer) despawnVisitors(self, pPlayer) end
+function FbOldManReturn:onEncounterDespawned(pPlayer)
+	if pPlayer ~= nil then removeQuestStatus("FbAttunement.visit." .. SceneObject(pPlayer):getObjectID()) end
+end
+
+-- ---------------------------------------------------------------- the ambush (two Sith Shadow outlaws)
+
+FbShadowAmbush = Encounter:new {
+	taskName = "FbShadowAmbush",
+	encounterDespawnTime = 4 * 60 * 1000,
+	despawnMessage = "@fb_force:shadow_gone",
+	spawnObjectList = {
+		{ template = "sith_shadow_outlaw", minimumDistance = 48, maximumDistance = 70, referencePoint = 0, followPlayer = true, setNotAttackable = false, runOnDespawn = true },
+		{ template = "sith_shadow_outlaw", minimumDistance = 4, maximumDistance = 8, referencePoint = 1, followPlayer = true, setNotAttackable = false, runOnDespawn = true },
+	},
+	inRangeValue = 24,
+}
+
+function FbShadowAmbush:isEncounterFinished(pPlayer) return false end
+
+function FbShadowAmbush:onEncounterSpawned(pPlayer, spawned)
+	if pPlayer == nil or spawned == nil then return end
+	recordVisitor(pPlayer, spawned, "sith_shadow_outlaw", self.encounterDespawnTime)
+	local oid = SceneObject(pPlayer):getObjectID()
+	writeData(oid .. ":fbAmbushLeft", #spawned)
+	for _, pMob in ipairs(spawned) do if pMob ~= nil then writeData(SceneObject(pMob):getObjectID() .. ":fbAmbushFor", oid) end end
+	for _, pMob in ipairs(spawned) do
+		if pMob ~= nil then createObserver(OBJECTDESTRUCTION, self.taskName, "onShadowDown", pMob) end
+	end
+	dropObserver(OBJECTDESTRUCTION, self.taskName, "onPlayerDown", pPlayer)
+	createObserver(OBJECTDESTRUCTION, self.taskName, "onPlayerDown", pPlayer)
+	writeData(oid .. ":fbAmbushPlayerDown", 0)
+end
+
+function FbShadowAmbush:onEncounterInRange(pPlayer, spawned)
+	if pPlayer == nil or spawned == nil or spawned[1] == nil then return end
+	for _, pMob in ipairs(spawned) do
+		if pMob ~= nil then
+			AiAgent(pMob):removeObjectFlag(AI_ESCORT)
+			AiAgent(pMob):removeObjectFlag(AI_FOLLOW)
+			AiAgent(pMob):setAITemplate()
+			AiAgent(pMob):addDefender(pPlayer)
+		end
+	end
+	local msg = LuaStringIdChatParameter("@fb_force:shadow_threaten")
+	msg:setTT(CreatureObject(pPlayer):getFirstName())
+	spatialChat(spawned[1], msg:_getObject())
+end
+
+-- a shadow went down: the observer argument is the killer; the player it was sent for is found through the spawn record
+function FbShadowAmbush:onShadowDown(pMob, pKiller)
+	if pMob == nil then return 1 end
+	local pPlayer = pKiller
+	if pPlayer == nil or not SceneObject(pPlayer):isPlayerCreature() then
+		-- killed by a pet, a group member or the lab: the record names the player
+		local owner = readData(SceneObject(pMob):getObjectID() .. ":fbAmbushFor")
+		pPlayer = owner ~= 0 and getSceneObject(owner) or nil
+	end
+	if pPlayer == nil then return 1 end
+	local oid = SceneObject(pPlayer):getObjectID()
+	local left = readData(oid .. ":fbAmbushLeft") - 1
+	writeData(oid .. ":fbAmbushLeft", left)
+	if left <= 0 and readData(oid .. ":fbAmbushPlayerDown") ~= 1 then
+		FbAttunement:setFlag(pPlayer, "ambushDone", os.time())
+		FbAttunement:grant(pPlayer, "deeds", "survive:ambush", 3, "shadow_survived")
+		createEvent(15000, self.taskName, "handleDespawnEvent", pPlayer, "")
+	end
+	return 1
+end
+
+function FbShadowAmbush:onPlayerDown(pPlayer)
+	if pPlayer == nil then return 1 end
+	-- they got you this time: no deed, and they will try again later
+	writeData(SceneObject(pPlayer):getObjectID() .. ":fbAmbushPlayerDown", 1)
+	FbAttunement:setFlag(pPlayer, "ambushDue", os.time() + 1800)
+	createEvent(20000, self.taskName, "handleDespawnEvent", pPlayer, "")
+	return 1
+end
+
+function FbShadowAmbush:doDespawn(pPlayer) despawnVisitors(self, pPlayer) end
+function FbShadowAmbush:onEncounterDespawned(pPlayer)
+	if pPlayer ~= nil then
+		removeQuestStatus("FbAttunement.visit." .. SceneObject(pPlayer):getObjectID())
+		dropObserver(OBJECTDESTRUCTION, self.taskName, "onPlayerDown", pPlayer)
+	end
+end
+
