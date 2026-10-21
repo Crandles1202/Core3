@@ -201,6 +201,13 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   (`max(10, weapon range)` is the check, `@error_message:target_out_of_range` otherwise); a womp rat is level 10 and
   took a fresh character to a tenth of its health in 20 s, a kreetle is level 1–3; `loot all` on the corpse sends no
   CommandQueueRemove at all; equipping from Lua is `transferObject(item, 4, true)` with the hand freed first.
+  **A gate failed on the weather:** a natural heavy sandstorm was on at the gate's start (`weather.event_matches_sky`
+  saw weather=3 before the 3.9 event's tick), the storm's Tusken raiders camp on the Mos Eisley outskirts where
+  scenarios park their characters, the gate's character died (every command came back `error=1 state=20`:
+  locomotion 20 = DEAD) and ten scenarios failed in a row. `swg test all` and `lib.sh` now clear Tatooine's sky first
+  (`weatherSet:tatooine:0`, the automatic pattern stays). Also: `trap - EXIT` before `finish` skips a scenario's
+  cleanup on the happy path — call `cleanup` explicitly (seat-fight left a level-10 womp rat at the shared desert
+  spot until the next restart).
 - **2026-10-20 (night) — 7.6a travel on a seat.** Chuck: "get started on the seats", key to follow. Built the trip:
   ticket terminal → `purchaseTicket` → shuttle → `boardShuttle` → the new scene. **Where the terminals are:** not
   in the `.ws` snapshot (`lotsurvey near` finds none) — they are `childObjects` of the port building's Lua template,

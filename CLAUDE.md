@@ -302,6 +302,10 @@ Persisted object fields (`containerVolumeLimit`, …) are only read from the tem
   port's pad** (and structure footprints): `findPath` ends at the mesh edge, so `tools/seat` finishes a walk to a
   terminal or shuttle with a straight final leg (players are speed-checked, not collision-checked). `BuildingObject::
   getCell(n)` is keyed by cell *number* (1..N) and `getCellName` wants that number, not the cell's oid.
+- **Scenarios and the weather:** a natural Tatooine sandstorm sends Tusken raiders to the outskirts (3.9) where
+  scenarios park characters; `swg test all` and `lib.sh` clear the sky first. A CommandQueueRemove with `error=1
+  state=N` names the *locomotion* that refused the command (20 = dead, 19 = incapacitated, 14 = sitting). A scenario's
+  `trap - EXIT` before `finish` skips its cleanup on success: call `cleanup` explicitly.
 - gtest's `<<` cannot print an engine3 `String`; use `.toCharArray()` in assertion messages.
 - Lua bindings read arguments from the top of the stack and do not validate: a call with the wrong
   arity (`faceObject(pNpc)` instead of `faceObject(pNpc, true)`) passes garbage/null into C++ and

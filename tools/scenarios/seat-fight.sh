@@ -40,6 +40,6 @@ check_eq "rat_dead_on_server" "${ALIVE:-1}" "0" "alive=${ALIVE:-?}"
 check "corpse_looted" "$( grep -q '"looted": true' <<<"$FIGHT" && echo 1 || echo 0 )" "loot all sent on the corpse"
 HAM=$(lab "ham:$CHAR" 8 | grep -a '^INFO ham' | head -n1)
 check "character_standing" "$( grep -q 'incap=true\|dead=true' <<<"$(lab "where:$CHAR" 8)" && echo 0 || echo 1 )" "$(grep -o 'health=[0-9/]*' <<<"$HAM")"
-"$SEAT" stop "$NAME" >/dev/null 2>&1
+cleanup   # the creature too: a leftover level-10 rat at the shared desert spot kills the next scenario's character
 trap - EXIT
 finish

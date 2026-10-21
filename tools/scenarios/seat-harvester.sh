@@ -92,7 +92,6 @@ UNITS1=$(lab "resourceUnits:$CHAR:$SNAME" | sed -n 's/.*units=\([0-9]*\).*/\1/p'
 check_eq "resource_in_inventory" "$(( ${UNITS1:-0} - ${UNITS0:-0} ))" "150" "$SNAME in the inventory ${UNITS0:-0} -> ${UNITS1:-0} units (an existing container takes the merge)"
 
 "$SEAT" harvester "$NAME" "$HOID" deactivate >/dev/null 2>&1 || true
-lab "structureDestroy:$HOID" >/dev/null 2>&1; HOID=""
-"$SEAT" stop "$NAME" >/dev/null 2>&1
+cleanup
 trap - EXIT
 finish
