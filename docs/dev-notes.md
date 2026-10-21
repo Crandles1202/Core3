@@ -186,6 +186,14 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-21 (morning) — the seat serves several drivers.** Teyla's re-seated pilot made every other `seat`
+  command time out: the seat served one driver connection at a time and a pilot keeps its connection for life, spending
+  most of it in 30 s `wait` calls (seen as `Zone::waitFor` on the seat thread in a `sudo gdb -p` backtrace — plain gdb
+  gets `ptrace: Operation not permitted`, yama scope 1). Now a thread per driver: `wait` blocks only on the zone's
+  condition, everything else runs under one lock, `quit` shuts the other drivers' sockets and joins. Also: the pilot's
+  log is line-buffered (a redirected stdout showed nothing for minutes), `seat prune` and `seat start` delete the
+  state directories scenario seats leave behind (106 of them this morning), and the NetStatusRequest exception the
+  trials lane flagged is engine3 on both sides (CLAUDE.md known noise).
 - **2026-10-21 (small hours) — Teyla's first wakes, the cast online, fighting on a seat.** Chuck's Console key arrived
   (`sk-ant-usr-…` works with the SDK; stored in `~/.env`, read by the pilot). First live `/tell` exchange: she answered
   in character but opened with her own name; the perception now carries `you` and `now` (first open milestone) and

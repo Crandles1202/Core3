@@ -46,6 +46,11 @@
 #include <errno.h>
 #include <string.h>
 #include <string>
+#include <thread>
+#include <mutex>
+#include <atomic>
+#include <vector>
+#include <set>
 
 class SeatAction : public ActionBase {
 	String socketPath;
@@ -54,11 +59,20 @@ class SeatAction : public ActionBase {
 	ActionResult result;
 	bool skipped;
 	bool failed;
-	int requests;
+	std::atomic<int> requests;
 	Time started;
 
+	// every driver gets its own thread (a pilot holds its connection for life and spends most of it in 30 s waits;
+	// with one driver at a time every other seat command queued behind it until it timed out): requests other than
+	// wait are serialized by handleLock, a wait blocks only on the zone's condition
+	std::mutex handleLock;
+	std::mutex driversLock;
+	std::set<int> driverFds;
+	std::vector<std::thread> driverThreads;
+	std::atomic<bool> stopping;
+
 public:
-	SeatAction() : timeoutSeconds(0), skipped(false), failed(false), requests(0) {
+	SeatAction() : timeoutSeconds(0), skipped(false), failed(false), requests(0), stopping(false) {
 		setLogLevel(Logger::INFO);
 		setLoggingName("Seat");
 	}
@@ -106,6 +120,9 @@ public:
 
 	// ===== The channel =====
 	void fail(const String& msg, uint16 code) {
+		std::lock_guard<std::mutex> guard(handleLock);
+		if (failed)
+			return;
 		error() << msg;
 		result.setError(msg, code);
 		failed = true;
@@ -175,7 +192,7 @@ public:
 				reply["sceneReady"] = core.zone->isSceneReady();
 				reply["connected"] = core.zone->isConnected();
 				reply["uptimeMs"] = started.miliDifference();
-				reply["requests"] = requests;
+				reply["requests"] = requests.load();
 			} else if (op == "action") {
 				if (!req.contains("action") || !req["action"].is_object() || !req["action"].contains("action")) {
 					reply["ok"] = false;
@@ -228,6 +245,7 @@ public:
 					reply["error"] = "wait needs a signal name";
 					return reply;
 				}
+				// the only request served outside handleLock (the caller decides by op)
 				bool fired = core.zone->waitFor(String(signal.c_str()).hashCode(), timeoutMs);
 				reply["ok"] = true;
 				reply["fired"] = fired;
@@ -266,12 +284,13 @@ public:
 				return false;
 			}
 
+			if (stopping)
+				return true;
 			if (!core.zone->isConnected()) {
 				fail("zone connection lost", 7);
 				return true;
 			}
 			if (timedOut()) {
-				info(true) << "seat timeout after " << timeoutSeconds << "s";
 				return true;
 			}
 			if (r == 0)
@@ -294,7 +313,12 @@ public:
 				JSONSerializationType reply;
 				try {
 					JSONSerializationType req = JSONSerializationType::parse(line);
-					reply = handle(core, req, quit);
+					if (req.value("op", std::string("")) == "wait") {
+						reply = handle(core, req, quit);
+					} else {
+						std::lock_guard<std::mutex> guard(handleLock);
+						reply = handle(core, req, quit);
+					}
 				} catch (const std::exception& e) {
 					reply = JSONSerializationType::object();
 					reply["ok"] = false;
@@ -305,7 +329,7 @@ public:
 				if (!writeAll(fd, reply.dump() + "\n"))
 					return false;
 				if (quit) {
-					info(true) << "quit requested after " << requests << " request(s)";
+					info(true) << "quit requested after " << requests.load() << " request(s)";
 					return true;
 				}
 			}
@@ -355,8 +379,7 @@ public:
 		started.updateToCurrentTime();
 		info(true) << "seat listening on " << socketPath << (timeoutSeconds > 0 ? " for " + String::valueOf(timeoutSeconds) + "s" : String(" until quit"));
 
-		bool done = false;
-		while (!done) {
+		while (!stopping) {
 			struct pollfd pfd;
 			pfd.fd = listenFd;
 			pfd.events = POLLIN;
@@ -382,14 +405,34 @@ public:
 			if (fd < 0)
 				continue;
 
-			info(true) << "driver connected";
-			done = serve(core, fd);
-			::close(fd);
-			info(true) << "driver disconnected";
+			std::lock_guard<std::mutex> guard(driversLock);
+			driverFds.insert(fd);
+			info(true) << "driver connected (" << (int) driverFds.size() << " now)";
+			driverThreads.emplace_back([this, &core, fd]() {
+				bool done = serve(core, fd);
+				::close(fd);
+				{
+					std::lock_guard<std::mutex> guard(driversLock);
+					driverFds.erase(fd);
+					info(true) << "driver disconnected (" << (int) driverFds.size() << " left)";
+				}
+				if (done)
+					stopping = true;
+			});
 		}
 
+		stopping = true;
 		::close(listenFd);
 		::unlink(socketPath.toCharArray());
+
+		// wake the drivers still blocked in read/poll so their threads end, then join them
+		{
+			std::lock_guard<std::mutex> guard(driversLock);
+			for (int fd : driverFds)
+				::shutdown(fd, SHUT_RDWR);
+		}
+		for (std::thread& t : driverThreads)
+			t.join();
 
 		if (!failed)
 			result.setSuccess();
@@ -405,7 +448,7 @@ public:
 		json["action"] = getName();
 		json["socket"] = socketPath.toCharArray();
 		json["timeout"] = timeoutSeconds;
-		json["requests"] = requests;
+		json["requests"] = requests.load();
 		if (skipped) {
 			json["status"] = "skipped";
 		} else if (result.isOK()) {

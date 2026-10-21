@@ -81,7 +81,10 @@ runs and tests. Host: WSL2 Debian 12.
 - Known baseline log noise (filtered by `swg logs --errors`): `[TemplateManager] ERROR - unknown appearance
   type SPRT` (upstream: the server's appearance loader has no sprite reader; fires when a character with
   randomized missions in their bag logs in), and `[MantisDatabase0] ERROR - 1045: Access denied for user 'swgemu'` (and the
-  matching `[Console]` line). Not ours; ignore when diffing ERROR lines.
+  matching `[Console]` line). Not ours; ignore when diffing ERROR lines. In `bin/log/core3.log` only: `handleNetStatusRequest
+  … StreamIndexOutOfBoundsException at 8` every 5 s per connected bot client — engine3's own `NetStatusRequestMessage` is
+  4 bytes (opcode + tick) while engine3's server handler reads the real client's longer form; the tick is parsed before
+  the throw, so nothing is lost. Both sides are in the submodule; not fixable from Core3.
 
 ## Working in parallel (several agents)
 

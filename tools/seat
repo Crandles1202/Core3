@@ -7,6 +7,8 @@ control channel on a unix socket (SeatAction, Phase 7.0). A pilot (7.3) sits on 
                                                         (password from ~/.swg-lab/<user>.pass; seat name defaults to the character)
   seat stop <name>                                     ask the seat to quit (logout follows) and wait for the client to exit
   seat list                                            seats with a live socket
+  seat prune [--all]                                   remove the state directories of dead scenario seats (lab*-NNNN; start does this
+                                                        too); --all removes every dead seat's directory, named citizens included
   seat ping <name>                                     round trip
   seat send <name> '<json request>'                    raw request, prints the reply
   seat do <name> <action> [key=value …]                {"op":"action","action":{"action":<action>,…}}; values parse as JSON when they can
@@ -380,7 +382,39 @@ def write_templates():
     return int(m.group(1))
 
 
+def seat_alive(name):
+    """True while the seat's client process is running."""
+    pidfile = os.path.join(SEATS, name, "pid")
+    try:
+        os.kill(int(open(pidfile).read()), 0)
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def prune_seats(everything=False):
+    """Delete the directories of dead seats (scenario seats lab*-NNNN by default, every dead seat with everything)."""
+    if not os.path.isdir(SEATS):
+        return 0
+    import shutil
+    n = 0
+    for name in os.listdir(SEATS):
+        if not everything and not re.fullmatch(r"lab[a-z]*-\d+", name):
+            continue
+        if seat_alive(name) or os.path.exists(os.path.join(SEATS, name, "sock")):
+            continue
+        shutil.rmtree(os.path.join(SEATS, name), ignore_errors=True)
+        n += 1
+    return n
+
+
+def cmd_prune(args):
+    n = prune_seats(everything="--all" in args)
+    print(f"pruned {n} dead seat director{'y' if n == 1 else 'ies'}")
+
+
 def cmd_start(args):
+    prune_seats()
     if not os.path.exists(TEMPLATES):
         write_templates()
     if len(args) < 2:
@@ -496,6 +530,8 @@ def main(argv):
         return cmd_stop(args)
     if cmd == "list":
         return cmd_list(args)
+    if cmd == "prune":
+        return cmd_prune(args)
     if cmd == "templates":
         return 0 if write_templates() else 1
     if cmd == "points":
