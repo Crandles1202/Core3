@@ -197,6 +197,12 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   log is line-buffered (a redirected stdout showed nothing for minutes), `seat prune` and `seat start` delete the
   state directories scenario seats leave behind (106 of them this morning), and the NetStatusRequest exception the
   trials lane flagged is engine3 on both sides (CLAUDE.md known noise).
+  **Citizens between tells:** `tools/citizens/crew up|down|status|log` runs any set of citizens (seat + pilot in the
+  background, pids under `~/.swg-lab/citizens/<name>/`). Teyla's first idle wake on the new rules still chose `rest`:
+  in town there is nothing to hunt and the plan said only "Master Rifleman" — so persona files now carry a
+  `## Playbook` (Teyla: the flats east of Mos Eisley; Wex: the gatherer's round and how to open a site), the
+  perception carries `xp` (lab `progress:<char>`: amount/cap per XP type) so a citizen can tell whether its work pays,
+  and the pilot logs the model's text (`{"text": …}` in log.jsonl) so a wake can be read afterwards.
 - **2026-10-21 (small hours) — Teyla's first wakes, the cast online, fighting on a seat.** Chuck's Console key arrived
   (`sk-ant-usr-…` works with the SDK; stored in `~/.env`, read by the pilot). First live `/tell` exchange: she answered
   in character but opened with her own name; the perception now carries `you` and `now` (first open milestone) and
