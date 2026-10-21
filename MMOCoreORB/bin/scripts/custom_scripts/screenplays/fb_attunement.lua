@@ -149,12 +149,16 @@ end
 
 function FbAttunement:reset(pPlayer)
 	for _, s in ipairs(self.sources) do deleteScreenPlayData(pPlayer, self.DATA, s) end
-	for _, f in ipairs({ "ghost25", "ghost50", "ghost75", "oldman", "called", "task", "incapAt", "incapDay", "medWorlds", "lore", "return", "trials", "ambushDue", "ambushDone" }) do deleteScreenPlayData(pPlayer, self.DATA, "flag:" .. f) end
+	for _, f in ipairs({ "ghost25", "ghost50", "ghost75", "oldman", "called", "task", "incapAt", "incapDay", "medWorlds", "lore", "return", "trials", "ambushDue", "ambushDone", "alignment", "padawan" }) do deleteScreenPlayData(pPlayer, self.DATA, "flag:" .. f) end
+	if FbTrials ~= nil then FbTrials:reset(pPlayer) end
 	deleteScreenPlayData(pPlayer, self.DATA, "ghostTier")
 	removeQuestStatus("FbAttunement.visit." .. SceneObject(pPlayer):getObjectID())
 	removeQuestStatus("FbAttunement.poll." .. SceneObject(pPlayer):getObjectID())
-	if FbForceGhostVisit ~= nil then clearStaleVisit(FbForceGhostVisit, pPlayer) end
-	if FbOldManVisit ~= nil then clearStaleVisit(FbOldManVisit, pPlayer) end
+	for _, V in ipairs({ FbForceGhostVisit, FbOldManVisit, FbOldManReturn, FbShadowAmbush }) do
+		if V ~= nil then
+			if SpawnMobiles.getSpawnedMobiles(pPlayer, V.taskName) ~= nil then V:doDespawn(pPlayer) else clearStaleVisit(V, pPlayer) end
+		end
+	end
 end
 
 function FbAttunement:tier(total)
@@ -166,7 +170,7 @@ function FbAttunement:status(pPlayer)
 	local st = { total = self:total(pPlayer), per = {}, raw = {}, flags = {} }
 	st.tier = self:tier(st.total)
 	for _, s in ipairs(self.sources) do st.per[s], st.raw[s] = self:sourceTotal(pPlayer, s) end
-	for _, f in ipairs({ "ghost25", "ghost50", "ghost75", "called", "task", "medWorlds", "lore", "return", "trials", "ambushDue", "ambushDone" }) do st.flags[f] = self:flag(pPlayer, f) end
+	for _, f in ipairs({ "ghost25", "ghost50", "ghost75", "called", "task", "medWorlds", "lore", "return", "trials", "ambushDue", "ambushDone", "alignment", "padawan" }) do st.flags[f] = self:flag(pPlayer, f) end
 	return st
 end
 
@@ -196,6 +200,7 @@ function FbAttunement:onEnterArea(pArea, pCreature)
 	if key == nil then return 0 end
 	self:grant(pCreature, "places", "visit:" .. key, kind == "shrine" and 3 or 8, "stir_place")
 	if kind == "shrine" then self:startMeditationWatch(pCreature, key) end
+	if kind == "shrine" and FbTrials ~= nil then FbTrials:onShrine(pCreature, key) end
 	self:maybeVisit(pCreature)
 	return 0
 end
@@ -382,6 +387,7 @@ function FbAttunement:onKill(pPlayer, pVictim)
 		self:setFlag(pPlayer, "incapAt", 0)
 	end
 	self:scanItems(pPlayer)
+	if FbTrials ~= nil then FbTrials:onKill(pPlayer, pVictim) end
 	-- the fight may still be on: look again in 20 s
 	createEvent(20000, "FbAttunement", "maybeVisitLater", pPlayer, "")
 	return 0
@@ -427,6 +433,10 @@ function FbAttunement:maybeVisit(pPlayer)
 			setQuestStatus("FbAttunement.visit." .. oid, tostring(os.time()))
 			return true
 		end
+	end
+	-- 4a.3: a trial in progress or due takes the trigger (after the hunters the Old Man warned about)
+	if FbTrials ~= nil and FbTrials:active(pPlayer) then
+		if FbTrials:tick(pPlayer) then return true end
 	end
 	if total >= 100 then
 		if self:flag(pPlayer, "called") == nil and self:flag(pPlayer, "oldman") == nil then
@@ -490,6 +500,10 @@ function FbAttunement:showStatus(pPlayer)
 	CreatureObject(pPlayer):sendSystemMessage("@fb_force:tier_" .. st.tier)
 	if st.flags.called ~= nil and st.flags.task == "shrines" then
 		local msg = LuaStringIdChatParameter("@fb_force:called_progress"); msg:setDI(self:worldCount(pPlayer))
+		CreatureObject(pPlayer):sendSystemMessage(msg:_getObject())
+	end
+	if st.flags.task == "trials" and FbTrials ~= nil then
+		local msg = LuaStringIdChatParameter("@fb_force:trials_progress"); msg:setDI(FbTrials:doneCount(pPlayer))
 		CreatureObject(pPlayer):sendSystemMessage(msg:_getObject())
 	end
 	local lore = self:loreCount(pPlayer)
@@ -602,9 +616,33 @@ function FbAttunement:sweepVisitor(pNpc)
 	local so = SceneObject(pNpc)
 	if so:getZoneName() == "" then return end
 	local oid = so:getObjectID()
+	printf("FbAttunement: sweeping visitor %d\n", oid)
 	so:destroyObjectFromWorld(true)
 	so:destroyObjectFromDatabase()
 	if FbLabTests ~= nil and FbLabTests.registryRemove ~= nil then FbLabTests.registryRemove(oid) end
+end
+
+-- The Encounter base schedules its despawn with the player as the key, so a timer left by an earlier visit
+-- (the Old Man's first, ten minutes) would despawn a later visitor of the same task. Every visit therefore
+-- carries a generation number, and a despawn event that names another generation is ignored.
+function FbAttunement.visitTaskStart(task, pPlayer)
+	if not task:isPlayerInPositionForEncounter(pPlayer) or CreatureObject(pPlayer):isDead() then return false end
+	if not task:createEncounter(pPlayer) then return false end
+	local gen = getRandomNumber(1000000)
+	writeData(SceneObject(pPlayer):getObjectID() .. ":fbVisitGen:" .. task.taskName, gen)
+	createEvent(task.encounterDespawnTime, task.taskName, "handleDespawnEvent", pPlayer, tostring(gen))
+	return true
+end
+function FbAttunement.visitGen(task, pPlayer) return readData(SceneObject(pPlayer):getObjectID() .. ":fbVisitGen:" .. task.taskName) end
+function FbAttunement.visitHandleDespawn(task, pPlayer, args)
+	if pPlayer == nil then return end
+	-- our visits always stamp their timers; an unstamped one is a leftover of the stock base (or of an older
+	-- build) and is ignored — the per-object sweep in recordVisitor is the backstop for anything stuck
+	if args == nil or args == "" or tonumber(args) ~= FbAttunement.visitGen(task, pPlayer) then return end
+	Encounter.handleDespawnEvent(task, pPlayer)
+end
+function FbAttunement.visitScheduleDespawn(task, pPlayer, ms)
+	if pPlayer ~= nil then createEvent(ms or 10000, task.taskName, "handleDespawnEvent", pPlayer, tostring(FbAttunement.visitGen(task, pPlayer))) end
 end
 
 -- ---------------------------------------------------------------- the robed spirit (25 / 50 / 75)
@@ -621,6 +659,8 @@ FbForceGhostVisit = Encounter:new {
 
 -- the Encounter base reads a missing isEncounterFinished as "already finished" and never spawns: say so explicitly
 function FbForceGhostVisit:isEncounterFinished(pPlayer) return false end
+function FbForceGhostVisit:taskStart(pPlayer) return FbAttunement.visitTaskStart(self, pPlayer) end
+function FbForceGhostVisit:handleDespawnEvent(pPlayer, args) FbAttunement.visitHandleDespawn(self, pPlayer, args) end
 function FbForceGhostVisit:onEncounterSpawned(pPlayer, spawned) recordVisitor(pPlayer, spawned, "fb_force_ghost", self.encounterDespawnTime) end
 
 function FbForceGhostVisit:onEncounterInRange(pPlayer, spawned)
@@ -676,10 +716,19 @@ FbOldManVisit = Encounter:new {
 }
 
 function FbOldManVisit:isEncounterFinished(pPlayer) return false end
-function FbOldManVisit:onEncounterSpawned(pPlayer, spawned) recordVisitor(pPlayer, spawned, "fb_old_man", self.encounterDespawnTime) end
+function FbOldManVisit:taskStart(pPlayer) return FbAttunement.visitTaskStart(self, pPlayer) end
+function FbOldManVisit:handleDespawnEvent(pPlayer, args) FbAttunement.visitHandleDespawn(self, pPlayer, args) end
+function FbOldManVisit:onEncounterSpawned(pPlayer, spawned)
+	recordVisitor(pPlayer, spawned, "fb_old_man", self.encounterDespawnTime)
+	createEvent(30000, self.taskName, "settle", pPlayer, "")   -- settles where it got to if the ground never lets it in range
+end
+function FbOldManVisit:settle(pPlayer)
+	if pPlayer ~= nil and FbTrials ~= nil and FbTrials.settleBeside ~= nil then FbTrials.settleBeside(pPlayer, SpawnMobiles.getSpawnedMobiles(pPlayer, self.taskName)) end
+end
 
 function FbOldManVisit:onEncounterInRange(pPlayer, spawned)
 	if pPlayer == nil or spawned == nil or spawned[1] == nil then return end
+	if FbTrials ~= nil and FbTrials.standStill ~= nil then FbTrials.standStill(spawned) end   -- stays put through a logout
 	local msg = LuaStringIdChatParameter("@fb_force:oldman_greeting")
 	msg:setTT(CreatureObject(pPlayer):getFirstName())
 	spatialChat(spawned[1], msg:_getObject())
@@ -690,9 +739,7 @@ function FbOldManVisit:belongsTo(pPlayer, pNpc)
 	return SpawnMobiles.isFromSpawn(pPlayer, self.taskName, pNpc)
 end
 
-function FbOldManVisit:scheduleDespawn(pPlayer)
-	if pPlayer ~= nil then createEvent(10 * 1000, self.taskName, "handleDespawnEvent", pPlayer, "") end
-end
+function FbOldManVisit:scheduleDespawn(pPlayer) FbAttunement.visitScheduleDespawn(self, pPlayer, 10 * 1000) end
 
 function FbOldManVisit:doDespawn(pPlayer) despawnVisitors(self, pPlayer) end
 
@@ -713,9 +760,18 @@ FbOldManReturn = Encounter:new {
 }
 
 function FbOldManReturn:isEncounterFinished(pPlayer) return false end
-function FbOldManReturn:onEncounterSpawned(pPlayer, spawned) recordVisitor(pPlayer, spawned, "fb_old_man", self.encounterDespawnTime) end
+function FbOldManReturn:taskStart(pPlayer) return FbAttunement.visitTaskStart(self, pPlayer) end
+function FbOldManReturn:handleDespawnEvent(pPlayer, args) FbAttunement.visitHandleDespawn(self, pPlayer, args) end
+function FbOldManReturn:onEncounterSpawned(pPlayer, spawned)
+	recordVisitor(pPlayer, spawned, "fb_old_man", self.encounterDespawnTime)
+	createEvent(30000, self.taskName, "settle", pPlayer, "")   -- settles where it got to if the ground never lets it in range
+end
+function FbOldManReturn:settle(pPlayer)
+	if pPlayer ~= nil and FbTrials ~= nil and FbTrials.settleBeside ~= nil then FbTrials.settleBeside(pPlayer, SpawnMobiles.getSpawnedMobiles(pPlayer, self.taskName)) end
+end
 function FbOldManReturn:onEncounterInRange(pPlayer, spawned)
 	if pPlayer == nil or spawned == nil or spawned[1] == nil then return end
+	if FbTrials ~= nil and FbTrials.standStill ~= nil then FbTrials.standStill(spawned) end   -- stays put through a logout
 	local msg = LuaStringIdChatParameter("@fb_force:oldman_return_greeting")
 	msg:setTT(CreatureObject(pPlayer):getFirstName())
 	spatialChat(spawned[1], msg:_getObject())
@@ -724,9 +780,7 @@ function FbOldManReturn:belongsTo(pPlayer, pNpc)
 	if pPlayer == nil or pNpc == nil then return false end
 	return SpawnMobiles.isFromSpawn(pPlayer, self.taskName, pNpc)
 end
-function FbOldManReturn:scheduleDespawn(pPlayer)
-	if pPlayer ~= nil then createEvent(10 * 1000, self.taskName, "handleDespawnEvent", pPlayer, "") end
-end
+function FbOldManReturn:scheduleDespawn(pPlayer) FbAttunement.visitScheduleDespawn(self, pPlayer, 10 * 1000) end
 function FbOldManReturn:doDespawn(pPlayer) despawnVisitors(self, pPlayer) end
 function FbOldManReturn:onEncounterDespawned(pPlayer)
 	if pPlayer ~= nil then removeQuestStatus("FbAttunement.visit." .. SceneObject(pPlayer):getObjectID()) end
@@ -746,6 +800,8 @@ FbShadowAmbush = Encounter:new {
 }
 
 function FbShadowAmbush:isEncounterFinished(pPlayer) return false end
+function FbShadowAmbush:taskStart(pPlayer) return FbAttunement.visitTaskStart(self, pPlayer) end
+function FbShadowAmbush:handleDespawnEvent(pPlayer, args) FbAttunement.visitHandleDespawn(self, pPlayer, args) end
 
 function FbShadowAmbush:onEncounterSpawned(pPlayer, spawned)
 	if pPlayer == nil or spawned == nil then return end
@@ -792,7 +848,7 @@ function FbShadowAmbush:onShadowDown(pMob, pKiller)
 	if left <= 0 and readData(oid .. ":fbAmbushPlayerDown") ~= 1 then
 		FbAttunement:setFlag(pPlayer, "ambushDone", os.time())
 		FbAttunement:grant(pPlayer, "deeds", "survive:ambush", 3, "shadow_survived")
-		createEvent(15000, self.taskName, "handleDespawnEvent", pPlayer, "")
+		FbAttunement.visitScheduleDespawn(self, pPlayer, 15000)
 	end
 	return 1
 end
@@ -802,7 +858,7 @@ function FbShadowAmbush:onPlayerDown(pPlayer)
 	-- they got you this time: no deed, and they will try again later
 	writeData(SceneObject(pPlayer):getObjectID() .. ":fbAmbushPlayerDown", 1)
 	FbAttunement:setFlag(pPlayer, "ambushDue", os.time() + 1800)
-	createEvent(20000, self.taskName, "handleDespawnEvent", pPlayer, "")
+	FbAttunement.visitScheduleDespawn(self, pPlayer, 20000)
 	return 1
 end
 

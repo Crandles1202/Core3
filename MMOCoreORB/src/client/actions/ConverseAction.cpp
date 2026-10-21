@@ -74,6 +74,7 @@ class ConverseAction : public ActionBase {
 		screensSeen++;
 		info() << "screen " << screensSeen << ": " << core.getVar("Conversation/message", String("<no text>"));
 		int count = core.getVar<int>("Conversation/optionCount", 0);
+		if (count < 0) count = 0;   // the option list never came (a screen that closes at once)
 		for (int i = 0; i < count; ++i) {
 			info() << "   [" << i << "] " << core.getVar("Conversation/options/" + String::valueOf(i), String(""));
 		}
@@ -155,16 +156,23 @@ public:
 		// reset state from any earlier conversation
 		core.vars.erase("Conversation");
 		core.vars[JSONSerializationType::json_pointer("/Conversation/transcript")] = JSONSerializationType::array();
+		core.setVar("Conversation/optionCount", -1);   // -1 = no option list yet (the StringList packet sets it)
 
 		info() << "starting conversation with " << npc;
 		sendCommand(core, "npcconversationstart", npc, "");
 
-		if (!waitForScreen(core, -1) || !core.hasVar("Conversation/npc")) {
+		// the screen's option list and the StartNpcConversation packet arrive in either order
+		if (!waitForScreen(core, -1)) {
 			result.setError("NPC " + String::valueOf(npc) + " did not start a conversation within " + String::valueOf(timeoutSeconds) + "s (out of range? not conversable?)", 3);
 			return;
 		}
-		// options usually trail the start packet by a few ms
-		Thread::sleep(300);
+		for (int waited = 0; !core.hasVar("Conversation/npc") && waited < 2000; waited += 50)
+			Thread::sleep(50);
+		if (!core.hasVar("Conversation/npc")) {
+			result.setError("NPC " + String::valueOf(npc) + " sent a screen but no conversation start", 3);
+			return;
+		}
+		Thread::sleep(100);   // lets the message text settle too
 		logScreen(core);
 
 		for (int i = 0; i < options.size(); ++i) {
@@ -175,6 +183,7 @@ public:
 
 			int pick = options.get(i);
 			int count = core.getVar<int>("Conversation/optionCount", 0);
+			if (count < 0) count = 0;
 			if (pick < 0 || pick >= count) {
 				result.setError("Option " + String::valueOf(pick) + " out of range (screen has " + String::valueOf(count) + ")", 5);
 				return;

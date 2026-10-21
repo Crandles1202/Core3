@@ -300,6 +300,27 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   fully validated position (one per second), posture upright/sitting/prone ok. 60 m at 4.5 m/s = 34 packets in
   16 s, server position exact. (7) `seat-walk` and `pilot-dry` pass; `pilot-dry` proves the loop, files and the
   seat round trip without a model.
+- **2026-10-20 — 4a.3 the Padawan trials.** Engine: a data table of eight trials and one `tick` that the
+  attunement trigger calls; a trial starts with "word from the old man" and completes through whichever
+  channel fits it (a 5 s position poll inside a shrine, a 10 s outdoors poll that combat resets, the kill hook,
+  a conversation, a shrine entry, an observer on the duel opponent). The visitors reuse the Village `Encounter`
+  recipe from 4a.1/4a.2 with the same two fixes (declare `isEncounterFinished`, stop the follow before
+  despawning). `awardSkill(pPlayer, name)` is the global the Village itself uses for the novice box; it skips
+  prerequisites. The duel opponent is chosen by `CreatureObject:getLevel()` at spawn (the Sith Shadow tiers
+  17 / 32 / 51 / 69). The riddle's right option differs per riddle so a client cannot always pick the first;
+  the lab reads the chosen riddle from the state and answers accordingly.
+  Three visitor bugs found by the riddle step, each only visible across a client logout: (1) the Village
+  `Encounter` base schedules its despawn with the *player* as the event key, so the ten-minute timer of an
+  earlier visit of the same task (the Old Man's first, a previous spirit) despawns whatever visitor stands
+  when it fires — every visit now writes a generation number (`<oid>:fbVisitGen:<task>`), stamps it into
+  its despawn events, and `handleDespawnEvent` ignores any other or unstamped stamp (the per-object sweep in
+  `recordVisitor` is the backstop); (2) a following agent whose target logs out leashes back to its spawn
+  point (`CLAUDE.md` gotcha) — once in range a visitor stops following, goes `AI_STATIC` and is re-homed where
+  it stands; (3) a follower's own z still carries its spawn height when it arrives, so the new home uses
+  `getTerrainHeightAt`, or the visitor snaps 16 m underground and no conversation can start. The Padawan box
+  is awarded on its own event (the last trial completes inside a kill observer) **after** `PlayerObject:setJediState(1)`:
+  without the Jedi state the skill manager refuses every `force_*` skill silently (a brawler box awards, the
+  novice box does not) — the Village sets the state the same way just before its own award.
 - **2026-10-20 — 4a.2 the shrines.** First feature built the parallel way: worktree `Core3-shrines`, branch
   `feature/shrines`, `swg bench use feature/shrines` to test. Content: 49 lore lines (five per world, four where a
   world has four shrines), keyed by shrine index so a shrine always says the same thing; the Old Man's return
@@ -940,3 +961,39 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 - **2026-10-16** — Lab set up: CLAUDE.md, docs/, `tools/swg`, test accounts, upstream merge (14
   commits) on `feature/test-lab`, baseline snapshot, 258/258 unit tests, 41/41 Lua content checks, bot
   smoke test. Phase 2.x uncommitted work parked on `feature/phase2-mos-eisley-npcs`.
+
+### 2026-10-21 — the trials gate after the rebase onto alice's merge
+
+- **Visitors stop past the conversation rule.** A following NPC (`AI_FOLLOW`) halts about 5.6–6.4 m from the
+  player; `NpcConversationStartCommand` wants ≤ 5 m (2-D, against the player's *last validated position*) and
+  line of sight. The Old Man's talk had passed before only by luck of the stop distance. `FbTrials.settleBeside`
+  (the 30 s settle of every visit) now moves a visitor farther than 4 m to 2.5 m on the same bearing.
+- **`SceneObject:teleport` did not move an AI agent** (probe `zz-oldman`: position unchanged after the call);
+  `switchZone(zone, x, z, y, 0)` + `setHomeLocation` does — the same pair the lab's `teleportObject` uses.
+- **The shared-wrapper gotcha, again:** `local ps = SceneObject(pPlayer)` kept across `SceneObject(pNpc)` reads
+  the NPC. settleBeside measured the visitor against itself (distance 0) for three runs before the probe
+  showed it. Take the numbers out first, then wrap the next object.
+- A `local function` must be defined *above* the function that calls it, or the call compiles as a nil
+  global (`settle … attempt to call a nil value (global 'settleBeside')`); the lab's `visitSettle:<char>`
+  runs the settle on demand, and the console state has no `SpawnMobiles` global (`require` it in oracles).
+- Scenarios share one character within the hour (the server's one-creation-per-hour rule): a scenario that
+  sets the cash (`cashSet`) must put it back, or the purchase scenarios after it fail with `no_credits`.
+- `rebase` conflicts in CLAUDE.md / BOARD.md / dev-notes.md between two agents' lanes: keep both sides.
+- **Bot client conversation race.** `StartNpcConversation` (0xDD) arrives first, the option list (`StringList`
+  0xE0) on its own packet a little later; `ConverseAction` waited a fixed 300 ms and then read 0 options on a
+  slow server (`Option 0 out of range (screen has 0)`, intermittent across the gate: riddle, prisoner, sacrifice).
+  Worse, the client can process the screen (message + `StringList`) *before* the `StartNpcConversation` packet,
+  so a start handler that resets the options wipes a list already received (the first fix did, and every
+  conversation then timed out). Now `ConverseAction` clears the conversation state and sets `optionCount = -1`
+  before it asks, the start packet only marks the conversation active, and the action waits for the list (or the
+  close) and then for the start. Not a server-side recognition failure, which is what three rounds of visitor
+  fixes assumed.
+- **Jedi manager functions cannot be wrapped from a screenplay.** Every thread's Lua state loads the screenplays
+  first and `jedi_manager.lua` + `village_jedi_manager.lua` later (`JediManager::loadConfiguration`, on first use
+  in that thread: `[JediManager] Thread N loaded.` in core3.log), so `VillageJediManager.checkForceStatusCommand`
+  set in `fb_attunement.lua` was overwritten and the stock `@jedi_spam:fs_progress_1` went out. It had passed in
+  earlier gates only because `swg test lua`'s `reloadscreenplays` re-ran the screenplays into states that already
+  held the manager. `JediManager.cpp` now runs `custom_scripts/managers/jedi/fb_jedi_hooks.lua` after the stock
+  files; Jedi-manager wrappers live there (Phase 4b will add more).
+- Bot client sessions log `handleNetStatusRequest … StreamIndexOutOfBoundsException at 8` every 5 s in core3.log
+  (not the console): the client's NetStatusRequest packet is short. Alice's lane (the client); harmless so far.

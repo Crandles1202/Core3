@@ -528,8 +528,9 @@ void ZonePacketHandler::handleObjectControllerMessage(Message* pack) {
 
 			core->setVar("Conversation/npc", npcID);
 			core->setVar("Conversation/active", true);
-			core->setVar("Conversation/optionCount", 0);
-			core->vars[JSONSerializationType::json_pointer("/Conversation/options")] = JSONSerializationType::array();
+			// the options are NOT reset here: the screen's NpcConversationMessage + StringList are often processed
+			// before this packet (gate 2026-10-21), so ConverseAction clears the state before it asks and waits for
+			// the StringList (optionCount leaves -1) or the close
 
 			info(true) << "StartNpcConversation npc=" << npcID << " starter=" << (int) starter;
 			zone->signal(STRING_HASHCODE("StartNpcConversation"));

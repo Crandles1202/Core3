@@ -301,6 +301,8 @@ end
 FbLabTests.eventNpcs = {
 	fb_force_ghost = { conversation = false, spawnedAtBoot = false },   -- Phase 4a.1
 	fb_old_man = { spawnedAtBoot = false },                             -- Phase 4a.1
+	fb_prisoner = { spawnedAtBoot = false },                            -- Phase 4a.3
+	fb_trial_spirit = { spawnedAtBoot = false },                        -- Phase 4a.3
 }
 
 function FbLabTests.checkNpc(npc)
@@ -794,6 +796,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkPlacement()
 		FbLabTests.checkWorldEdits()
 		FbLabTests.checkAttunement()
+		FbLabTests.checkTrials()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)
@@ -2573,6 +2576,118 @@ function FbLabTests:attunementAmbush(charName)
 	print("INFO attunementAmbush sent=" .. tostring(sent))
 	attunementLine(charName, pPlayer)
 	return tostring(sent)
+end
+
+-- ---------------------------------------------------------------- the Padawan trials (4a.3)
+
+local function trialsLine(charName, pPlayer)
+	print(string.format("INFO trials char=%s task=%s done=%s count=%d current=%s prog=%s target=%s riddle=%s alignment=%s padawan=%s novice=%s cash=%d",
+		charName, tostring(FbAttunement:flag(pPlayer, "task") or "-"), tostring(FbTrials:get(pPlayer, "done") or "-"), FbTrials:doneCount(pPlayer),
+		tostring(FbTrials:current(pPlayer) or "-"), tostring(FbTrials:get(pPlayer, "prog") or "-"), tostring(FbTrials:get(pPlayer, "target") or "-"),
+		tostring(FbTrials:get(pPlayer, "riddle") or "-"), tostring(FbAttunement:flag(pPlayer, "alignment") or "-"), tostring(FbAttunement:flag(pPlayer, "padawan") ~= nil),
+		tostring(CreatureObject(pPlayer):hasSkill("force_title_jedi_novice")), CreatureObject(pPlayer):getCashCredits()))
+end
+
+-- trials:<char> → the trial state
+function FbLabTests:trials(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	trialsLine(charName, pPlayer)
+	return tostring(FbTrials:doneCount(pPlayer))
+end
+
+-- trialsUnlock:<char> → as if the Old Man's return were accepted (task=trials)
+function FbLabTests:trialsUnlock(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	FbAttunement:trialsUnlocked(pPlayer)
+	-- the lab's unlock skips the Old Man's return, so the hunters he warned of are marked as already come:
+	-- the due ambush takes the trigger before a trial word and would interrupt a trials run (gate 2026-10-21)
+	FbAttunement:setFlag(pPlayer, "ambushDone", os.time())
+	trialsLine(charName, pPlayer)
+	return "ok"
+end
+
+-- trialTick:<char> → run the trigger (the word for the next trial, or its visitor)
+function FbLabTests:trialTick(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local sent = FbAttunement:maybeVisit(pPlayer)
+	print("INFO trialTick sent=" .. tostring(sent))
+	trialsLine(charName, pPlayer)
+	return tostring(sent)
+end
+
+-- trialProgress:<char>:<n> → set the current trial's progress counter (seconds or kills)
+function FbLabTests:trialProgress(charName, n)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	FbTrials:set(pPlayer, "prog", tonumber(n) or 0)
+	trialsLine(charName, pPlayer)
+	return "ok"
+end
+
+-- trialSetDone:<char>:<id,id,…> → mark trials done (and clear the current one)
+function FbLabTests:trialSetDone(charName, ids)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	FbTrials:set(pPlayer, "done", tostring(ids or ""))
+	FbTrials:clear(pPlayer, "current"); FbTrials:clear(pPlayer, "prog"); FbTrials:clear(pPlayer, "target")
+	trialsLine(charName, pPlayer)
+	return "ok"
+end
+
+-- cashSet:<char>:<credits> → set the character's cash (the sacrifice trial)
+-- visitSettle:<char>: run the visitors' settle now (what the 30 s event does) and report where each stands
+function FbLabTests:visitSettle(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local SpawnMobiles = require("utils.spawn_mobiles")
+	local px, py = SceneObject(pPlayer):getWorldPositionX(), SceneObject(pPlayer):getWorldPositionY()
+	for _, v in ipairs({ FbOldManVisit, FbOldManReturn, FbTrialSpirit }) do
+		if v ~= nil and v.settle ~= nil then
+			local spawned = SpawnMobiles.getSpawnedMobiles(pPlayer, v.taskName)
+			if spawned ~= nil and #spawned > 0 then
+				v:settle(pPlayer)
+				for _, pNpc in ipairs(spawned) do
+					if SpawnMobiles.isValidMobile(pNpc) then
+						local so = SceneObject(pNpc)
+						local dx, dy = so:getWorldPositionX() - px, so:getWorldPositionY() - py
+						print(string.format("INFO visitSettle task=%s oid=%s dist=%.1f x=%.1f y=%.1f ai=%s", v.taskName, tostring(so:getObjectID()), math.sqrt(dx * dx + dy * dy), so:getWorldPositionX(), so:getWorldPositionY(), tostring(CreatureObject(pNpc):getOptionsBitmask())))
+					end
+				end
+			end
+		end
+	end
+	return "ok"
+end
+
+function FbLabTests:cashSet(charName, amount)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local have = CreatureObject(pPlayer):getCashCredits()
+	local want = tonumber(amount) or 0
+	if want > have then CreatureObject(pPlayer):addCashCredits(want - have, true) elseif want < have then CreatureObject(pPlayer):subtractCashCredits(have - want) end
+	print("INFO cashSet cash=" .. CreatureObject(pPlayer):getCashCredits())
+	return tostring(CreatureObject(pPlayer):getCashCredits())
+end
+
+-- Lab check: the trials are wired and every trial has its word and done line in the string source
+function FbLabTests.checkTrials()
+	check("trials.loaded", FbTrials ~= nil and FbTrialPrisoner ~= nil and FbTrialSpirit ~= nil and FbTrialDuel ~= nil)
+	if FbTrials == nil then return end
+	check("trials.eight", #FbTrials.list == 8)
+	local f = io.open("../../tre-src/string/en/fb_force.stf.txt", "r")
+	if f ~= nil then
+		local text = f:read("a"); f:close()
+		local missing = {}
+		for _, t in ipairs(FbTrials.list) do
+			for _, k in ipairs({ "word", "done" }) do
+				if not text:find(string.format("\ntrial_%s_%s = ", t.id, k), 1, true) then missing[#missing + 1] = t.id .. "_" .. k end
+			end
+		end
+		check("trials.strings", #missing == 0, #missing == 0 and "word + done for all eight" or ("missing: " .. table.concat(missing, ", ")))
+	end
 end
 
 -- attunementSit:<char>[:stand] → seat (or stand) the character server-side, the way /sit would
