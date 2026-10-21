@@ -3856,6 +3856,11 @@ String PlayerObjectImplementation::getPlayedTimeString(bool verbose) const {
 }
 
 void PlayerObjectImplementation::createHelperDroid() {
+	// Final Boss: Core3.PlayerObject.HelperDroid = false switches the new-player helper droid off (it follows every
+	// character under a day old and opens its windows on a timer — every lab bot and every new citizen got it)
+	if (!ConfigManager::instance()->getBool("Core3.PlayerObject.HelperDroid", true))
+		return;
+
 	// Only spawn droid if character is less than 1 days old
 	if (getCharacterAgeInDays() >= 1 || isPrivileged())
 		return;
