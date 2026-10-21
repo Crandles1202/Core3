@@ -2217,6 +2217,20 @@ function FbLabTests:deedValues(oid, rate, hopper)
 	return "ok"
 end
 
+-- walkNpc:<oid>:<x>:<y> → an AI agent walks there (setNextPosition, home moved too): real movement packets for
+-- anyone watching, unlike moveNpc/teleportObject which re-create the object.
+function FbLabTests:walkNpc(oid, x, y)
+	local p = getSceneObject(tonumber(oid))
+	if p == nil or not SceneObject(p):isAiAgent() then print("ERROR walkNpc: no AI agent " .. tostring(oid)); return "none" end
+	x, y = tonumber(x), tonumber(y)
+	local z = getTerrainHeightAt(SceneObject(p):getZoneName(), x, y)
+	AiAgent(p):setHomeLocation(x, z, y, nil)
+	AiAgent(p):stopWaiting()
+	AiAgent(p):setNextPosition(x, z, y, 0)
+	print(string.format("INFO walkNpc oid=%s x=%.1f y=%.1f z=%.1f", tostring(oid), x, y, z))
+	return "ok"
+end
+
 -- structureDestroy:<oid> → tear a structure down the proper way (DestroyStructureTask: lot refunded, owner list
 -- updated), for scenario cleanup.
 function FbLabTests:structureDestroy(oid)

@@ -44,11 +44,17 @@ COUNT=$(sed -n 's/^\([0-9]*\) objects$/\1/p' <<<"$OBJS")
 check_gt "objects_listed" "${COUNT:-0}" 0 "${COUNT:-0} objects in view"
 check "self_in_objects" "$( grep -q "^ *$CHAR_OID " <<<"$OBJS" && echo 1 || echo 0 )" "own creature is in the list"
 
-# others move around us (the helper droid that follows a new character, patrols, ambient life): the client
-# keeps their positions current from UpdateTransformMessage, counted in Moves/count
+# others move around us: the client keeps their positions current from UpdateTransformMessage, counted in
+# Moves/count. A stormtrooper spawned 10 m away is sent walking 8 m (real movement packets, not a re-create).
+POS=$(lab "where:$CHAR" 8 | grep -a '^INFO where' | head -n1)
+PX=$(sed -n 's/.*[[:space:]]x=\(-\{0,1\}[0-9.]*\).*/\1/p' <<<"$POS"); PY=$(sed -n 's/.*[[:space:]]y=\(-\{0,1\}[0-9.]*\).*/\1/p' <<<"$POS")
+WALKER=$(lab "spawnNpcAt:stormtrooper:tatooine:$(awk -v x="$PX" 'BEGIN{print x+10}'):$PY:0" | sed -n 's/.*oid=\([0-9]*\).*/\1/p' | head -n1)
+sleep 1
+lab "walkNpc:$WALKER:$(awk -v x="$PX" 'BEGIN{print x+18}'):$PY" >/dev/null
 "$SEAT" wait "$NAME" UpdateTransform 15000 >/dev/null 2>&1 || true
 MOVES=$("$SEAT" vars "$NAME" /Moves 2>&1 | sed -n 's/.*"count": \([0-9]*\).*/\1/p' | head -n1)
-check_ge "others_movement_decoded" "${MOVES:-0}" 1 "Moves/count=${MOVES:-0} within 15 s"
+check_ge "others_movement_decoded" "${MOVES:-0}" 1 "Moves/count=${MOVES:-0} within 15 s of a stormtrooper (oid ${WALKER:-?}) walking 8 m"
+[ -n "$WALKER" ] && lab "destroyObject:$WALKER" >/dev/null 2>&1
 
 # a slash command through the channel (sit: the posture command, no queue ack)
 CMD=$("$SEAT" cmd "$NAME" sitServer --nowait 2>&1)
