@@ -27,6 +27,7 @@
  * the channel: they would break the session the seat is keeping.
  */
 
+#include <signal.h>
 #include "client/ActionBase.h"
 #include "client/ActionResult.h"
 #include "client/ActionManager.h"
@@ -312,6 +313,9 @@ public:
 	}
 
 	void run(ClientCore& core) override {
+		// a driver that drops the channel mid-request (a stopped pilot) must not take the seat down: without this the
+		// write of the pending reply to the closed socket raises SIGPIPE and the client dies with its character
+		::signal(SIGPIPE, SIG_IGN);
 		if (core.zone == nullptr || !core.zone->isConnected() || !core.zone->isSceneReady()) {
 			result.setError("Not in the zone (seat needs a zoned-in character)", 1);
 			return;

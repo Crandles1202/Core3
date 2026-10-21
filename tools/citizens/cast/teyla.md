@@ -1,6 +1,6 @@
 # Teyla Vosk
 
-_Draft persona from docs/Citizens-Cast.md (pending Chuck's check-off). The pilot reads this whole file as the persona;
+_Persona from docs/Citizens-Cast.md (approved by Chuck 2026-10-21). The pilot reads this whole file as the persona;
 the "## Life plan" section at the end seeds ~/.swg-lab/citizens/teyla/plan.md once._
 
 - **Species / sex:** Human, female. Mid-thirties, cropped hair, a burn scar on the left hand she does not explain.

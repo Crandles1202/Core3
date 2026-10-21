@@ -265,15 +265,15 @@ in Theed, a second Imperial (a stormtrooper sergeant) in Keren, a Teras Kasi mas
 
 | Citizen | Chuck | Notes |
 |---|---|---|
-| Teyla Vosk | ☐ | |
-| Dorran Hask | ☐ | |
-| Ren Quillo | ☐ | |
-| Suri Nuru | ☐ | |
-| Brakk Orrun | ☐ | |
-| Ilva Marrow | ☐ | |
-| Vel Danner | ☐ | |
-| Oona Tesk | ☐ | |
-| Garruk Thane | ☐ | |
-| Lira Enwen | ☐ | |
-| Wex Toren | ☐ | gatherer, added 2026-10-20 (resources are galaxy-wide and transient) |
-| Osra Brenn | ☐ | gatherer, added 2026-10-20 |
+| Teyla Vosk | ☑ 2026-10-21 | |
+| Dorran Hask | ☑ 2026-10-21 | |
+| Ren Quillo | ☑ 2026-10-21 | |
+| Suri Nuru | ☑ 2026-10-21 | |
+| Brakk Orrun | ☑ 2026-10-21 | |
+| Ilva Marrow | ☑ 2026-10-21 | |
+| Vel Danner | ☑ 2026-10-21 | |
+| Oona Tesk | ☑ 2026-10-21 | |
+| Garruk Thane | ☑ 2026-10-21 | |
+| Lira Enwen | ☑ 2026-10-21 | |
+| Wex Toren | ☑ 2026-10-21 | gatherer, added 2026-10-20 (resources are galaxy-wide and transient) |
+| Osra Brenn | ☑ 2026-10-21 | gatherer, added 2026-10-20 |
