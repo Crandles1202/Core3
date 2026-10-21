@@ -237,8 +237,10 @@ def walk_seat(s, char, x, y, cell=0, speed=4.5, within=None, z=None):
     points = path_within(char, x, y, within, cell, z) if within else path_from_server(char, x, y, cell)
     if not points:
         return {"ok": False, "error": f"no path for {char} to {x},{y}" + (f" in cell {cell}" if cell else "") + (f" (within {within} m)" if within else "")}
-    print(f"path: {len(points)} points, {path_length(points):.0f} m" + (" (ends indoors)" if points[-1][3] else ""))
-    return s.action("walk", points=points, speed=speed)
+    length = path_length(points)
+    print(f"path: {len(points)} points, {length:.0f} m" + (" (ends indoors)" if points[-1][3] else ""))
+    # the walk blocks until the character arrives: wait for it (a 1.5 km walk is 5.5 min at 4.5 m/s), with a margin
+    return s.action("walk", points=points, speed=speed, timeout=length / speed + 60)
 
 
 def travel_seat(s, name, to_planet, to_point, from_point=None, round_trip=False, max_wait=240):
@@ -337,18 +339,22 @@ class Seat:
         if timeout is not None:
             self.sock.settimeout(timeout)
         self.sock.sendall((json.dumps(req) + "\n").encode())
-        while b"\n" not in self.buf:
-            chunk = self.sock.recv(65536)
-            if not chunk:
-                die(f"seat '{self.name}' closed the channel")
-            self.buf += chunk
-        line, self.buf = self.buf.split(b"\n", 1)
-        return json.loads(line.decode())
+        while True:
+            while b"\n" not in self.buf:
+                chunk = self.sock.recv(65536)
+                if not chunk:
+                    die(f"seat '{self.name}' closed the channel")
+                self.buf += chunk
+            line, self.buf = self.buf.split(b"\n", 1)
+            reply = json.loads(line.decode())
+            # a reply to an earlier request that timed out on our side (a long walk) must not be taken for this one
+            if reply.get("id") in (None, req["id"]):
+                return reply
 
-    def action(self, action, **fields):
+    def action(self, action, timeout=120, **fields):
         body = {"action": action}
         body.update(fields)
-        return self.request({"op": "action", "action": body}, timeout=120)
+        return self.request({"op": "action", "action": body}, timeout=timeout)
 
     def close(self):
         self.sock.close()

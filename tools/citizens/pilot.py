@@ -316,7 +316,8 @@ def seat_tools(seat, files, character_name, seat_name):
         return seat.action("survey", tool=tool["oid"], resource=resource)
 
     def sample(resource, rounds):
-        return seat.action("sample", resource=resource, rounds=max(1, min(int(rounds), 6)))
+        n = max(1, min(int(rounds), 6))
+        return seat.action("sample", resource=resource, rounds=n, timeout=30 * n + 30)
 
     def place_harvester(deed_fragment, x, y):
         deed = _find_object(deed_fragment, 0x800002) or _find_object(deed_fragment)

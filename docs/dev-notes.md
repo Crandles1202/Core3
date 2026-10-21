@@ -203,6 +203,13 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   `## Playbook` (Teyla: the flats east of Mos Eisley; Wex: the gatherer's round and how to open a site), the
   perception carries `xp` (lab `progress:<char>`: amount/cap per XP type) so a citizen can tell whether its work pays,
   and the pilot logs the model's text (`{"text": …}` in log.jsonl) so a wake can be read afterwards.
+  **First real walks (14:00):** Teyla set off for the flats (535 m) and Wex for a steel spot (1.5 km), both logged
+  "timed out": the seat's walk blocks until arrival but the driver's socket timeout was 120 s, and the late reply was
+  then read as the answer to the *next* request ("no self in view"). Now `Seat.request` drops replies whose id is not
+  the request's, `walk_seat` waits length/speed + 60 s, `sample` 30 s per round, and the seat answers `ping`/`quit`
+  outside the action lock so a seat can be stopped mid-walk. `citizen outfit` gave Wex three ore deeds and 6000 wind;
+  Teyla already carried a CDEF rifle (equipped now). Lock lesson: the bench copy of `tools/swg` locks as "bench" and
+  the worktree's tools are then refused as "alice" — the pilot's lab calls failed silently all morning.
 - **2026-10-21 (small hours) — Teyla's first wakes, the cast online, fighting on a seat.** Chuck's Console key arrived
   (`sk-ant-usr-…` works with the SDK; stored in `~/.env`, read by the pilot). First live `/tell` exchange: she answered
   in character but opened with her own name; the perception now carries `you` and `now` (first open milestone) and

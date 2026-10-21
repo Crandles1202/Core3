@@ -341,7 +341,10 @@ public:
 				JSONSerializationType reply;
 				try {
 					JSONSerializationType req = JSONSerializationType::parse(line);
-					if (req.value("op", std::string("")) == "wait") {
+					std::string op = req.value("op", std::string(""));
+					// wait blocks only on the zone's condition; ping and quit touch nothing an action touches — all three are
+					// answered while another driver's long action (a five-minute walk) holds the lock
+					if (op == "wait" || op == "ping" || op == "quit") {
 						reply = handle(core, req, quit);
 					} else {
 						std::lock_guard<std::mutex> guard(handleLock);
