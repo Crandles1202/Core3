@@ -253,6 +253,75 @@ def seat_tools(seat, files, character_name, seat_name):
                     "departure": reply.get("departure"), "waitedS": reply.get("waitedS")}
         return {"ok": False, "error": reply.get("error"), "step": reply.get("step")}
 
+    def _objects():
+        return seat.request({"op": "objects"}).get("objects", [])
+
+    def _find_object(fragment, otype=None):
+        for o in _objects():
+            if (otype is None or o["type"] == otype) and fragment in o["name"]:
+                return o
+        return None
+
+    def resources_here(resource_class):
+        """the resource oracle for the planet the character is on (the citizens' spreadsheet)"""
+        seat_mod = load_seat_module()
+        planet = seat.request({"op": "vars", "path": "/Scene/terrain"}).get("vars")
+        if not isinstance(planet, str):
+            return {"ok": False, "error": "planet unknown (no scene yet)"}
+        rows = []
+        for line in seat_mod.lab(f"resources:{planet}" + (f":{resource_class}" if resource_class else ""), 40).splitlines():
+            if line.startswith("INFO resource "):
+                f = seat_mod.lab_fields(line)
+                best = (f.get("best") or "").split(";")[0].split(",")
+                attrs = dict(kv.split("=", 1) for kv in (f.get("attrs") or "").split(",") if "=" in kv)
+                rows.append({"name": f.get("name"), "class": f.get("class"), "family": f.get("family"), "tool": f.get("tool"),
+                             "best": {"x": float(best[0]), "y": float(best[1]), "density": float(best[2])} if len(best) >= 3 else None,
+                             "attributes": attrs})
+        return {"ok": True, "planet": planet, "resources": rows[:40]}
+
+    def survey(resource):
+        tool = _find_object("survey_tool")
+        if tool is None:
+            return {"ok": False, "error": "no survey tool in the inventory"}
+        return seat.action("survey", tool=tool["oid"], resource=resource)
+
+    def sample(resource, rounds):
+        return seat.action("sample", resource=resource, rounds=max(1, min(int(rounds), 6)))
+
+    def place_harvester(deed_fragment, x, y):
+        deed = _find_object(deed_fragment, 0x800002) or _find_object(deed_fragment)
+        if deed is None:
+            return {"ok": False, "error": f"no deed matching '{deed_fragment}' in the inventory"}
+        return seat.action("place", deed=deed["oid"], x=float(x), y=float(y), angle=0)
+
+    def harvester(oid, op, resource, amount):
+        fields = {"target": int(oid), "op": op}
+        if op == "select":
+            fields["resource"] = int(resource)
+        elif op in ("maintain", "power"):
+            fields["amount"] = int(amount)
+        elif op == "empty":
+            fields["resource"] = int(resource); fields["quantity"] = int(amount)
+        return seat.action("harvester", **fields)
+
+    def harvester_status(oid):
+        seat_mod = load_seat_module()
+        out = seat_mod.lab(f"harvester:{int(oid)}", 15)
+        head = next((l for l in out.splitlines() if l.startswith("INFO harvester")), None)
+        if not head:
+            return {"ok": False, "error": "no such structure"}
+        status = seat_mod.lab_fields(head)
+        status["hopper"] = [seat_mod.lab_fields(l) for l in out.splitlines() if l.startswith("INFO hopper")]
+        status["ok"] = True
+        return status
+
+    def my_structures():
+        seat_mod = load_seat_module()
+        out = seat_mod.lab(f"structures:{character_name}", 15)
+        rows = [seat_mod.lab_fields(l) for l in out.splitlines() if l.startswith("INFO structure")]
+        lots = next((seat_mod.lab_fields(l).get("remaining") for l in out.splitlines() if l.startswith("INFO lots")), None)
+        return {"ok": True, "structures": rows, "lotsRemaining": lots}
+
     def remember(note):
         files.remember(note)
         return {"ok": True}
@@ -271,6 +340,8 @@ def seat_tools(seat, files, character_name, seat_name):
 
     impl = {
         "say": say, "tell": tell, "emote": emote, "walk_to": walk_to, "travel_to": travel_to,
+        "resources_here": resources_here, "survey": survey, "sample": sample, "place_harvester": place_harvester,
+        "harvester": harvester, "harvester_status": harvester_status, "my_structures": my_structures,
         "remember": remember, "complete_milestone": complete_milestone, "change_plan": change_plan, "rest": rest,
     }
     schema = [
@@ -284,6 +355,20 @@ def seat_tools(seat, files, character_name, seat_name):
          "input_schema": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "required": ["x", "y"], "additionalProperties": False}, "strict": True},
         {"name": "travel_to", "description": "Take the shuttle to a travel point: walk to the nearest terminal, buy a ticket (a few hundred credits), board when the shuttle lands. Points are named like Mos_Eisley_Starport, Coronet_Starport, Theed_Starport, Bestine_Shuttleport; another planet needs a starport on both ends. Takes minutes.",
          "input_schema": {"type": "object", "properties": {"planet": {"type": "string"}, "point": {"type": "string"}}, "required": ["planet", "point"], "additionalProperties": False}, "strict": True},
+        {"name": "resources_here", "description": "What resources are currently spawning on this planet (name, class, best spot and density, stats). Class filters: mineral, chemical, flora, gas, water, wind, solar, or empty for all.",
+         "input_schema": {"type": "object", "properties": {"resource_class": {"type": "string"}}, "required": ["resource_class"], "additionalProperties": False}, "strict": True},
+        {"name": "survey", "description": "Survey a resource by name with the survey tool you carry: tells how rich it is around you and the best nearby point.",
+         "input_schema": {"type": "object", "properties": {"resource": {"type": "string"}}, "required": ["resource"], "additionalProperties": False}, "strict": True},
+        {"name": "sample", "description": "Sample a resource by name where you stand (needs a survey of it first; each round takes ~25 s and yields a few units when the concentration is good).",
+         "input_schema": {"type": "object", "properties": {"resource": {"type": "string"}, "rounds": {"type": "integer"}}, "required": ["resource", "rounds"], "additionalProperties": False}, "strict": True},
+        {"name": "place_harvester", "description": "Place a harvester from a deed you carry (name fragment such as 'harvester_ore') at a world spot within 100 m, outdoors and outside cities. Uses a lot.",
+         "input_schema": {"type": "object", "properties": {"deed_fragment": {"type": "string"}, "x": {"type": "number"}, "y": {"type": "number"}}, "required": ["deed_fragment", "x", "y"], "additionalProperties": False}, "strict": True},
+        {"name": "harvester", "description": "Operate a harvester you own while standing next to it. op: resources (what it can extract here, with density), select (resource = spawn oid from resources), activate, deactivate, maintain (amount = credits), power (amount = energy units from wind/solar containers you carry), empty (resource = spawn oid, amount = units from the hopper into your inventory). Pass 0 for unused fields.",
+         "input_schema": {"type": "object", "properties": {"oid": {"type": "integer"}, "op": {"type": "string"}, "resource": {"type": "integer"}, "amount": {"type": "integer"}}, "required": ["oid", "op", "resource", "amount"], "additionalProperties": False}, "strict": True},
+        {"name": "harvester_status", "description": "A harvester's state: active, active resource, maintenance and power left and their hourly rates, hopper contents.",
+         "input_schema": {"type": "object", "properties": {"oid": {"type": "integer"}}, "required": ["oid"], "additionalProperties": False}, "strict": True},
+        {"name": "my_structures", "description": "The structures you own (oid, planet, position, active) and the lots you have left.",
+         "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},
         {"name": "remember", "description": "Write a note into your long-term memory (people met, promises, what happened).",
          "input_schema": {"type": "object", "properties": {"note": {"type": "string"}}, "required": ["note"], "additionalProperties": False}, "strict": True},
         {"name": "complete_milestone", "description": "Tick a milestone of your life plan, quoting its text exactly.",
