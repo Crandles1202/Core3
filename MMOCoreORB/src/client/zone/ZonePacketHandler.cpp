@@ -202,6 +202,25 @@ void ZonePacketHandler::handleMessage(Message* pack) {
 		break;
 	case 9:
 		switch (opcode) {
+		case 0x1B24F808: { // UpdateTransformMessage: another object moved outdoors (oid, x/z/y as shorts ×4, moveCount, speed, yaw)
+			what = "UpdateTransformMessage";
+			uint64 objectID = pack->parseLong();
+			float x = pack->parseSignedShort() / 4.f, z = pack->parseSignedShort() / 4.f, y = pack->parseSignedShort() / 4.f;
+			uint32 moveCount = pack->parseInt();
+			uint8 speed = pack->parseByte();
+			handleObjectMoved(objectID, 0, x, z, y, moveCount, speed);
+			break;
+		}
+		case 0xC867AB5A: { // UpdateTransformWithParentMessage: the same inside a cell (parent, oid, shorts ×8, …)
+			what = "UpdateTransformWithParentMessage";
+			uint64 parentID = pack->parseLong();
+			uint64 objectID = pack->parseLong();
+			float x = pack->parseSignedShort() / 8.f, z = pack->parseSignedShort() / 8.f, y = pack->parseSignedShort() / 8.f;
+			uint32 moveCount = pack->parseInt();
+			uint8 speed = pack->parseByte();
+			handleObjectMoved(objectID, parentID, x, z, y, moveCount, speed);
+			break;
+		}
 		CASE_OPCODE("CmdStartScene");
 			handleCmdStartScene(pack);
 			break;
@@ -239,6 +258,25 @@ void ZonePacketHandler::handleClientPermissionsMessage(Message* pack) {
 	info(true) << "    canCreateCharacter = " << canCreateRegularCharacter;
 	info(true) << "    canCreateJedi = " << canCreateJediCharacter;
 	info(true) << "    canSkipTutorial = " << canSkipTutorial;
+}
+
+// Final Boss (7.2): keep the positions of the people and creatures around us current, so a seat's `objects`
+// shows where they are now, not where they were created. The server sends these only for others (our own moves
+// come back as 0x71/0xF1 teleports when it disagrees). Moves/count and Moves/last/<oid> are for perception.
+void ZonePacketHandler::handleObjectMoved(uint64 objectID, uint64 parentID, float x, float z, float y, uint32 moveCount, uint8 speed) {
+	SceneObject* object = zone->getObject(objectID);
+	if (object == nullptr)
+		return;
+	{
+		Locker lock(object);
+		object->setPosition(x, z, y);
+		if (parentID != 0)
+			object->setParent(zone->getObject(parentID));
+		else
+			object->setParent(nullptr);
+	}
+	core->setVar("Moves/count", core->getVar<int>("Moves/count", 0) + 1);
+	zone->signal(STRING_HASHCODE("UpdateTransform"));
 }
 
 void ZonePacketHandler::handleCmdStartScene(Message* pack) {
