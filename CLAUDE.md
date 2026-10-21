@@ -148,6 +148,7 @@ tools/seat fight <seat> <target oid> [--max S] [--reach M]   # close, attack unt
                                 # a seat (Phase 7.0): core3client kept logged in, driven over ~/.swg-lab/seats/<name>/sock
 tools/citizens/pilot.py run <citizen> [--seat N] [--dry] [--ticks N] | show <citizen>   # the pilot (7.3) on a seat
 tools/citizens/citizen new <citizen> | status | list | directory    # account + character + veteran start (7.2; new = DB write, ask Chuck)
+tools/citizens/crew up [names|all] [--idle S] [--dry] | down | status | log <citizen>   # seat + pilot a set of citizens in the background, and take them down
 ```
 
 - Lua content checks live in `bin/scripts/custom_scripts/screenplays/fb_lab_tests.lua` (wraps `spawnMobile`
@@ -390,8 +391,8 @@ _Updated: 2026-10-20 (sessions 3–5: Phase 2.12 tooling complete — Lab Remote
   `https://github.com/Crandles1202/Core3.git`. Only `origin/unstable` remains on the fork.
 - [x] **Chuck (Phase 7), done 2026-10-21:** cast checked off (all twelve), `ANTHROPIC_API_KEY` in `~/.env` (a
   Console key; the pilot reads the file), Haiku 5.5 drives the citizens. Teyla's first wakes answered Chuck's tells
-  in character. To talk to her: seat her (`tools/seat start teyla-vosk Teyla --name teyla`), run
-  `tools/citizens/pilot.py run teyla --seat teyla --idle 300`, then `/tell Teyla …` from the client.
+  in character. To talk to her: `tools/citizens/crew up teyla` (seat + pilot in the background; `crew up all` wakes the
+  whole cast, `crew status`, `crew down`), then `/tell Teyla …` from the client.
 - [ ] **Chuck play-test checklist (2026-10-17 build):** (1.9) take mind damage, use a stimpack, examine
   it — mind listed and healed; (1.5) drop a 90th item into the inventory — server allows it, counter may
   read "90/80"; (1.4) open a mission terminal — creator column reads `Name [Lvl N - 1.4km NE]`, check the

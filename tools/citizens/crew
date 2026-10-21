@@ -1,0 +1,203 @@
+#!/usr/bin/env python3
+"""
+tools/citizens/crew — seat and pilot the citizens as a group (Phase 7, Final Boss).
+
+  crew up [<citizen>…|all] [--idle S] [--model ID] [--dry]   seat each citizen (tools/seat start) and start its pilot in
+                                                            the background; logs in ~/.swg-lab/citizens/<name>/pilot.log
+  crew down [<citizen>…|all]                                stop the pilots (by pid) and the seats
+  crew status                                               seat up? pilot running? last wake, per citizen
+  crew log <citizen> [lines]                                tail of a pilot's log
+
+Citizens come from tools/citizens/directory.json (account + character). With no names, up/down act on every citizen
+with a character. A citizen already seated or piloted is left alone by up; down is safe to repeat.
+"""
+import json
+import os
+import signal
+import subprocess
+import sys
+import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(os.path.dirname(HERE))
+SEAT = os.path.join(REPO, "tools", "seat")
+PILOT = os.path.join(HERE, "pilot.py")
+DIRECTORY = os.path.join(HERE, "directory.json")
+LABDIR = os.environ.get("SWG_LABDIR", os.path.expanduser("~/.swg-lab"))
+
+
+def die(msg, code=1):
+    print(f"crew: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def directory():
+    try:
+        return json.load(open(DIRECTORY))
+    except OSError:
+        die(f"no {DIRECTORY}: create citizens with tools/citizens/citizen new first")
+
+
+def citizen_dir(name):
+    d = os.path.join(LABDIR, "citizens", name)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def pid_alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except (OSError, TypeError):
+        return False
+
+
+def seat_pid(name):
+    try:
+        return int(open(os.path.join(LABDIR, "seats", name, "pid")).read())
+    except (OSError, ValueError):
+        return None
+
+
+def seat_up(name):
+    pid = seat_pid(name)
+    return pid is not None and pid_alive(pid) and os.path.exists(os.path.join(LABDIR, "seats", name, "sock"))
+
+
+def pilot_pid(name):
+    try:
+        return int(open(os.path.join(citizen_dir(name), "pilot.pid")).read())
+    except (OSError, ValueError):
+        return None
+
+
+def pilot_up(name):
+    pid = pilot_pid(name)
+    return pid is not None and pid_alive(pid)
+
+
+def pick(args, dirmap):
+    names = [a for a in args if not a.startswith("--")]
+    if not names or names == ["all"]:
+        return sorted(n for n, c in dirmap.items() if c.get("character"))
+    for n in names:
+        if n not in dirmap:
+            die(f"unknown citizen '{n}' (directory: {', '.join(sorted(dirmap))})")
+    return names
+
+
+def opt(args, flag, default=None):
+    if flag in args:
+        i = args.index(flag)
+        if i + 1 < len(args):
+            return args[i + 1]
+    return default
+
+
+def cmd_up(args):
+    dirmap = directory()
+    names = pick(args, dirmap)
+    idle = opt(args, "--idle", "300")
+    model = opt(args, "--model")
+    dry = "--dry" in args
+    for name in names:
+        c = dirmap[name]
+        if not seat_up(name):
+            print(f"[{name}] seating {c['character']} on account {c['account']} …", flush=True)
+            r = subprocess.run([SEAT, "start", c["account"], c["character"], "--name", name], capture_output=True, text=True)
+            tail = (r.stdout + r.stderr).strip().splitlines()
+            print(f"[{name}] {tail[-1] if tail else 'seat start printed nothing'}", flush=True)
+            if r.returncode != 0:
+                continue
+        else:
+            print(f"[{name}] seat already up", flush=True)
+        if pilot_up(name):
+            print(f"[{name}] pilot already running (pid {pilot_pid(name)})", flush=True)
+            continue
+        d = citizen_dir(name)
+        log = open(os.path.join(d, "pilot.log"), "a")
+        argv = [PILOT, "run", name, "--seat", name, "--idle", str(idle)]
+        if model:
+            argv += ["--model", model]
+        if dry:
+            argv.append("--dry")
+        proc = subprocess.Popen(argv, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                                start_new_session=True, cwd=REPO)
+        with open(os.path.join(d, "pilot.pid"), "w") as f:
+            f.write(str(proc.pid))
+        print(f"[{name}] pilot started (pid {proc.pid}, idle {idle} s{', dry' if dry else ''})", flush=True)
+
+
+def cmd_down(args):
+    dirmap = directory()
+    names = pick(args, dirmap)
+    for name in names:
+        pid = pilot_pid(name)
+        if pid and pid_alive(pid):
+            os.kill(pid, signal.SIGTERM)
+            for _ in range(20):
+                if not pid_alive(pid):
+                    break
+                time.sleep(0.5)
+            else:
+                os.kill(pid, signal.SIGKILL)
+            print(f"[{name}] pilot stopped (pid {pid})", flush=True)
+        try:
+            os.unlink(os.path.join(citizen_dir(name), "pilot.pid"))
+        except OSError:
+            pass
+        if seat_up(name):
+            r = subprocess.run([SEAT, "stop", name], capture_output=True, text=True)
+            tail = (r.stdout + r.stderr).strip().splitlines()
+            print(f"[{name}] {tail[-1] if tail else 'seat stopped'}", flush=True)
+
+
+def cmd_status(args):
+    dirmap = directory()
+    for name in sorted(dirmap):
+        c = dirmap[name]
+        if not c.get("character"):
+            print(f"{name:8} no character yet")
+            continue
+        last = "-"
+        try:
+            last = json.load(open(os.path.join(LABDIR, "citizens", name, "state.json"))).get("last_wake", "-")
+        except (OSError, ValueError):
+            pass
+        seat = f"seat up (pid {seat_pid(name)})" if seat_up(name) else "seat down"
+        pilot = f"pilot pid {pilot_pid(name)}" if pilot_up(name) else "no pilot"
+        print(f"{name:8} {c['character']:10} {seat:22} {pilot:18} last wake {last}")
+
+
+def cmd_log(args):
+    if not args:
+        die("log <citizen> [lines]")
+    n = int(args[1]) if len(args) > 1 else 40
+    p = os.path.join(LABDIR, "citizens", args[0], "pilot.log")
+    try:
+        lines = open(p, errors="replace").read().splitlines()
+    except OSError:
+        die(f"no log at {p}")
+    print("\n".join(lines[-n:]))
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help"):
+        print(__doc__)
+        return 0
+    cmd, args = argv[0], argv[1:]
+    if cmd == "up":
+        cmd_up(args)
+    elif cmd == "down":
+        cmd_down(args)
+    elif cmd == "status":
+        cmd_status(args)
+    elif cmd == "log":
+        cmd_log(args)
+    else:
+        die(f"unknown command '{cmd}' (up, down, status, log)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
