@@ -998,3 +998,16 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 - Bot client sessions log `handleNetStatusRequest … StreamIndexOutOfBoundsException at 8` every 5 s in core3.log
   (not the console): the client's 4-byte NetStatusRequestMessage and the server's handler are both engine3 (the
   submodule), so there is no Core3 fix; known noise (alice, CLAUDE.md).
+
+### 2026-10-21 — 4a.4 visions
+
+- **A private place without instancing:** the `dungeon1` zone is a flat plane at z = 0 (its `.trn` is under 1 KB)
+  holding the Corellian Corvette instances at x 1250–2700, y 600–1900 and nothing else; `switchZone("dungeon1",
+  x, 0, y, 0)` puts a character there and back. `FbVisions` uses a row of slots at (−1500 + 80·(oid mod 12),
+  −1500): dreamers never see each other. `lotsurvey near dungeon1` finds nothing (no snapshot); `objectsNear`
+  on the live server is what listed the ships.
+- Canon figures with real models in this client: `darth_vader.iff`, `dressed_luke_skywalker.iff`; Obi-Wan uses
+  the old Jedi trainer, Exar Kun a dark Jedi. No Yoda, no Emperor (only his Hands and herald).
+- A vision holds the shared `FbAttunement.visit.<oid>` slot while it runs so a visitor and a vision never
+  overlap; the lab's shortcuts (`attunementAccept`, `trialsUnlock`) mark every vision seen, or the
+  attunement / shrines / trials scenarios' trigger order would change under them.

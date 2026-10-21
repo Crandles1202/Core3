@@ -163,3 +163,115 @@ spirit_leaves = The spirit is gone.
 # the duel (trial eight)
 duel_threaten = %TT. Alone, finally. Good.
 trials_progress = Trials passed: %DI of 8.
+
+# ---- Phase 4a.4: visions. Two figures in a grey nowhere; the world comes back where it was left.
+vision_enter = The ground is gone from under you. Somewhere, someone is waiting.
+vision_fade = The grey thins. You are standing where you stood.
+
+# the calling: the Old Man's task accepted
+vision_calling_kenobi_1 = So. He found you. He finds most of them, in the end.
+vision_calling_kenobi_2 = You will want to know what you are. There is no short answer, and the long one takes a life.
+vision_calling_kenobi_3 = Go where he sends you. Listen more than you look. That is the whole of it, for now.
+vision_calling_luke_1 = I was where you are. A farm, a sky full of other places, and no idea.
+vision_calling_luke_2 = The old man told me the same things he is telling you. Half of them I only understood later.
+vision_calling_luke_3 = Do the small things he asks. The big ones come whether you are ready or not.
+vision_calling_vader_1 = Another one. They keep finding you in the dirt, and the dirt is where most of you stay.
+vision_calling_vader_2 = He will teach you patience. Patience is what the weak call waiting.
+vision_calling_vader_3 = When you tire of listening, you will know where to find what you were actually looking for.
+vision_calling_exar_kun_1 = You hear it now. The hum under everything. I heard it four thousand years ago and I have not stopped.
+vision_calling_exar_kun_2 = They will tell you it is a river to be followed. It is a weapon to be lifted.
+vision_calling_exar_kun_3 = My temple stands on the fourth moon of Yavin. Stone remembers what the Order forgot.
+vision_calling_kenobi_whisper = A voice, not his: you have taken the first step. Do not let it be the last.
+vision_calling_luke_whisper = A voice, not his: there is still a way back, if you want it.
+vision_calling_vader_whisper = A voice, not his: he did not tell you everything. He never does.
+vision_calling_exar_kun_whisper = A voice, not his: listen for the hum. It is louder than their lessons.
+
+# three worlds listened to
+vision_worlds_luke_1 = Three worlds. You are starting to hear the difference between them.
+vision_worlds_luke_2 = Dagobah was a swamp and a teacher who was tired of me. I would not trade an hour of it.
+vision_worlds_luke_3 = Keep going. The sixth one is where it stops being a walk and starts being a choice.
+vision_worlds_kenobi_1 = Every shrine is a question somebody asked a long time ago. You are not meant to answer them. You are meant to carry them.
+vision_worlds_kenobi_2 = Yoda would say you are listening with your eyes. He said it to me for twelve years.
+vision_worlds_kenobi_3 = Three more. Do not hurry them.
+vision_worlds_exar_kun_1 = Shrines. Little stones where frightened people sat and felt important.
+vision_worlds_exar_kun_2 = What you feel at them is not peace. It is power, kept small so it can be sold as peace.
+vision_worlds_exar_kun_3 = Come to Yavin when you are done kneeling. I will show you what the stones are for.
+vision_worlds_vader_1 = You kneel at ruins. The ones who built them are dust and I helped make them so.
+vision_worlds_vader_2 = Every world you visit teaches you how far you are from the one that matters.
+vision_worlds_vader_3 = Finish his errand. Then we will talk about what you are owed.
+vision_worlds_luke_whisper = A voice, not his: the stones were never the point. The listening was.
+vision_worlds_kenobi_whisper = A voice, not his: you are closer than you feel. Keep walking.
+vision_worlds_exar_kun_whisper = A voice, not his: six stones and still kneeling. How long will you wait?
+vision_worlds_vader_whisper = A voice, not his: he counts your worlds. I count what you did on them.
+
+# the trials unlocked
+vision_return_kenobi_1 = He has come back to you. That means he thinks you can bear what comes next.
+vision_return_kenobi_2 = The trials are not a test of strength. Anakin was the strongest of us and he failed every one that mattered.
+vision_return_kenobi_3 = There will be a moment in them where nobody is watching. That is the whole trial.
+vision_return_luke_1 = Trials. Mine was a cave on Dagobah and a face under a mask that turned out to be my own.
+vision_return_luke_2 = You will be asked to stand still, to hold back, to give something up. None of it is what it looks like.
+vision_return_luke_3 = When they are over you will not feel different. That is normal. Nobody tells you that.
+vision_return_vader_1 = Trials. Sit in the sand. Refrain. Beg a spirit for riddles. This is how they waste you.
+vision_return_vader_2 = There is one among them with a man on his knees. Watch what you feel when you see him.
+vision_return_vader_3 = Pass them all if you like. The box they give you is the same either way. What you become is not.
+vision_return_exar_kun_1 = They will measure you with eight little games. I was measured once. I broke the scale.
+vision_return_exar_kun_2 = Somewhere in the middle they will put a life in your hands and call it mercy to drop it.
+vision_return_exar_kun_3 = Hold it instead. See how it feels. Then decide who taught you that.
+vision_return_kenobi_whisper = A voice, not his: there is nothing in the trials you cannot do. Only things you may choose not to.
+vision_return_luke_whisper = A voice, not his: be kind to the man on his knees. You will meet him again in yourself.
+vision_return_vader_whisper = A voice, not his: eight games. Play them. Then come find a real one.
+vision_return_exar_kun_whisper = A voice, not his: you will be given a life to weigh. Weigh it honestly.
+
+# before the mercy trial (the prisoner)
+vision_mercy_kenobi_1 = There is a man ahead of you who cannot run. What you do with him is the first thing you will have truly chosen.
+vision_mercy_kenobi_2 = I let a boy go once, who became the thing in the mask. I would let him go again.
+vision_mercy_kenobi_3 = Mercy is not weakness. It is the only strength that costs the one who uses it.
+vision_mercy_luke_1 = He will plead. They always plead. That does not make him lying.
+vision_mercy_luke_2 = I threw away my saber in front of the Emperor rather than finish my father. Best thing I ever did with it.
+vision_mercy_luke_3 = Whatever you choose, choose it. Do not drift into it.
+vision_mercy_vader_1 = A prisoner. Bound, useless, breathing air you could use. You already know what is efficient.
+vision_mercy_vader_2 = They will call it a test of mercy. It is a test of whether you can be made to flinch.
+vision_mercy_vader_3 = End him and nothing follows. Spare him and he follows you the rest of your life.
+vision_mercy_exar_kun_1 = Here it is. The small life, the large choice. The Order dressed it up as kindness for a thousand years.
+vision_mercy_exar_kun_2 = Kill him and you learn what you are. Free him and you learn what they want you to be.
+vision_mercy_exar_kun_3 = Either way you will remember his face. Make sure it was your decision that put it there.
+vision_mercy_kenobi_whisper = A voice, not his: look at him before you decide. Really look.
+vision_mercy_luke_whisper = A voice, not his: he has a name. Ask it.
+vision_mercy_vader_whisper = A voice, not his: he would not spare you. Remember that when you feel generous.
+vision_mercy_exar_kun_whisper = A voice, not his: the knife is honest. The pardon is a performance.
+
+# before the duel (the hunter)
+vision_duel_luke_1 = Someone is coming for you alone. You will want to make it a fight. Make it an ending instead.
+vision_duel_luke_2 = The first time I crossed blades with my father I lost a hand and learned who I was. Fair trade.
+vision_duel_luke_3 = Do not hate the one who comes. Hate is a door and you do not know what is on the other side.
+vision_duel_kenobi_1 = A duel. The Order taught the saber as a last resort and then used it first for a thousand years.
+vision_duel_kenobi_2 = Win if you can. Do not enjoy it. The enjoying is the part that stays.
+vision_duel_kenobi_3 = I struck down a man on Mustafar and left him burning. I was right, and it was still the worst thing I have done.
+vision_duel_exar_kun_1 = At last. Something with an edge. A single enemy, a single death, and the Force singing in your arm.
+vision_duel_exar_kun_2 = Do not parry. Parrying is for those who intend to be forgiven.
+vision_duel_exar_kun_3 = When it is over, stand in it a moment. Feel how quiet the world is. That quiet is yours now.
+vision_duel_vader_1 = One hunter. If you cannot finish one hunter you do not deserve the title they are about to give you.
+vision_duel_vader_2 = Anger is fuel. They will tell you it burns you. Everything burns. Choose what to burn for.
+vision_duel_vader_3 = Afterwards you will feel it: the pull. Follow it to Yavin and I will show you what the pull is for.
+vision_duel_luke_whisper = A voice, not his: you can win this without becoming anything.
+vision_duel_kenobi_whisper = A voice, not his: finish it clean. Then walk away from it, all the way.
+vision_duel_exar_kun_whisper = A voice, not his: the quiet after. You will want more of it.
+vision_duel_vader_whisper = A voice, not his: that was easy, was it not? It will keep being easy.
+
+# the Padawan box
+vision_padawan_kenobi_1 = Padawan. The word means learner. You will be one until the day you are not, and that day is a loss.
+vision_padawan_kenobi_2 = A Master waits for you on Yavin, in the enclave the light kept. Go slowly. The moon is patient.
+vision_padawan_kenobi_3 = I am proud of you. I was never good at saying it in life. The dead have fewer excuses.
+vision_padawan_luke_1 = You made it. Nobody made it in my day. There was nobody left to make it to.
+vision_padawan_luke_2 = The Master on Yavin is not Yoda and will not pretend to be. Listen anyway.
+vision_padawan_luke_3 = Build your saber when they let you. Build it with your own hands. Mine still has sand in it.
+vision_padawan_vader_1 = So they have given you the box. A word and a shadow of a power. The power itself was never theirs to give.
+vision_padawan_vader_2 = There is a second enclave on Yavin. The one they do not point you toward. You already know which door is yours.
+vision_padawan_vader_3 = Come. Learn what you are for. The Emperor has no use for learners who stop learning.
+vision_padawan_exar_kun_1 = Padawan. Apprentice. Acolyte. Names for the same thing: someone who has not yet taken.
+vision_padawan_exar_kun_2 = My temple keeps a Master who remembers the old ways. He is waiting at the dark door on Yavin.
+vision_padawan_exar_kun_3 = Walk in standing. The ones who walk in kneeling stay there.
+vision_padawan_kenobi_whisper = A voice, not his: there is still a light door. There always will be.
+vision_padawan_luke_whisper = A voice, not his: my father came back at the very end. You do not have to wait that long.
+vision_padawan_vader_whisper = A voice, not his: the light door is open too. It leads to the same moon and a smaller life.
+vision_padawan_exar_kun_whisper = A voice, not his: when their lessons bore you, the stone on Yavin is still warm.

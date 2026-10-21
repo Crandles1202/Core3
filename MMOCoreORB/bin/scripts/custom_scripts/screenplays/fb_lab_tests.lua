@@ -303,6 +303,10 @@ FbLabTests.eventNpcs = {
 	fb_old_man = { spawnedAtBoot = false },                             -- Phase 4a.1
 	fb_prisoner = { spawnedAtBoot = false },                            -- Phase 4a.3
 	fb_trial_spirit = { spawnedAtBoot = false },                        -- Phase 4a.3
+	fb_vision_kenobi = { conversation = false, spawnedAtBoot = false }, -- Phase 4a.4
+	fb_vision_luke = { conversation = false, spawnedAtBoot = false },   -- Phase 4a.4
+	fb_vision_vader = { conversation = false, spawnedAtBoot = false },  -- Phase 4a.4
+	fb_vision_exar_kun = { conversation = false, spawnedAtBoot = false }, -- Phase 4a.4
 }
 
 function FbLabTests.checkNpc(npc)
@@ -797,6 +801,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkWorldEdits()
 		FbLabTests.checkAttunement()
 		FbLabTests.checkTrials()
+		FbLabTests.checkVisions()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)
@@ -2553,6 +2558,7 @@ function FbLabTests:attunementAccept(charName)
 	local pPlayer = loadedPlayer(charName)
 	if pPlayer == nil then return "offline" end
 	FbAttunement:accept(pPlayer)
+	if FbVisions ~= nil then FbVisions:skipAll(pPlayer) end   -- 4a.4: the shortcut past the path skips its visions too
 	attunementLine(charName, pPlayer)
 	return "ok"
 end
@@ -2601,6 +2607,7 @@ function FbLabTests:trialsUnlock(charName)
 	local pPlayer = loadedPlayer(charName)
 	if pPlayer == nil then return "offline" end
 	FbAttunement:trialsUnlocked(pPlayer)
+	if FbVisions ~= nil then FbVisions:skipAll(pPlayer) end   -- 4a.4: the trials scenario is about the trials
 	-- the lab's unlock skips the Old Man's return, so the hunters he warned of are marked as already come:
 	-- the due ambush takes the trigger before a trial word and would interrupt a trials run (gate 2026-10-21)
 	FbAttunement:setFlag(pPlayer, "ambushDone", os.time())
@@ -2673,6 +2680,91 @@ function FbLabTests:cashSet(charName, amount)
 end
 
 -- Lab check: the trials are wired and every trial has its word and done line in the string source
+-- ---------------------------------------------------------------- Phase 4a.4: visions
+
+local function visionsLine(charName, pPlayer)
+	print("INFO visions char=" .. charName .. " " .. FbVisions:status(pPlayer) .. " zone=" .. SceneObject(pPlayer):getZoneName() .. " alignment=" .. tostring(FbAttunement:flag(pPlayer, "alignment") or "-"))
+end
+
+-- visions:<char> → seen / due / active and where the character is
+function FbLabTests:visions(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	visionsLine(charName, pPlayer)
+	return "ok"
+end
+
+-- visionBegin:<char>:<id> → start that vision now (eligibility not checked; the character must be outdoors)
+function FbLabTests:visionBegin(charName, id)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local ok = FbVisions:begin(pPlayer, id)
+	print("INFO visionBegin id=" .. tostring(id) .. " began=" .. tostring(ok))
+	visionsLine(charName, pPlayer)
+	return tostring(ok)
+end
+
+-- visionEnd:<char> → wake now (the fade), as if the lines were over
+function FbLabTests:visionEnd(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local active = FbVisions:active(pPlayer)
+	if active ~= nil then FbVisions:finish(pPlayer, false) end
+	print("INFO visionEnd ended=" .. tostring(active or "-"))
+	visionsLine(charName, pPlayer)
+	return "ok"
+end
+
+-- visionsReset:<char> → forget every vision seen (the lab shortcuts mark them all seen)
+function FbLabTests:visionsReset(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	FbVisions:reset(pPlayer)
+	visionsLine(charName, pPlayer)
+	return "ok"
+end
+
+-- attunementFlag:<char>:<flag>[:<value>] → set (or clear) one FbAttunement flag, e.g. alignment light
+function FbLabTests:attunementFlag(charName, flag, value)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	if value == nil or value == "" or value == "-" then deleteScreenPlayData(pPlayer, FbAttunement.DATA, "flag:" .. flag) else FbAttunement:setFlag(pPlayer, flag, value) end
+	print("INFO attunementFlag " .. tostring(flag) .. "=" .. tostring(FbAttunement:flag(pPlayer, flag) or "-"))
+	return "ok"
+end
+
+function FbLabTests.checkVisions()
+	check("visions.loaded", FbVisions ~= nil and FbVisions.list ~= nil)
+	if FbVisions == nil then return end
+	check("visions.six", #FbVisions.list == 6)
+	check("visions.zone_enabled", isZoneEnabled(FbVisions.zone), FbVisions.zone)
+	local f = io.open("../../tre-src/string/en/fb_force.stf.txt", "r")
+	if f ~= nil then
+		local text = f:read("a"); f:close()
+		local missing = {}
+		local function need(k) if not text:find("\n" .. k .. " = ", 1, true) then missing[#missing + 1] = k end end
+		need("vision_enter"); need("vision_fade")
+		for _, v in ipairs(FbVisions.list) do
+			for _, who in ipairs({ v.light, v.dark }) do
+				for n = 1, v.lines do need(string.format("vision_%s_%s_%d", v.id, who, n)) end
+				need(string.format("vision_%s_%s_whisper", v.id, who))
+			end
+			-- after the alignment is set both figures of a side speak: their lines must exist for every vision
+			for key, fig in pairs(FbVisions.figures) do
+				for n = 1, v.lines do need(string.format("vision_%s_%s_%d", v.id, key, n)) end
+			end
+		end
+		check("visions.strings", #missing == 0, #missing == 0 and "every line of every figure in every vision" or ("missing: " .. table.concat(missing, ", ")))
+	end
+	-- the figures' mobile files (checkNpc loads and audits them like every fb_* mobile; eventNpcs says they
+	-- never spawn at boot and never converse)
+	for key, fig in pairs(FbVisions.figures) do
+		local mf = io.open("scripts/mobile/quest/tatooine/" .. fig.template .. ".lua", "r")
+		check("visions.figure." .. key, mf ~= nil, fig.template)
+		if mf ~= nil then mf:close() end
+	end
+end
+
 function FbLabTests.checkTrials()
 	check("trials.loaded", FbTrials ~= nil and FbTrialPrisoner ~= nil and FbTrialSpirit ~= nil and FbTrialDuel ~= nil)
 	if FbTrials == nil then return end
