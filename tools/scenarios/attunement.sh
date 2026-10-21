@@ -77,7 +77,7 @@ check "old_man_stands_near" "$( [ -n "$OLD" ] && echo 1 || echo 0 )"
 wait "$BOT_PID"
 check_ge "old_man_greeted" "$(grep -ac "SpatialChat from=$OLD" "$BOTLOG")" 1 "$(grep -a 'SpatialChat' "$BOTLOG" | tail -n2 | tr '\n' ' ')"
 bot --wait 4 --converse "$OLD" --options 1,0 --wait 2 --command checkForceStatus --wait 3 >/dev/null 2>&1 || true
-check_eq "old_man_converse_ok" "$(bot_action_status converse)" "ok" "status: $(bot_action_status converse)"
+check_eq "old_man_converse_ok" "$(bot_action_status converse)" "ok" "$(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tail -n1 | cut -c1-160); old man: $(lab "objectPos:$OLD" | sed 's/.*zone=/zone=/' | cut -c1-70); char: $(lab "where:$CHAR" | sed 's/.*zone=/zone=/' | cut -c1-70)"
 A=$(lab "attunement:$CHAR")
 check "task_accepted" "$(grep -q 'called=true task=shrines' <<<"$A" && echo 1 || echo 0)" "$A"
 check_eq "called_tier" "$(lab_kv "attunementStatus:$CHAR" tier)" "@fb_force:tier_4"

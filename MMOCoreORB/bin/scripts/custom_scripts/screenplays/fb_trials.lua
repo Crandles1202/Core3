@@ -385,15 +385,23 @@ local function settleBeside(pPlayer, spawned)
 			local so = SceneObject(pNpc)
 			local dx, dy = so:getWorldPositionX() - px, so:getWorldPositionY() - py
 			local d = math.sqrt(dx * dx + dy * dy)
-			-- a follower stops ~6 m out, past the 5 m conversation rule: bring it to 2.5 m on the same bearing.
-			-- switchZone, not teleport: SceneObject:teleport left an agent where it was (probe 2026-10-21)
-			if d > 4 then
-				local f = 2.5 / math.max(d, 0.1)
-				local x, y = px + dx * f, py + dy * f
-				local z = getTerrainHeightAt(zone, x, y)
-				so:switchZone(zone, x, z, y, 0)
-				AiAgent(pNpc):setHomeLocation(x, z, y, nil)
-				printf("FbTrials: %s moved beside %s (was %.1f m out)\n", so:getObjectName() ~= "" and so:getObjectName() or tostring(so:getObjectID()), CreatureObject(pPlayer):getFirstName(), d)
+			local blocked = not AiAgent(pNpc):checkLineOfSight(pPlayer)
+			-- a follower stops ~6 m out, past the 5 m conversation rule, or ends up behind the shrine's stone (the
+			-- conversation also wants line of sight): bring it to 2.5 m, on its own bearing first, then around the
+			-- compass until the player can see it. switchZone, not teleport: teleport left an agent where it was.
+			if d > 4 or blocked then
+				local label = so:getObjectName() ~= "" and so:getObjectName() or tostring(so:getObjectID())
+				local bearings = { math.atan2(dy, dx) }
+				for k = 0, 7 do bearings[#bearings + 1] = k * math.pi / 4 end
+				local placed = false
+				for _, b in ipairs(bearings) do
+					local x, y = px + 2.5 * math.cos(b), py + 2.5 * math.sin(b)
+					local z = getTerrainHeightAt(zone, x, y)
+					SceneObject(pNpc):switchZone(zone, x, z, y, 0)
+					AiAgent(pNpc):setHomeLocation(x, z, y, nil)
+					if AiAgent(pNpc):checkLineOfSight(pPlayer) then placed = true; break end
+				end
+				printf("FbTrials: %s moved beside %s (was %.1f m out%s)%s\n", label, CreatureObject(pPlayer):getFirstName(), d, blocked and ", no line of sight" or "", placed and "" or "; still no line of sight")
 			end
 		end
 	end
