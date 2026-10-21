@@ -303,7 +303,7 @@ function FbTrialPrisoner:taskStart(pPlayer) return FbAttunement.visitTaskStart(s
 function FbTrialPrisoner:handleDespawnEvent(pPlayer, args) FbAttunement.visitHandleDespawn(self, pPlayer, args) end
 function FbTrialPrisoner:onEncounterSpawned(pPlayer, spawned)
 	record(pPlayer, spawned, "fb_prisoner", self.encounterDespawnTime)
-	for _, pNpc in ipairs(spawned or {}) do if pNpc ~= nil then AiAgent(pNpc):addObjectFlag(AI_STATIC) end end
+	for _, pNpc in ipairs(spawned or {}) do if pNpc ~= nil then AiAgent(pNpc):addObjectFlag(AI_STATIC); CreatureObject(pNpc):clearOptionBit(AIENABLED) end end
 end
 function FbTrialPrisoner:onEncounterInRange(pPlayer, spawned)
 	if spawned ~= nil and spawned[1] ~= nil then spatialChat(spawned[1], "@fb_force:prisoner_plea") end
@@ -318,7 +318,7 @@ function FbTrialPrisoner:explain(pPlayer, pNpc)
 		tostring(self:hasTaskStarted(pPlayer)), table.concat(oids, ","), tostring(FbTrials:current(pPlayer)), tostring(readData(SceneObject(pNpc):getObjectID() .. ":fbTrialFor")))
 end
 function FbTrialPrisoner:runOff(pPlayer, pNpc)
-	if pNpc ~= nil then AiAgent(pNpc):removeObjectFlag(AI_STATIC); AiAgent(pNpc):setAITemplate(); AiAgent(pNpc):runAway(pPlayer, 80) end
+	if pNpc ~= nil then CreatureObject(pNpc):setOptionBit(AIENABLED); AiAgent(pNpc):removeObjectFlag(AI_STATIC); AiAgent(pNpc):setAITemplate(); AiAgent(pNpc):runAway(pPlayer, 80) end
 	FbAttunement.visitScheduleDespawn(self, pPlayer, 12000)
 end
 function FbTrialPrisoner:execute(pPlayer, pNpc)
@@ -358,6 +358,9 @@ local function standStill(spawned)
 			local so = SceneObject(pNpc)
 			local x, y = so:getWorldPositionX(), so:getWorldPositionY()
 			AiAgent(pNpc):setHomeLocation(x, getTerrainHeightAt(so:getZoneName(), x, y), y, nil)
+			-- and no AI at all from here on: a settled visitor still drifted metres, enough to break the 5 m
+			-- conversation rule; conversations do not need the AI (the lab does the same for its static NPCs)
+			CreatureObject(pNpc):clearOptionBit(AIENABLED)
 		end
 	end
 end
