@@ -2639,6 +2639,7 @@ end
 function FbLabTests:visitSettle(charName)
 	local pPlayer = loadedPlayer(charName)
 	if pPlayer == nil then return "offline" end
+	local SpawnMobiles = require("utils.spawn_mobiles")
 	local px, py = SceneObject(pPlayer):getWorldPositionX(), SceneObject(pPlayer):getWorldPositionY()
 	for _, v in ipairs({ FbOldManVisit, FbOldManReturn, FbTrialSpirit }) do
 		if v ~= nil and v.settle ~= nil then
