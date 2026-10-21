@@ -229,6 +229,36 @@ Make the galaxy feel populated even when you're the only player online.
   - **Race themselves** (endgame — requires owning a podracer, which becomes a custom mount/vehicle quest)  
   - Pure Star Wars vibe. Quest content, gambling sink, social hub all in one.
 
+**Living Galaxy, galaxy-wide (Chuck, 2026-10-20):** everything above shipped on Tatooine first. The items below take it
+to every planet and add the street-level life that makes a city feel like a Star Wars city. Decisions: galaxy-wide
+from the start, more going on in cities, more GCW fighting; the AI citizens of Phase 7 are the "other players".
+
+- **3.13 \[L\] Galaxy-wide rollout.** Patrols (3.2), convoys (3.11), invasions (3.1), territory (3.4), HoloNet
+  relays (3.10), ambient cantinas (3.7/3.8) and weather events (3.9) exist for Tatooine (plus the Coronet cantina).
+  Make each one a per-city data file and fill the data for the stock cities on the other nine planets: Theed, Keren,
+  Moenia, Kaadara, Deeja Peak; Coronet, Tyrena, Kor Vella, Doaba Guerfel, Vreni Island, Bela Vistal; Dearic, Nashal;
+  Narmle, Restuss; Nym's stronghold; the Dantooine, Endor, Yavin 4 and Dathomir outposts. A city file names its
+  faction lean, gate, patrol loop, cantina cell, HoloNet spot and shuttle; planet weather gets its own event table
+  (Dathomir and Endor storms, Naboo rain cosmetic). One lab scenario per planet audits every placement.
+- **3.14 \[M\] Street scenes.** A scene is a data file: cast (templates, clothes), spot, trigger (timer, player
+  within 30 m, cooldown) and a script of beats (say, emote, walk to, face, wait, despawn). `FbScenes` runs them on the
+  3.7 ambient-life machinery, only while a player is near. First batch of 10–15 across the big cities: a Jawa
+  haggling with a moisture farmer, a droid-repair argument, a drunk thrown out of the cantina, an arrest, an
+  Imperial officer dressing down his troopers, a lost protocol droid, a bounty hunter asking NPCs about *you* by name.
+- **3.15 \[M\] Checkpoints.** At the gates of an Imperial-held city (territory ≥ 60) two stormtroopers and an officer
+  hail anyone walking through ("Identification."): a declared Rebel is attacked, an Imperial saluted, a neutral waved
+  on or pulled aside for a short "random search" conversation with a small standing tilt. Rebel-held cities post a
+  picket instead. Reads 3.4.
+- **3.16 \[M\] Shuttle arrivals.** On the server's shuttle landing cycle, 3–6 travellers (planet species mix) step
+  off and walk into town along a path, vanishing at a door; a few walk out and board. Starports feel used.
+- **3.17 \[L\] GCW skirmishes.** Smaller and far more frequent than invasions: every 20–40 min per planet a Rebel
+  cell and an Imperial patrol meet at a random road point near a city and fight it out with the stock faction AI;
+  the winner lingers and loots. Territory shifts ±2; broadcast only within 300 m of a player. Add outpost raids
+  (Dantooine, Lok) and an Imperial ambush on a declared Rebel player where the Empire holds the ground.
+- **3.18 \[M\] The hunter.** Once attunement or faction standing crosses a line, a named bounty hunter tracks the
+  player across the planet: seen at a distance, then asking NPCs about them (a 3.14 scene), then attacking. Beaten,
+  he comes back a day later with friends.
+
 **Branch:** `feature/living-galaxy`. Depends on Phase 1.4 (mission terminal improvements) and Phase 2.6 (NPC buff providers — uses same NPC framework).
 
 ### Phase 4 — Jedi/Sith Rework
@@ -309,6 +339,85 @@ The cherry on top. Once the systems work, the story should write itself.
 - **6.5 \[L\] Smuggler / fringe content.** Han Solo–style content. Cargo runs, dodging Imperial patrols, hidden Rebel sympathizer NPCs.
 
 **Branch:** `feature/story-content`.
+
+### Phase 7 — Citizens (AI players)
+
+A cast of AI-driven *players* on real accounts: each has a persona, a profession path and a persistent memory, and
+lives in the galaxy whether or not Chuck is online. They are players, not NPCs: a player tag in the UI, `/tell`,
+grouping, trading, the bazaar, harvesters, houses, GCW declaration. They are the "other players" a solo server lacks.
+
+**Design decisions (Chuck, 2026-10-20):** real accounts (so an agent is recognisable as a player at a glance, not an
+NPC); galaxy-wide; everybody gets their own persistent memory and a committed life plan (a citizen building a combat
+character does not wake up an armorsmith); they use the bazaar like players; they may group with Chuck, run lairs,
+craft and set up harvesters, entertain in cantinas, pick a GCW side, found cities with Chuck or each other, and ask a
+crafter citizen for gear when their own is worn. Runtime: see 7.3. **Further decisions (2026-10-20):** citizens get a
+veteran start (admin-granted skills to a believable level at creation); the stock GCW rules apply unchanged, so a
+citizen can attack Chuck only when he is on duty for the other side; Claude drafts the cast (`docs/Citizens-Cast.md`)
+and Chuck checks each one off; the API key comes from Chuck's Max plan credits.
+
+**Architecture — four layers, each testable alone:**
+
+- **Seat.** A long-running `core3client` (the lab's bot) with a JSON-lines control channel and a perception stream
+  (nearby objects with positions, chat heard, HAM, group, inventory, combat state). It executes primitives smoothly:
+  walk to, follow, attack, use ability, loot, say, tell, emote, sit, dance, converse, use terminal, trade, bazaar.
+- **Autopilot (server side).** Walking needs terrain and collision the client does not have. A custom command moves
+  a *player* creature along a server-computed path (the pathfinder the AI already uses), so the seat says "walk to
+  (x, y)" and the server does the steps. The same trick gives "follow" and "go to the lair".
+- **Playbooks.** Deterministic routines per profession, written like our scenarios: fight a terminal mission, clear a
+  lair, dance for an hour, survey and place harvesters, craft a batch and list it. They run in the seat without a
+  model call. This is what keeps a citizen smooth and keeps the model bill small.
+- **Pilot.** The agent: persona + memory + life plan in a per-citizen directory, woken by events (a `/tell`, a group
+  invite, combat, a playbook finishing, a timer) and deciding at goal level: which playbook next, what to say, whom
+  to ask for gear. A life plan is a document with milestones; it changes only with a logged reason. A **directory** of
+  citizens (profession, faction, home city, what they sell) lets pilots find each other.
+
+- **7.0 \[L\] Seat daemon.** ✅ 2026-10-20 (the channel; `objects` lists creation positions, others' movement is 7.2). `core3client --seat <socket>`: stays logged in, accepts primitives on the channel, streams
+  perception. New packets to decode (positions of others, HAM deltas, combat results, group, loot) and to send
+  (chat, movement acknowledgements). `tools/seat` drives it from Python. Scenario: a seat walks, speaks and attacks.
+- **7.1 \[M\] Autopilot.** ✅ 2026-10-20 as a *client-side* walk on real movement packets over a server-computed path (`findPath` + `walk`), which keeps citizens honest players; follow / leash are 7.2. The server-side walk command for player creatures + follow + leash; lab oracle to watch it.
+- **7.2 \[M\] Citizen accounts and cast tooling.** ✅ 2026-10-20 (`tools/citizens/citizen`; Teyla created). `swg citizen new <name>` creates the account and character
+  (`swg account create`, the one-char-per-hour rule and the name filter apply), the persona file, the memory file and
+  the directory entry; `swg citizen list|status|stop`. Optional veteran start (admin-granted skills to a believable
+  level) so a cast is not all newbies on day one.
+- **7.3 \[L\] Pilot v1 — one citizen.** ⏳ skeleton 2026-10-20 (loop, files, tools, dry decider tested; model decider waits for the key). Persona, memory, life plan, event loop, tool set = seat primitives + playbooks.
+  First citizen: a combat character who answers a `/tell`, groups with Chuck, follows, assists, loots, remembers the
+  session. Runtime decided by the subscription question (below).
+- **7.4 \[M\] Combat playbook.** Missions from terminals (the 1.4 hints are its map), lairs, heal and rest, repair,
+  sell loot, bank, train at a trainer when XP allows.
+- **7.5 \[M\] Entertainer playbook.** Cantina sets (dance / music, flourishes), buffs for groupmates, tips, the 1.10
+  XP rule applies.
+- **7.6a \[L\] Gathering and the resource economy.** ⏳ 2026-10-20: oracle, survey, sample, travel (ticket + shuttle, indoor terminals) and harvesters (place, resource list, select, maintenance, power, activate, empty hopper) done on a seat, scenarios `seat-travel` / `seat-harvester`; playbooks (the gatherer's week) and `redeed` next. Resources are galaxy-wide, patchy and transient
+  (`docs/Game-Systems.md`): a *resource oracle* (Lua binding over `ResourceManager`: current spawns per planet with
+  attributes and best spots — the citizens' SWGCraft) + seat primitives `survey` / `sample` (decode `SurveyMessage`
+  and `ResourceListForSurveyMessage`), `travel_to` (`purchaseTicket` + `boardShuttle`), `place_structure`,
+  harvester manage / deposit / empty (`EmptyHopper` 0xED). Playbooks "scout a resource" and "run harvesters" for
+  the two gatherer citizens (Wex Toren, Osra Brenn), who list on the bazaar; crafters survey and sample for small
+  needs.
+- **7.6b \[L\] Crafting sessions and the gear loop.** The crafting session on the wire (request → schematic →
+  slots → ingredients 0x107 → assembly → experiment 0x106 → prototype), resource choice by the schematic's stat
+  weights, an inventory model in the seat; the request loop: a combat citizen notices worn gear, asks the directory
+  for a crafter, the crafter buys resources or gathers, crafts, lists or trades it.
+- **7.7 \[M\] GCW citizens.** Faction choice in the life plan, GCW terminal missions, joining invasions (3.1) and
+  skirmishes (3.17), declared citizens fighting the other side's citizens.
+- **7.8 \[L\] The cast.** 8–12 citizens with a scheduler (who is online when, how many at once — the cost dial), a
+  shared ledger for offline coordination, and their deeds feeding the HoloNet (3.10) and galaxy chatter (3.6).
+- **7.9 \[XL\] A citizens' city.** A mayor citizen founds a player city with Chuck or other citizens: city hall, lots,
+  structures, elections. Needs 7.6's structure placement.
+
+**Order:** 7.0 → 7.1 → 7.2 → 7.3 (first citizen groups with Chuck) → 7.4 → 7.5 → 7.6a → 7.6b → 7.7 → 7.8 → 7.9.
+**Branch:** `feature/alice` (planning), then `feature/alice-7.N` per item.
+
+**Runtime (checked against the docs 2026-10-20).** A Pro/Max login is for ordinary, individual use of Claude Code;
+automated agents, including the Agent SDK, must use an API key from a Console organisation. But a Max plan includes
+monthly API credits ($100 on Max 5x, $200 on Max 20x) that cover the API and the Agent SDK: link a Console org in
+claude.ai Settings → Billing, make a workspace with a spend cap for the citizens, and the key draws on those credits.
+Pilots call the API directly (Python SDK, Haiku 5.5 by default: $0.10 / $0.50 per million tokens in and out, cache
+reads $0.01) with a cached persona prefix; the docs guide's estimate for five citizens deciding once a minute was
+$36–65 a month, and the event-driven cadence below is a fraction of that.
+
+**Cost and uptime.** Pilots are the only model calls. A citizen on a playbook makes none for minutes at a time; an
+event-driven pilot with a few-minute idle cadence is on the order of a few hundred decisions a day per citizen. The
+scheduler caps how many citizens are up at once. Numbers get measured in 7.3 before 7.8 scales the cast.
 
 ### Cross-cutting — Polish & Lore (ships continuously)
 

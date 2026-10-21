@@ -252,6 +252,18 @@ public:
 		return objectID;
 	}
 
+	inline uint32 getObjectCRC() {
+		return objectCRC;
+	}
+
+	inline int getGameObjectType() {
+		return gameObjectType;
+	}
+
+	inline int getContainmentType() {
+		return containmentType;
+	}
+
 	inline uint32 getMovementCounter() {
 		return movementCounter;
 	}
@@ -294,6 +306,15 @@ public:
 
 	inline void setClient(ZoneClient* cl) {
 		client = cl;
+	}
+
+	// Final Boss (7.0): filled from the server's template dump when the Lua template carries no data
+	inline void setGameObjectType(int type) {
+		gameObjectType = type;
+	}
+
+	inline void setObjectName(const String& name) {
+		objectName = name;
 	}
 
 	inline void setParent(SceneObject* par) {

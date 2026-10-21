@@ -1,4 +1,5 @@
 #include "Zone.h"
+#include "engine/service/proto/BaseMessage.h"
 #include "ZonePacketHandler.h"
 #include "ClientCore.h"
 #include "client/zone/objects/scene/SceneObject.h"
@@ -54,6 +55,27 @@ void ZonePacketHandler::handleMessage(Message* pack) {
 		case 0xD44B7259: what = "SuiCreatePageMessage";
 			handleSuiCreatePageMessage(pack);
 			break;
+		case 0x877F79AC: { what = "SurveyMessage";   // the survey grid: int count, then x, 0, y, percentage per point (lab: --survey)
+			int count = pack->parseInt();
+			JSONSerializationType grid = JSONSerializationType::array();
+			float bestX = 0, bestY = 0, bestPct = -1;
+			for (int i = 0; i < count && i < 64; ++i) {
+				float x = pack->parseFloat();
+				pack->parseFloat();
+				float y = pack->parseFloat();
+				float pct = pack->parseFloat();
+				JSONSerializationType pt;
+				pt["x"] = x; pt["y"] = y; pt["pct"] = pct;
+				grid.push_back(pt);
+				if (pct > bestPct) { bestPct = pct; bestX = x; bestY = y; }
+			}
+			core->vars[JSONSerializationType::json_pointer("/Survey/grid")] = grid;
+			core->setVar("Survey/bestX", bestX);
+			core->setVar("Survey/bestY", bestY);
+			core->setVar("Survey/bestPct", bestPct);
+			info(true) << "SurveyMessage " << count << " point(s), best " << (bestPct * 100.f) << "% at " << bestX << ", " << bestY;   // pct is a 0..1 fraction
+			break;
+		}
 		}
 		break;
 	case 3:
@@ -83,8 +105,12 @@ void ZonePacketHandler::handleMessage(Message* pack) {
 			break;
 		CASE_OPCODE("ChatOnLeaveRoom");
 			break;
-		CASE_OPCODE("SceneDestroyObject");
+		CASE_OPCODE("SceneDestroyObject"); {   // long oid, byte: the object left our view
+			uint64 gone = pack->parseLong();
+			if (zone->getObjectManager() != nullptr)
+				zone->getObjectManager()->destroyObject(gone);
 			break;
+		}
 		case 0x0E61CC92: what = "ItemSoldMessage";              // reply to CreateImmediateAuction
 			handleAuctionStatusMessage(pack, "sold");
 			break;
@@ -94,6 +120,14 @@ void ZonePacketHandler::handleMessage(Message* pack) {
 		case 0x9499EF8C: what = "RetrieveAuctionItemResponseMessage"; // reply to RetrieveAuctionItem
 			handleAuctionStatusMessage(pack, "retrieve");
 			break;
+		case 0x88DBB381: { what = "ChatOnSendInstantMessage";       // the server's verdict on our /tell (lab: --tell)
+			int tellResult = pack->parseInt();
+			uint32 sequence = pack->parseInt();
+			core->setVar("Tell/c" + String::valueOf(sequence) + "/result", tellResult);
+			info(true) << "ChatOnSendInstantMessage seq=" << sequence << " result=" << tellResult;
+			zone->signal(STRING_HASHCODE("ChatOnSendInstantMessage"));
+			break;
+		}
 		}
 		break;
 
@@ -117,6 +151,25 @@ void ZonePacketHandler::handleMessage(Message* pack) {
 
 		CASE_OPCODE("UpdatePvpStatusMessage");
 			break;
+		case 0x8A64B1D5: { what = "ResourceListForSurveyMessage";   // what the open survey tool can survey here
+			int count = pack->parseInt();
+			JSONSerializationType list = JSONSerializationType::array();
+			for (int i = 0; i < count && i < 256; ++i) {
+				String name, type;
+				pack->parseAscii(name);
+				uint64 oid = pack->parseLong();
+				pack->parseAscii(type);
+				JSONSerializationType r;
+				r["name"] = name.toCharArray(); r["oid"] = oid; r["type"] = type.toCharArray();
+				list.push_back(r);
+			}
+			String toolType;
+			pack->parseAscii(toolType);
+			core->vars[JSONSerializationType::json_pointer("/Survey/resources")] = list;
+			core->setVar("Survey/toolType", toolType);
+			info(true) << "ResourceListForSurvey: " << count << " resource(s) for " << toolType;
+			break;
+		}
 		}
 		break;
 	case 5:
@@ -145,6 +198,29 @@ void ZonePacketHandler::handleMessage(Message* pack) {
 
 		CASE_OPCODE("ChatOnEnteredRoom");
 			break;
+		}
+		break;
+	case 8:   // UpdateTransformMessage / UpdateTransformWithParentMessage: insertShort(0x08) on the server
+		switch (opcode) {
+		case 0x1B24F808: { // UpdateTransformMessage: another object moved outdoors (oid, x/z/y as shorts ×4, moveCount, speed, yaw)
+			what = "UpdateTransformMessage";
+			uint64 objectID = pack->parseLong();
+			float x = pack->parseSignedShort() / 4.f, z = pack->parseSignedShort() / 4.f, y = pack->parseSignedShort() / 4.f;
+			uint32 moveCount = pack->parseInt();
+			uint8 speed = pack->parseByte();
+			handleObjectMoved(objectID, 0, x, z, y, moveCount, speed);
+			break;
+		}
+		case 0xC867AB5A: { // UpdateTransformWithParentMessage: the same inside a cell (parent, oid, shorts ×8, …)
+			what = "UpdateTransformWithParentMessage";
+			uint64 parentID = pack->parseLong();
+			uint64 objectID = pack->parseLong();
+			float x = pack->parseSignedShort() / 8.f, z = pack->parseSignedShort() / 8.f, y = pack->parseSignedShort() / 8.f;
+			uint32 moveCount = pack->parseInt();
+			uint8 speed = pack->parseByte();
+			handleObjectMoved(objectID, parentID, x, z, y, moveCount, speed);
+			break;
+		}
 		}
 		break;
 	case 9:
@@ -188,6 +264,25 @@ void ZonePacketHandler::handleClientPermissionsMessage(Message* pack) {
 	info(true) << "    canSkipTutorial = " << canSkipTutorial;
 }
 
+// Final Boss (7.2): keep the positions of the people and creatures around us current, so a seat's `objects`
+// shows where they are now, not where they were created. The server sends these only for others (our own moves
+// come back as 0x71/0xF1 teleports when it disagrees). Moves/count and Moves/last/<oid> are for perception.
+void ZonePacketHandler::handleObjectMoved(uint64 objectID, uint64 parentID, float x, float z, float y, uint32 moveCount, uint8 speed) {
+	SceneObject* object = zone->getObject(objectID);
+	if (object == nullptr)
+		return;
+	{
+		Locker lock(object);
+		object->setPosition(x, z, y);
+		if (parentID != 0)
+			object->setParent(zone->getObject(parentID));
+		else
+			object->setParent(nullptr);
+	}
+	core->setVar("Moves/count", core->getVar<int>("Moves/count", 0) + 1);
+	zone->signal(STRING_HASHCODE("UpdateTransform"));
+}
+
 void ZonePacketHandler::handleCmdStartScene(Message* pack) {
 	info(true) << __FUNCTION__;
 
@@ -215,7 +310,30 @@ void ZonePacketHandler::handleCmdStartScene(Message* pack) {
 		return;
 	}
 
-	info(true) << "Scene Starting for character OID: " << selfPlayerObjectID;
+	info(true) << "Scene Starting for character OID: " << selfPlayerObjectID << " on " << terrain << " at " << x << ", " << y;
+
+	// A second CmdStartScene is a zone switch (shuttle, teleport to another planet): the server destroyed
+	// us from the old world and sends the new one from scratch, so forget every object of the old scene.
+	int sceneCount = core->getVar<int>("Scene/count", 0) + 1;
+	if (sceneCount > 1) {
+		ObjectManager* objectManager = zone->getObjectManager();
+		if (objectManager != nullptr)
+			objectManager->clear();
+	}
+	// "terrain/tatooine.trn" -> "tatooine" (the zone name the server and the oracles use)
+	String zoneName = terrain;
+	int slash = zoneName.lastIndexOf('/');
+	if (slash >= 0)
+		zoneName = zoneName.subString(slash + 1);
+	int dot = zoneName.lastIndexOf('.');
+	if (dot >= 0)
+		zoneName = zoneName.subString(0, dot);
+	core->setVar("Scene/count", sceneCount);
+	core->setVar("Scene/terrain", zoneName);
+	core->setVar("Scene/terrainFile", terrain);
+	core->setVar("Scene/x", x);
+	core->setVar("Scene/y", y);
+	core->setVar("Scene/z", z);
 
 	BaseMessage* msg = new CmdSceneReady();
 	client->sendPacket(msg);
@@ -248,6 +366,7 @@ void ZonePacketHandler::handleSceneObjectCreateMessage(Message* pack) {
 	}
 
 	object->setClient(zone->getZoneClient());
+	object->initializePosition(x, z, y);   // where the server put it when it entered our view (the seat lists this)
 }
 
 void ZonePacketHandler::handleBaselineMessage(Message* pack) {
@@ -296,6 +415,15 @@ void ZonePacketHandler::handleChatInstantMessageToClient(Message* pack) {
 	StringBuffer infoMsg;
 	infoMsg << "instant message from [" << name << "] : " << message.toString();
 	client->info(infoMsg.toString());
+
+	// keep the last 50 tells so a seat can read them: "<sender>: <text>"
+	auto& kept = core->vars[JSONSerializationType::json_pointer("/Tells")];
+	if (!kept.is_array())
+		kept = JSONSerializationType::array();
+	if (kept.size() >= 50)
+		kept.erase(kept.begin());
+	kept.push_back(std::string(name.toCharArray()) + ": " + std::string(message.toString().toCharArray()));
+	zone->signal(STRING_HASHCODE("Tell"));
 }
 
 void ZonePacketHandler::handleChatSystemMessage(Message* pack) {
@@ -314,7 +442,11 @@ void ZonePacketHandler::handleChatSystemMessage(Message* pack) {
 	try {
 		int paramSize = pack->parseInt();
 		if (message.isEmpty() && paramSize > 0) {
+			// ChatParameter::insertToMessage: short (odd-length pad flag), byte TYPE_STRINGID, int STRINGID,
+			// then StringIdChatParameter::addToPacketStream (file, int, id, TU/TT/TO, DI, DF, byte)
+			pack->parseShort();
 			pack->parseByte();
+			pack->parseInt();
 			String file, id;
 			pack->parseAscii(file);
 			pack->parseInt();
@@ -465,6 +597,58 @@ void ZonePacketHandler::handleObjectControllerMessage(Message* pack) {
 			zone->signal(STRING_HASHCODE("SpatialChat"));
 			break;
 		}
+		case 0x71:   // DataTransform to us: a teleport (or a position sync) — ack it, or the server drops our movement
+		case 0xF1: { // DataTransformWithParent: the same inside a building
+			if (objectID != core->selectedCharacterOid)
+				break;
+			uint32 moveCount = pack->parseInt();
+			uint64 parentID = header2 == 0xF1 ? pack->parseLong() : 0;
+			float dx = pack->parseFloat(), dy = pack->parseFloat(), dz = pack->parseFloat(), dw = pack->parseFloat();
+			float x = pack->parseFloat(), z = pack->parseFloat(), y = pack->parseFloat();
+
+			SceneObject* self = zone->getObject(objectID);
+			if (self != nullptr) {
+				Locker lock(self);
+				self->setPosition(x, z, y);
+			}
+
+			sendTeleportAck((BaseClient*) pack->getClient(), objectID, moveCount);
+
+			core->setVar("Teleport/count", (int) moveCount);
+			core->setVar("Teleport/x", x);
+			core->setVar("Teleport/y", y);
+			core->setVar("Teleport/z", z);
+			core->setVar("Teleport/parent", parentID);
+			info(true) << "server moved us to " << x << ", " << y << " (z " << z << ", parent " << parentID << ", count " << moveCount << ") — acked";
+			zone->signal(STRING_HASHCODE("Teleport"));
+			break;
+		}
+		case 0xEA: { // HarvesterResourceDataMessage: what a harvester here could extract (after harvesterGetResourceData)
+			// long harvester, int n, n × (long spawn oid, ascii name, ascii type, byte density 0..100)
+			uint64 harvesterID = pack->parseLong();
+			uint32 count = pack->parseInt();
+			String base = "Harvester/h" + String::valueOf(harvesterID);
+			auto& list = core->vars[JSONSerializationType::json_pointer("/Harvester/h" + std::string(String::valueOf(harvesterID).toCharArray()) + "/resources")];
+			list = JSONSerializationType::array();
+			for (uint32 i = 0; i < count && i < 512; ++i) {
+				uint64 spawn = pack->parseLong();
+				String name, type;
+				pack->parseAscii(name);
+				pack->parseAscii(type);
+				uint8 density = pack->parseByte();
+				JSONSerializationType entry;
+				entry["spawn"] = spawn;
+				entry["name"] = name.toCharArray();
+				entry["type"] = type.toCharArray();
+				entry["density"] = (int) density;
+				list.push_back(entry);
+			}
+			core->setVar(base + "/count", (int) count);
+			core->setVar("Harvester/last", harvesterID);
+			info(true) << "harvester " << harvesterID << " resource list: " << count << " spawn(s)";
+			zone->signal(STRING_HASHCODE("HarvesterResourceData"));
+			break;
+		}
 		case 0xDE: { // StopNpcConversation
 			uint64 npcID = pack->parseLong();
 
@@ -493,28 +677,40 @@ void ZonePacketHandler::handleUpdateContainmentMessage(Message* pack) {
 	if (object == nullptr)
 		return;
 
+	Locker lock(object);
+	object->setContainmentType(type);
+
 	if (par == 0) {
-		// remove object from parent
-		parent = object->getParent();
-
-		if (parent != nullptr) {
-			// No container removal needed
-		} else {
-			object->setParent(nullptr);
-		}
-
-		return;
-	} else if (parent == nullptr) {
+		object->setParent(nullptr);
 		return;
 	}
 
-	// No container transfer needed
+	// the parent may be unknown to us (a cell we never saw created); keep the id-less link out then
+	object->setParent(parent);
+}
+
+// TeleportAck (ObjController 0x13F): the server flags a player as teleporting at character select and
+// after every teleport, and drops all of that player's movement packets until this arrives. The real
+// client sends it once the scene has loaded and after each server-side move.
+void ZonePacketHandler::sendTeleportAck(BaseClient* client, uint64 objectID, uint32 moveCount) {
+	BaseMessage* ack = new BaseMessage();
+	ack->insertShort(0x05);
+	ack->insertInt(0x80CE5E46);   // ObjControllerMessage
+	ack->insertInt(0x1B);
+	ack->insertInt(0x13F);        // TeleportAck
+	ack->insertLong(objectID);   // no size/pad int: the server reads the counter right after the oid
+	ack->insertInt(moveCount);
+	client->sendPacket(ack);
 }
 
 void ZonePacketHandler::handleCmdSceneReady(Message* pack) {
 	info(true) << __FUNCTION__;
 
+	core->setVar("Scene/readyCount", core->getVar<int>("Scene/readyCount", 0) + 1);
 	zone->setSceneReady();
+
+	// the login counts as a teleport (SelectCharacterCallback sets teleporting): ack it or we can never move
+	sendTeleportAck((BaseClient*) pack->getClient(), core->selectedCharacterOid, 0);
 }
 
 void ZonePacketHandler::handleClientCreateCharacterSuccess(Message* pack) {

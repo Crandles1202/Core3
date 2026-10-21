@@ -9,6 +9,8 @@
  *       list box: <row> is the 0-based row index; input box: <text> is typed into the field
  *       --sui-cancel presses Cancel instead of OK
  *   JSON: {"action":"sui","value":"0","match":"Schematic Broker","cancel":false,"timeout":10}
+ *         {"action":"sui","values":["4500","500"],"match":"select_amount"}   several arguments: a transfer box
+ *         (pay maintenance, deposit power) reads the second one as the amount moved
  *
  * Wire: SuiEventNotification (0x092D3564): int pageId, int eventIndex, int listSize1, int listSize2,
  * then listSize1 unicode arguments. For Lua page boxes eventIndex is the index of the
@@ -26,19 +28,21 @@
 
 class ClientSuiEventNotification : public BaseMessage {
 public:
-	ClientSuiEventNotification(uint32 pageId, uint32 eventIndex, const UnicodeString& arg) {
+	ClientSuiEventNotification(uint32 pageId, uint32 eventIndex, const Vector<UnicodeString>& args) {
 		insertShort(0x05);
 		insertInt(0x092D3564);   // SuiEventNotification
 		insertInt(pageId);
 		insertInt(eventIndex);
-		insertInt(1);            // listSize1: number of unicode arguments
-		insertInt(1);            // listSize2 (ignored by the server)
-		insertUnicode(arg);
+		insertInt(args.size());  // listSize1: number of unicode arguments
+		insertInt(args.size());  // listSize2 (ignored by the server)
+		for (int i = 0; i < args.size(); ++i)
+			insertUnicode(args.get(i));
 	}
 };
 
 class SuiAction : public ActionBase {
 	String value;
+	Vector<String> values;   // several arguments (transfer boxes); when set, value is ignored
 	String match;
 	bool cancel;
 	int timeoutSeconds;
@@ -89,6 +93,9 @@ public:
 	static ActionBase* fromJSON(const JSONSerializationType& config) {
 		SuiAction* me = new SuiAction();
 		if (config.contains("value")) me->value = String(config["value"].get<std::string>().c_str());
+		if (config.contains("values") && config["values"].is_array())
+			for (const auto& v : config["values"])
+				me->values.add(v.is_string() ? String(v.get<std::string>().c_str()) : String::valueOf(v.get<long long>()));
 		if (config.contains("match")) me->match = String(config["match"].get<std::string>().c_str());
 		if (config.contains("cancel")) me->cancel = config["cancel"].get<bool>();
 		if (config.contains("timeout")) me->timeoutSeconds = config["timeout"].get<int>();
@@ -161,7 +168,14 @@ public:
 		info() << "answering SUI page " << pageId << " root='" << core.getVar(base + "/root", String("")) << "' title='" << core.getVar(base + "/title", String(""))
 			<< "' rows=" << rows << " with " << (cancel ? "cancel" : "ok") << " value='" << answer << "' event=" << eventIndex;
 
-		core.zone->getZoneClient()->sendMessage(new ClientSuiEventNotification(pageId, eventIndex, UnicodeString(answer)));
+		Vector<UnicodeString> args;
+		if (values.size() > 0) {
+			for (int i = 0; i < values.size(); ++i)
+				args.add(UnicodeString(values.get(i)));
+		} else {
+			args.add(UnicodeString(answer));
+		}
+		core.zone->getZoneClient()->sendMessage(new ClientSuiEventNotification(pageId, eventIndex, args));
 		core.setVar(base + "/answered", true);
 
 		Thread::sleep(500);   // let the server act (a purchase, the next window, ...)

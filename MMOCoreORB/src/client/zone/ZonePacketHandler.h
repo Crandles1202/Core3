@@ -23,6 +23,7 @@ public:
 	void handleMessage(Message* pack);
 	void handleSceneObjectCreateMessage(Message* pack);
 	void handleCmdStartScene(Message* pack);
+	void handleObjectMoved(uint64 objectID, uint64 parentID, float x, float z, float y, uint32 moveCount, uint8 speed);
 	void handleBaselineMessage(Message* pack);
 	void handleChatInstantMessageToClient(Message* pack);
 	void handleChatSystemMessage(Message* pack);
@@ -30,6 +31,7 @@ public:
 	void handleUpdateContainmentMessage(Message* pack);
 	void handleClientPermissionsMessage(Message* pack);
 	void handleCmdSceneReady(Message* pack);
+	void sendTeleportAck(BaseClient* client, uint64 objectID, uint32 moveCount);
 	void handleClientCreateCharacterSuccess(Message* pack);
 	void handleClientCreateCharacterFailed(Message* pack);
 	void handleClientRandomNameResponse(Message* pack);

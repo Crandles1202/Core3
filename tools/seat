@@ -1,0 +1,592 @@
+#!/usr/bin/env python3
+"""
+tools/seat — drive a seat: a core3client kept logged in as one character, serving a JSON-lines
+control channel on a unix socket (SeatAction, Phase 7.0). A pilot (7.3) sits on top of this.
+
+  seat start <user> <char> [--timeout S] [--name N]   log the character in and open the channel
+                                                        (password from ~/.swg-lab/<user>.pass; seat name defaults to the character)
+  seat stop <name>                                     ask the seat to quit (logout follows) and wait for the client to exit
+  seat list                                            seats with a live socket
+  seat ping <name>                                     round trip
+  seat send <name> '<json request>'                    raw request, prints the reply
+  seat do <name> <action> [key=value …]                {"op":"action","action":{"action":<action>,…}}; values parse as JSON when they can
+  seat say <name> <text> | tell <name> <who> <text> | emote <name> <emote> [target]
+  seat cmd <name> <command> [args] [--target oid] [--nowait]
+  seat vars <name> [path]                              the client's var store (SpatialChat, SystemMessages, Tells, Sui, …)
+  seat objects <name> [--near]                         what the client has in view (creation positions)
+  seat wait <name> <signal> [timeoutMs]                block until that packet arrives (SpatialChat, Tell, SuiCreatePage, …)
+  seat walk <name> <x> <y> [--cell OID] [--speed M/S] ask the server for a path from where the character stands and walk it
+                                                        (real movement packets; the route comes from FbLabTests:pathTo over swg cmd --shared;
+                                                        --cell makes x,y cell-local: a spot inside a building, e.g. a starport's ticket terminal)
+  seat where <name>                                    the character's server-side position (FbLabTests:where)
+  seat points <planet>                                 the planet's travel points with their ticket terminal and shuttle (FbLabTests:travelPoints)
+  seat travel <name> <planet> <point> [--from POINT] [--round-trip] [--wait S]
+                                                        a whole trip: walk to the nearest (or --from) travel point's terminal, buy the ticket,
+                                                        walk to the shuttle, board it (waiting for it to land, up to --wait s, default 240),
+                                                        and report where the character arrived. Point names take underscores for spaces.
+  seat ticket <name> <fromPlanet> <fromPoint> <toPlanet> <toPoint> [--round-trip]   the purchase alone (stand by a terminal)
+  seat board <name> [ticket oid] [--wait S]            the boarding alone (stand by the shuttle)
+  seat place <name> <deed oid> <x> <y> [angle 0-3]     placeStructure from a deed in the inventory (within 100 m, outdoors,
+                                                        outside cities); prints the new structure's oid
+  seat harvester <name> <oid> resources                what this harvester could extract here, with density %
+  seat harvester <name> <oid> select <spawn oid> | activate | deactivate | maintain <credits> | power <units>
+  seat harvester <name> <oid> empty <spawn oid> <units> [--discard]   the hopper into the inventory
+  seat harvester <name> <oid> status                   the server-side view (FbLabTests:harvester: hopper, maintenance, power)
+  seat survey <name> <tool oid> <resource> [range]    use the survey tool, survey that resource, print the grid's best point
+  seat sample <name> <resource> [rounds]               sample where the character stands (3 s, then 25 s per extra round)
+  seat resources <planet> [class]                      the resource oracle (FbLabTests:resources over swg cmd --shared)
+  seat log <name> [lines]                              tail of the client log
+  seat templates                                       (re)write ~/.swg-lab/templates.jsonl, the client's object type/name table, from the
+                                                        server's loaded templates (FbLabTests:templateDump); start does it when the file is missing
+
+State per seat lives in ~/.swg-lab/seats/<name>/: sock, pid, client.log.
+"""
+import json
+import os
+import re
+import socket
+import subprocess
+import sys
+import time
+
+LABDIR = os.environ.get("SWG_LABDIR", os.path.expanduser("~/.swg-lab"))
+SEATS = os.path.join(LABDIR, "seats")
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(HERE)
+
+# the server and its client live in the bench (the main checkout), not in an agent's worktree
+def bench():
+    try:
+        out = subprocess.run(["git", "-C", REPO, "worktree", "list", "--porcelain"], capture_output=True, text=True).stdout
+        first = out.splitlines()[0]
+        if first.startswith("worktree "):
+            return first[len("worktree "):]
+    except Exception:
+        pass
+    return REPO
+
+BIN = os.path.join(bench(), "MMOCoreORB", "bin")
+
+# social emotes by canonical name -> row number of datatables/chat/social_types.iff (1-based, the ids
+# ChatManager::loadSocialTypes assigns); tools/seat_emotes.json is generated from the stock table
+def load_emotes():
+    try:
+        with open(os.path.join(HERE, "seat_emotes.json")) as f:
+            return json.load(f)
+    except OSError:
+        return {}
+
+EMOTES = load_emotes()
+
+
+def seat_character_name(name):
+    """The character a seat was started as (recorded by `seat start`)."""
+    try:
+        with open(os.path.join(seat_dir(name), "character")) as f:
+            return f.read().strip()
+    except OSError:
+        die(f"seat '{name}' has no recorded character name")
+
+
+def lab(fn, timeout=15):
+    """runLuaFunction FbLabTests:<fn> through the console (read-only, no bench lock) -> its output lines."""
+    swg = os.path.join(HERE, "swg")
+    return subprocess.run([swg, "cmd", "--shared", f"runLuaFunction FbLabTests:{fn}", "--timeout", str(timeout)],
+                          capture_output=True, text=True).stdout
+
+
+def lab_fields(line):
+    """'INFO kind a=1 b=x' -> {'a': '1', 'b': 'x'}"""
+    return dict(re.findall(r"(\w+)=(\S+)", line))
+
+
+def path_from_server(char, x, y, cell=0):
+    """FbLabTests:pathTo:<char>:<x>:<y>[:<cell>] -> [[x,z,y,cell],…] (cell 0 = outdoors, world coordinates;
+    otherwise cell-local, the way the walk action sends a DataTransformWithParent)."""
+    out = lab(f"pathTo:{char}:{x}:{y}" + (f":{cell}" if cell else ""))
+    m = re.search(r"INFO path .* pts=(\S+)", out)
+    if not m:
+        err = re.search(r"ERROR pathTo[^\n]*", out)
+        if err:
+            print(err.group(0), file=sys.stderr)
+        return []
+    points = []
+    for pt in m.group(1).split(";"):
+        v = pt.split(",")
+        points.append([float(v[0]), float(v[1]), float(v[2]), int(v[3]) if len(v) > 3 else 0])
+    return points
+
+
+def where(char):
+    """FbLabTests:where -> {'zone','x','y','z','cell'} or None"""
+    line = next((l for l in lab(f"where:{char}", 8).splitlines() if l.startswith("INFO where")), None)
+    if not line:
+        return None
+    f = lab_fields(line)
+    return {"zone": f["zone"], "x": float(f["x"]), "y": float(f["y"]), "z": float(f["z"]), "cell": int(f["cell"])}
+
+
+def travel_points(planet):
+    """FbLabTests:travelPoints:<planet> -> [{name, x, y, interplanetary, terminal, tx, ty, tcell, tlx, tly, shuttle, sx, sy}]"""
+    points = []
+    for line in lab(f"travelPoints:{planet}", 30).splitlines():
+        if not line.startswith("INFO travelpoint"):
+            continue
+        f = lab_fields(line)
+        pt = {"name": f["name"], "x": float(f["x"]), "y": float(f["y"]), "z": float(f.get("z", 0)), "interplanetary": f.get("interplanetary") == "1",
+              "terminal": int(f.get("terminal", 0)), "shuttle": int(f.get("shuttle", 0))}
+        if pt["terminal"]:
+            pt.update(tx=float(f["tx"]), ty=float(f["ty"]), tz=float(f.get("tz", 0)), tcell=int(f["tcell"]), tlx=float(f["tlx"]), tly=float(f["tly"]), tcellName=f.get("tcellName", "-"))
+        if pt["shuttle"]:
+            pt.update(sx=float(f["sx"]), sy=float(f["sy"]))
+        points.append(pt)
+    return points
+
+
+def action_error(reply):
+    """the seat's action reply carries the action's own error under result"""
+    return reply.get("error") or (reply.get("result") or {}).get("error") or "failed"
+
+
+def path_within(char, x, y, within, cell=0, z=None):
+    """A path that ends within `within` m of x,y (outdoors). The AI navmesh leaves out a port's whole pad (and other
+    structure footprints), so the pathfinder's route stops at the mesh edge; players are not bound by the mesh
+    (the server checks speed, not collision), so the route is finished with a straight final leg to a spot
+    `within`·0.6 m short of the target, at height z (the target's, when known)."""
+    import math
+    direct = path_from_server(char, x, y, cell)
+    if cell or not direct:
+        return direct
+    def end_distance(path):
+        return math.hypot(path[-1][0] - x, path[-1][2] - y)
+    if end_distance(direct) <= within:
+        return direct
+    last = direct[-1]
+    dx, dy = x - last[0], y - last[2]
+    dist = math.hypot(dx, dy)
+    stop = max(0.0, dist - within * 0.6)
+    ex, ey = last[0] + dx / dist * stop, last[2] + dy / dist * stop
+    ez = z if z is not None else last[1]
+    print(f"route stops {dist:.0f} m short of the target (off the navmesh): straight final leg of {stop:.0f} m")
+    return direct + [[round(ex, 2), round(ez, 2), round(ey, 2), 0]]
+
+
+def walk_seat(s, char, x, y, cell=0, speed=4.5, within=None, z=None):
+    points = path_within(char, x, y, within, cell, z) if within else path_from_server(char, x, y, cell)
+    if not points:
+        return {"ok": False, "error": f"no path for {char} to {x},{y}" + (f" in cell {cell}" if cell else "") + (f" (within {within} m)" if within else "")}
+    print(f"path: {len(points)} points, {path_length(points):.0f} m" + (" (ends indoors)" if points[-1][3] else ""))
+    return s.action("walk", points=points, speed=speed)
+
+
+def travel_seat(s, name, to_planet, to_point, from_point=None, round_trip=False, max_wait=240):
+    """The whole trip on a seat: terminal, ticket, shuttle, board, arrival."""
+    char = s.request({"op": "ping"}).get("characterName") or seat_character_name(name)
+    here = where(char)
+    if not here:
+        return {"ok": False, "error": f"{char} is not online on the server"}
+    planet = here["zone"]
+    to_point = to_point.replace(" ", "_")
+    points = travel_points(planet)
+    if not points:
+        return {"ok": False, "error": f"no travel points on {planet}"}
+    candidates = [p for p in points if p["terminal"] and p["shuttle"] and (planet == to_planet or p["interplanetary"])]
+    if from_point:
+        candidates = [p for p in candidates if p["name"].lower() == from_point.replace(" ", "_").lower()]
+    if not candidates:
+        return {"ok": False, "error": f"no usable departure point on {planet} for {to_planet} ({from_point or 'nearest'})"}
+    dep = min(candidates, key=lambda p: (p["x"] - here["x"]) ** 2 + (p["y"] - here["y"]) ** 2)
+    print(f"departure: {dep['name']} (terminal {'in ' + dep['tcellName'] if dep['tcell'] else 'outdoors'}, shuttle at {dep['sx']:.0f},{dep['sy']:.0f})")
+
+    # 1. the ticket terminal (indoors for starports: the path enters the building; purchaseTicket wants 8 m)
+    if dep["tcell"]:
+        reply = walk_seat(s, char, round(dep["tlx"], 2), round(dep["tly"], 2), dep["tcell"])
+    else:
+        reply = walk_seat(s, char, round(dep["tx"], 1), round(dep["ty"], 1), within=6, z=dep["tz"])
+    if not reply.get("ok"):
+        return {"ok": False, "error": "walk to the terminal failed: " + action_error(reply), "step": "walk_terminal", "reply": reply}
+
+    # 2. the ticket
+    reply = s.action("ticket", fromPlanet=planet, fromPoint=dep["name"], toPlanet=to_planet, toPoint=to_point, roundTrip=round_trip)
+    if not reply.get("ok"):
+        return {"ok": False, "error": "ticket: " + action_error(reply), "step": "ticket", "reply": reply}
+    ticket = (reply.get("result") or {}).get("ticket", 0)
+    print(f"ticket {ticket}: {(reply.get('result') or {}).get('serverSaid', '')}")
+
+    # 3. the shuttle (outdoors, from wherever the terminal left us; boardShuttle wants 25 m)
+    reply = walk_seat(s, char, round(dep["sx"], 1), round(dep["sy"], 1), within=14, z=dep["z"])
+    if not reply.get("ok"):
+        return {"ok": False, "error": "walk to the shuttle failed: " + action_error(reply), "step": "walk_shuttle", "reply": reply}
+
+    # 4. board, waiting for the shuttle to land
+    reply = s.request({"op": "action", "action": {"action": "board", "ticket": ticket, "maxWaitS": max_wait}}, timeout=max_wait + 60)
+    if not reply.get("ok"):
+        return {"ok": False, "error": "board: " + action_error(reply), "step": "board", "reply": reply}
+    reply.update({k: v for k, v in (reply.get("result") or {}).items() if k in ("terrain", "x", "y", "waitedS", "attempts")})
+    arrived = where(char) or {}
+    reply["arrived"] = arrived
+    reply["departure"] = dep["name"]
+    return reply
+
+
+def path_length(points):
+    """planar length; a change of cell (world <-> cell-local coordinates) is a door step, not a leg"""
+    total = 0.0
+    for a, b in zip(points, points[1:]):
+        if (a[3] if len(a) > 3 else 0) == (b[3] if len(b) > 3 else 0):
+            total += ((a[0] - b[0]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
+    return total
+
+
+def seat_dir(name):
+    d = os.path.join(SEATS, name)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def sock_path(name):
+    return os.path.join(seat_dir(name), "sock")
+
+
+def die(msg, code=1):
+    print(f"seat: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+class Seat:
+    """One connection to a seat's channel."""
+
+    def __init__(self, name, timeout=30.0):
+        self.name = name
+        self.path = sock_path(name)
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.settimeout(timeout)
+        try:
+            self.sock.connect(self.path)
+        except OSError as e:
+            die(f"no seat '{name}' listening at {self.path} ({e})")
+        self.buf = b""
+        self.seq = 0
+
+    def request(self, req, timeout=None):
+        self.seq += 1
+        req = dict(req)
+        req.setdefault("id", self.seq)
+        if timeout is not None:
+            self.sock.settimeout(timeout)
+        self.sock.sendall((json.dumps(req) + "\n").encode())
+        while b"\n" not in self.buf:
+            chunk = self.sock.recv(65536)
+            if not chunk:
+                die(f"seat '{self.name}' closed the channel")
+            self.buf += chunk
+        line, self.buf = self.buf.split(b"\n", 1)
+        return json.loads(line.decode())
+
+    def action(self, action, **fields):
+        body = {"action": action}
+        body.update(fields)
+        return self.request({"op": "action", "action": body}, timeout=120)
+
+    def close(self):
+        self.sock.close()
+
+
+def parse_kv(args):
+    out = {}
+    for a in args:
+        if "=" not in a:
+            die(f"expected key=value, got '{a}'")
+        k, v = a.split("=", 1)
+        try:
+            out[k] = json.loads(v)
+        except ValueError:
+            out[k] = v
+    return out
+
+
+TEMPLATES = os.path.join(LABDIR, "templates.jsonl")
+
+
+def write_templates():
+    """The bot client's Lua templates carry only file names; types and names come from this dump of the
+    server's template table (one JSON line per template), read by core3client at start."""
+    out = lab(f"templateDump:{TEMPLATES}", 120)
+    m = re.search(r"INFO templateDump path=\S+ n=(\d+)", out)
+    if not m:
+        print("seat: the server did not write the template table: " + (re.search(r"ERROR[^\n]*", out) or re.search(r"Exception[^\n]*", out) or re.search(r"$", out)).group(0), file=sys.stderr)
+        return 0
+    print(f"templates: {m.group(1)} written to {TEMPLATES}")
+    return int(m.group(1))
+
+
+def cmd_start(args):
+    if not os.path.exists(TEMPLATES):
+        write_templates()
+    if len(args) < 2:
+        die("start <user> <char> [--timeout S] [--name N]")
+    user, char = args[0], args[1]
+    timeout = 0
+    name = char
+    i = 2
+    while i < len(args):
+        if args[i] == "--timeout" and i + 1 < len(args):
+            timeout = int(args[i + 1]); i += 2
+        elif args[i] == "--name" and i + 1 < len(args):
+            name = args[i + 1]; i += 2
+        else:
+            die(f"unknown option {args[i]}")
+
+    passfile = os.path.join(LABDIR, f"{user}.pass")
+    if not os.path.exists(passfile):
+        die(f"no credentials at {passfile} (swg account create {user} …)")
+    client = os.path.join(BIN, "core3client")
+    if not os.access(client, os.X_OK):
+        die(f"{client} missing — build with the client on (swg build)")
+
+    d = seat_dir(name)
+    sp = sock_path(name)
+    if os.path.exists(sp):
+        try:
+            Seat(name, timeout=3).request({"op": "ping"})
+            die(f"seat '{name}' is already running")
+        except SystemExit:
+            os.unlink(sp)
+    log = open(os.path.join(d, "client.log"), "wb")
+    env = dict(os.environ)
+    env["CORE3_CLIENT_PASSWORD"] = open(passfile).read().strip()
+    argv = [client, "--username", user,
+            "--login-host", os.environ.get("SWG_LOGIN_HOST", "127.0.0.1"),
+            "--login-port", os.environ.get("SWG_LOGIN_PORT", "44453"),
+            "--character-firstname", char,
+            "--seat", sp, "--seat-timeout", str(timeout)]
+    proc = subprocess.Popen(argv, cwd=BIN, env=env, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
+    with open(os.path.join(d, "pid"), "w") as f:
+        f.write(str(proc.pid))
+    with open(os.path.join(d, "character"), "w") as f:
+        f.write(char)
+
+    # wait for the socket (login + zone-in takes a few seconds)
+    for _ in range(90):
+        if proc.poll() is not None:
+            die(f"client exited with {proc.returncode} before the seat opened — see {os.path.join(d, 'client.log')}", proc.returncode)
+        if os.path.exists(sp):
+            try:
+                reply = Seat(name, timeout=5).request({"op": "ping"})
+                print(f"seat '{name}' up: character {reply.get('character')} pid {proc.pid} socket {sp}")
+                return
+            except SystemExit:
+                pass
+        time.sleep(1)
+    die(f"seat '{name}' did not open within 90 s — see {os.path.join(d, 'client.log')}")
+
+
+def cmd_stop(args):
+    if not args:
+        die("stop <name>")
+    name = args[0]
+    d = seat_dir(name)
+    pidfile = os.path.join(d, "pid")
+    pid = int(open(pidfile).read()) if os.path.exists(pidfile) else None
+    try:
+        s = Seat(name, timeout=5)
+        s.request({"op": "quit"})
+        s.close()
+    except SystemExit:
+        print(f"seat '{name}' was not listening")
+    if pid:
+        for _ in range(60):
+            try:
+                os.kill(pid, 0)
+            except OSError:
+                break
+            time.sleep(1)
+        else:
+            print(f"client pid {pid} still running after 60 s (it logs out on quit; check {os.path.join(d, 'client.log')})")
+    for f in ("sock", "pid"):
+        p = os.path.join(d, f)
+        if os.path.exists(p):
+            os.unlink(p)
+    print(f"seat '{name}' stopped")
+
+
+def cmd_list(args):
+    if not os.path.isdir(SEATS):
+        return
+    for name in sorted(os.listdir(SEATS)):
+        sp = sock_path(name)
+        if not os.path.exists(sp):
+            continue
+        try:
+            r = Seat(name, timeout=3).request({"op": "ping"})
+            print(f"{name}\tcharacter {r.get('character')}\tup {r.get('uptimeMs', 0) // 1000}s\t{r.get('requests')} requests")
+        except SystemExit:
+            print(f"{name}\t(socket present, not answering)")
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help"):
+        print(__doc__)
+        return 0
+    cmd, args = argv[0], argv[1:]
+
+    if cmd == "start":
+        return cmd_start(args)
+    if cmd == "stop":
+        return cmd_stop(args)
+    if cmd == "list":
+        return cmd_list(args)
+    if cmd == "templates":
+        return 0 if write_templates() else 1
+    if cmd == "points":
+        if not args:
+            die("points <planet>")
+        for p in travel_points(args[0]):
+            term = f"terminal {p['terminal']} " + (f"in {p['tcellName']} (local {p['tlx']:.1f},{p['tly']:.1f})" if p.get("tcell") else f"outdoors at {p.get('tx', 0):.0f},{p.get('ty', 0):.0f}") if p["terminal"] else "NO TERMINAL"
+            shut = f"shuttle {p['shuttle']} at {p['sx']:.0f},{p['sy']:.0f}" if p["shuttle"] else "NO SHUTTLE"
+            print(f"{p['name']:<34} {p['x']:8.0f} {p['y']:8.0f}  {'starport' if p['interplanetary'] else 'shuttleport':<11} {term}; {shut}")
+        return 0
+    if cmd == "resources":
+        if not args:
+            die("resources <planet> [class]")
+        swg = os.path.join(HERE, "swg")
+        fn = f"resources:{args[0]}" + (f":{args[1]}" if len(args) > 1 else "")
+        out = subprocess.run([swg, "cmd", "--shared", f"runLuaFunction FbLabTests:{fn}", "--timeout", "40"], capture_output=True, text=True).stdout
+        for line in out.splitlines():
+            if line.startswith(("INFO resource", "ERROR")):
+                print(line[5:] if line.startswith("INFO ") else line)
+        return 0
+
+    if not args:
+        die(f"{cmd} <name> …")
+    name = args[0]
+    rest = args[1:]
+    s = Seat(name)
+
+    if cmd == "ping":
+        reply = s.request({"op": "ping"})
+    elif cmd == "send":
+        reply = s.request(json.loads(rest[0]), timeout=120)
+    elif cmd == "do":
+        reply = s.action(rest[0], **parse_kv(rest[1:]))
+    elif cmd == "say":
+        reply = s.action("say", text=" ".join(rest))
+    elif cmd == "tell":
+        reply = s.action("tell", name=rest[0], text=" ".join(rest[1:]))
+    elif cmd == "emote":
+        emote = rest[0]
+        eid = int(emote) if emote.isdigit() else EMOTES.get(emote)
+        if eid is None:
+            die(f"unknown emote '{emote}' (known: {', '.join(sorted(EMOTES))}, or a row number)")
+        fields = {"id": eid}
+        if len(rest) > 1:
+            fields["target"] = int(rest[1])
+        reply = s.action("emote", **fields)
+    elif cmd == "cmd":
+        fields = {"name": rest[0]}
+        words = []
+        i = 1
+        while i < len(rest):
+            if rest[i] == "--target" and i + 1 < len(rest):
+                fields["target"] = rest[i + 1]; i += 2
+            elif rest[i] == "--nowait":
+                fields["nowait"] = True; i += 1
+            else:
+                words.append(rest[i]); i += 1
+        if words:
+            fields["args"] = " ".join(words)
+        reply = s.action("command", **fields)
+    elif cmd == "vars":
+        req = {"op": "vars"}
+        if rest:
+            req["path"] = rest[0] if rest[0].startswith("/") else "/" + rest[0]
+        reply = s.request(req)
+    elif cmd == "objects":
+        reply = s.request({"op": "objects"})
+        if reply.get("ok"):
+            objs = reply["objects"]
+            objs.sort(key=lambda o: (o["type"], o["name"]))
+            for o in objs:
+                print(f"{o['oid']:>12}  type 0x{o['type']:x}  {o['name']:<40} {o['x']:8.1f} {o['y']:8.1f} {o['z']:6.1f}  parent {o['parent']}")
+            print(f"{len(objs)} objects")
+            return 0
+    elif cmd == "wait":
+        timeout = int(rest[1]) if len(rest) > 1 else 10000
+        reply = s.request({"op": "wait", "signal": rest[0], "timeoutMs": timeout}, timeout=timeout / 1000 + 5)
+    elif cmd == "survey":
+        if len(rest) < 2:
+            die("survey <name> <tool oid> <resource> [range]")
+        fields = {"tool": int(rest[0]), "resource": rest[1]}
+        if len(rest) > 2:
+            fields["range"] = int(rest[2])
+        reply = s.action("survey", **fields)
+    elif cmd == "sample":
+        if not rest:
+            die("sample <name> <resource> [rounds]")
+        fields = {"resource": rest[0]}
+        if len(rest) > 1:
+            fields["rounds"] = int(rest[1])
+        reply = s.action("sample", **fields)
+    elif cmd == "walk":
+        if len(rest) < 2:
+            die("walk <name> <x> <y> [--cell OID] [--speed M/S] [--within M]")
+        x, y = float(rest[0]), float(rest[1])
+        speed = 4.5
+        if "--speed" in rest:
+            speed = float(rest[rest.index("--speed") + 1])
+        cell = int(rest[rest.index("--cell") + 1]) if "--cell" in rest else 0
+        within = float(rest[rest.index("--within") + 1]) if "--within" in rest else None
+        char = s.request({"op": "ping"}).get("characterName") or seat_character_name(name)
+        reply = walk_seat(s, char, x, y, cell, speed, within)
+    elif cmd == "where":
+        char = s.request({"op": "ping"}).get("characterName") or seat_character_name(name)
+        reply = where(char) or {}
+        reply["ok"] = bool(reply)
+    elif cmd == "ticket":
+        if len(rest) < 4:
+            die("ticket <name> <fromPlanet> <fromPoint> <toPlanet> <toPoint> [--round-trip]")
+        reply = s.action("ticket", fromPlanet=rest[0], fromPoint=rest[1], toPlanet=rest[2], toPoint=rest[3], roundTrip="--round-trip" in rest)
+    elif cmd == "board":
+        ticket = int(rest[0]) if rest and rest[0].isdigit() else 0
+        wait = int(rest[rest.index("--wait") + 1]) if "--wait" in rest else 240
+        reply = s.request({"op": "action", "action": {"action": "board", "ticket": ticket, "maxWaitS": wait}}, timeout=wait + 60)
+    elif cmd == "place":
+        if len(rest) < 3:
+            die("place <name> <deed oid> <x> <y> [angle 0-3]")
+        reply = s.action("place", deed=int(rest[0]), x=float(rest[1]), y=float(rest[2]), angle=int(rest[3]) if len(rest) > 3 else 0)
+    elif cmd == "harvester":
+        if len(rest) < 2:
+            die("harvester <name> <oid> resources|select <spawn>|activate|deactivate|maintain <credits>|power <units>|empty <spawn> <units> [--discard]|status")
+        hoid, op = int(rest[0]), rest[1]
+        if op == "status":
+            for line in lab(f"harvester:{hoid}", 15).splitlines():
+                if line.startswith(("INFO harvester", "INFO hopper", "ERROR")):
+                    print(line[5:] if line.startswith("INFO ") else line)
+            return 0
+        fields = {"target": hoid, "op": op}
+        if op == "select":
+            fields["resource"] = int(rest[2])
+        elif op in ("maintain", "power"):
+            fields["amount"] = int(rest[2])
+        elif op == "empty":
+            fields["resource"] = int(rest[2]); fields["quantity"] = int(rest[3]); fields["discard"] = "--discard" in rest
+        reply = s.action("harvester", **fields)
+    elif cmd == "travel":
+        if len(rest) < 2:
+            die("travel <name> <planet> <point> [--from POINT] [--round-trip] [--wait S]")
+        from_point = rest[rest.index("--from") + 1] if "--from" in rest else None
+        wait = int(rest[rest.index("--wait") + 1]) if "--wait" in rest else 240
+        reply = travel_seat(s, name, rest[0], rest[1], from_point, "--round-trip" in rest, wait)
+    elif cmd == "log":
+        n = int(rest[0]) if rest else 40
+        subprocess.run(["tail", "-n", str(n), os.path.join(seat_dir(name), "client.log")])
+        return 0
+    else:
+        die(f"unknown command '{cmd}'")
+
+    print(json.dumps(reply, indent=1))
+    return 0 if reply.get("ok") else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

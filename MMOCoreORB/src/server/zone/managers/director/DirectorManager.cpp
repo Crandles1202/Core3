@@ -7,6 +7,13 @@
 
 #include "DirectorManager.h"
 #include "server/zone/objects/cell/CellObject.h"
+#include "server/zone/objects/installation/InstallationObject.h"
+#include "server/zone/objects/installation/HopperList.h"
+#include "templates/manager/TemplateManager.h"
+#include "templates/manager/TemplateCRCMap.h"
+#include "server/zone/objects/tangible/deed/structure/StructureDeed.h"
+#include "server/zone/objects/resource/ResourceContainer.h"
+#include "server/zone/objects/structure/StructureObject.h"
 #include "server/zone/objects/creature/LuaCreatureObject.h"
 #include "templates/params/creature/ObjectFlag.h"
 #include "server/zone/objects/scene/LuaSceneObject.h"
@@ -26,6 +33,7 @@
 #include "server/zone/managers/faction/FactionManager.h"
 #include "server/zone/managers/combat/CombatManager.h"
 #include "server/zone/managers/collision/PathFinderManager.h"
+#include "server/zone/objects/scene/WorldCoordinates.h"
 #include "server/zone/objects/tangible/threat/ThreatMap.h"
 #include "templates/manager/TemplateManager.h"
 #include "server/zone/managers/stringid/StringIdManager.h"
@@ -97,6 +105,8 @@
 #include "server/zone/managers/crafting/schematicmap/SchematicMap.h"
 #include "server/zone/managers/director/ScreenPlayObserver.h"
 #include "server/zone/managers/resource/ResourceManager.h"
+#include "server/zone/managers/resource/resourcespawner/resourcemap/ResourceMap.h"
+#include "server/zone/managers/resource/resourcespawner/ResourceSpawner.h"
 #include "server/zone/managers/gcw/observers/SquadObserver.h"
 #include "server/zone/managers/ship/ShipManager.h"
 #include "templates/params/ship/ShipFlag.h"
@@ -518,6 +528,17 @@ void DirectorManager::initializeLuaEngine(Lua* luaEngine) {
 	luaEngine->registerFunction("getGCWDiscount", getGCWDiscount);
 	luaEngine->registerFunction("getTerrainHeight", getTerrainHeight);
 	luaEngine->registerFunction("getTerrainHeightAt", getTerrainHeightAt);
+	luaEngine->registerFunction("findPath", findPath);
+	luaEngine->registerFunction("getResourceSpawns", getResourceSpawns);
+	luaEngine->registerFunction("getResourceDensityAt", getResourceDensityAt);
+	luaEngine->registerFunction("getObjectsInRange", getObjectsInRange);
+	luaEngine->registerFunction("getStructureStatus", getStructureStatus);
+	luaEngine->registerFunction("getOwnedStructures", getOwnedStructures);
+	luaEngine->registerFunction("harvesterAddToHopper", harvesterAddToHopper);
+	luaEngine->registerFunction("dumpTemplates", dumpTemplates);
+	luaEngine->registerFunction("isBuildingPermittedAt", isBuildingPermittedAt);
+	luaEngine->registerFunction("setDeedValues", setDeedValues);
+	luaEngine->registerFunction("getResourceUnits", getResourceUnits);
 	luaEngine->registerFunction("getZoneWeather", getZoneWeather);
 	luaEngine->registerFunction("setZoneWeather", setZoneWeather);
 	luaEngine->registerFunction("awardSkill", awardSkill);
@@ -4089,6 +4110,606 @@ int DirectorManager::getTerrainHeightAt(lua_State* L) {
 	}
 
 	lua_pushnumber(L, zone->getHeight(x, y));
+	return 1;
+}
+
+// Final Boss (Phase 7.1): the AI pathfinder for Lua. findPath(zoneName, x1, y1, x2, y2) returns a table of
+// {x, z, y} waypoints from the first point to the second over the terrain (no cells: outdoor to outdoor),
+// each z the terrain height there, or nil when the zone is unknown or no path exists. A seat walks it.
+int DirectorManager::findPath(lua_State* L) {
+	int argc = lua_gettop(L);
+	if (argc != 5 && argc != 7) {
+		String err = "incorrect number of arguments passed to DirectorManager::findPath";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	// findPath(zone, x1, y1, x2, y2 [, cell1, cell2]): a cell oid (0 = outdoors) makes that end's coordinates
+	// cell-local, the way a creature inside a building reports its position
+	uint64 cell1 = 0, cell2 = 0;
+	if (argc == 7) {
+		cell2 = lua_tointeger(L, -1);
+		cell1 = lua_tointeger(L, -2);
+		lua_pop(L, 2);
+	}
+	float y2 = lua_tonumber(L, -1);
+	float x2 = lua_tonumber(L, -2);
+	float y1 = lua_tonumber(L, -3);
+	float x1 = lua_tonumber(L, -4);
+	String zoneName = lua_tostring(L, -5);
+
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	Zone* zone = zoneServer != nullptr ? zoneServer->getZone(zoneName) : nullptr;
+
+	if (zone == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	ManagedReference<CellObject*> startCell = cell1 != 0 ? zoneServer->getObject(cell1).castTo<CellObject*>() : nullptr;
+	ManagedReference<CellObject*> endCell = cell2 != 0 ? zoneServer->getObject(cell2).castTo<CellObject*>() : nullptr;
+	if ((cell1 != 0 && startCell == nullptr) || (cell2 != 0 && endCell == nullptr)) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	WorldCoordinates start(Vector3(x1, y1, startCell != nullptr ? 0.f : zone->getHeight(x1, y1)), startCell);
+	WorldCoordinates end(Vector3(x2, y2, endCell != nullptr ? 0.f : zone->getHeight(x2, y2)), endCell);
+
+	Vector<WorldCoordinates>* path = PathFinderManager::instance()->findPath(start, end, zone);
+
+	if (path == nullptr || path->size() == 0) {
+		if (path != nullptr)
+			delete path;
+		lua_pushnil(L);
+		return 1;
+	}
+
+	// rows are {x, z, y, cell}: cell-local x/z/y when cell is a cell oid, world (terrain height) when it is 0
+	lua_newtable(L);
+	for (int i = 0; i < path->size(); ++i) {
+		const WorldCoordinates& wc = path->get(i);
+		const Vector3& p = wc.getPoint();
+		CellObject* cell = wc.getCell();
+		lua_newtable(L);
+		lua_pushnumber(L, p.getX());
+		lua_rawseti(L, -2, 1);
+		lua_pushnumber(L, cell != nullptr ? p.getZ() : zone->getHeight(p.getX(), p.getY()));
+		lua_rawseti(L, -2, 2);
+		lua_pushnumber(L, p.getY());
+		lua_rawseti(L, -2, 3);
+		lua_pushinteger(L, cell != nullptr ? (lua_Integer) cell->getObjectID() : 0);
+		lua_rawseti(L, -2, 4);
+		lua_rawseti(L, -2, i + 1);
+	}
+
+	delete path;
+	return 1;
+}
+
+// Final Boss (Phase 7.6a, travel): getObjectsInRange(zoneName, x, y, range [, gameObjectType]) -> the objects
+// within range of a point — top-level ones from the zone tree and, for buildings in range, everything inside
+// their cells (terminals, vendors, NPCs). Each row: {oid, template, name, type, x, z, y (world), cell (oid or 0),
+// cellName, building (oid or 0)}. The optional type filter is a SceneObjectType value (travel terminal 0x4012).
+int DirectorManager::getObjectsInRange(lua_State* L) {
+	int argc = lua_gettop(L);
+	if (argc != 4 && argc != 5) {
+		String err = "incorrect number of arguments passed to DirectorManager::getObjectsInRange";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	uint32 typeFilter = 0;
+	if (argc == 5) {
+		typeFilter = lua_tointeger(L, -1);
+		lua_pop(L, 1);
+	}
+	float range = lua_tonumber(L, -1);
+	float y = lua_tonumber(L, -2);
+	float x = lua_tonumber(L, -3);
+	String zoneName = lua_tostring(L, -4);
+
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	Zone* zone = zoneServer != nullptr ? zoneServer->getZone(zoneName) : nullptr;
+	if (zone == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	SortedVector<ManagedReference<TreeEntry*> > entries;
+	zone->getInRangeObjects(x, zone->getHeight(x, y), y, range, &entries, true, true);
+
+	Vector<ManagedReference<SceneObject*> > found;
+	for (int i = 0; i < entries.size(); ++i) {
+		SceneObject* object = cast<SceneObject*>(entries.get(i).get());
+		if (object == nullptr)
+			continue;
+		found.add(object);
+		if (!object->isBuildingObject())
+			continue;
+		BuildingObject* building = object->asBuildingObject();
+		if (building == nullptr)
+			continue;
+		for (int c = 1; c <= building->getTotalCellNumber(); ++c) {   // cells is a VectorMap keyed by cell number 1..N
+			CellObject* cell = building->getCell(c);
+			if (cell == nullptr)
+				continue;
+			for (int j = 0; j < cell->getContainerObjectsSize(); ++j) {
+				SceneObject* child = cell->getContainerObject(j);
+				if (child != nullptr)
+					found.add(child);
+			}
+		}
+	}
+
+	lua_newtable(L);
+	int n = 0;
+	for (int i = 0; i < found.size(); ++i) {
+		SceneObject* object = found.get(i);
+		if (typeFilter != 0 && object->getGameObjectType() != typeFilter)
+			continue;
+		Vector3 world = object->getWorldPosition();
+		float dx = world.getX() - x, dy = world.getY() - y;
+		if (dx * dx + dy * dy > range * range)
+			continue;
+		ManagedReference<SceneObject*> parent = object->getParent().get();
+		CellObject* cell = parent != nullptr && parent->isCellObject() ? cast<CellObject*>(parent.get()) : nullptr;
+		ManagedReference<SceneObject*> root = object->getRootParent();
+		BuildingObject* rootBuilding = root != nullptr && root->isBuildingObject() ? root->asBuildingObject() : nullptr;
+
+		lua_newtable(L);
+		lua_pushinteger(L, (lua_Integer) object->getObjectID()); lua_setfield(L, -2, "oid");
+		lua_pushstring(L, object->getObjectTemplate() != nullptr ? object->getObjectTemplate()->getFullTemplateString().toCharArray() : ""); lua_setfield(L, -2, "template");
+		lua_pushstring(L, object->getDisplayedName().toCharArray()); lua_setfield(L, -2, "name");
+		lua_pushinteger(L, object->getGameObjectType()); lua_setfield(L, -2, "type");
+		lua_pushnumber(L, world.getX()); lua_setfield(L, -2, "x");
+		lua_pushnumber(L, world.getZ()); lua_setfield(L, -2, "z");
+		lua_pushnumber(L, world.getY()); lua_setfield(L, -2, "y");
+		lua_pushinteger(L, cell != nullptr ? (lua_Integer) cell->getObjectID() : 0); lua_setfield(L, -2, "cell");
+		lua_pushstring(L, cell != nullptr && rootBuilding != nullptr ? rootBuilding->getCellName(cell->getCellNumber()).toCharArray() : ""); lua_setfield(L, -2, "cellName");   // getCellName wants the cell number, not the oid
+		lua_pushinteger(L, cell != nullptr && root != nullptr ? (lua_Integer) root->getObjectID() : 0); lua_setfield(L, -2, "building");
+		if (cell != nullptr) {
+			// the local position too: what a DataTransformWithParent must carry to stand next to it
+			lua_pushnumber(L, object->getPositionX()); lua_setfield(L, -2, "localX");
+			lua_pushnumber(L, object->getPositionZ()); lua_setfield(L, -2, "localZ");
+			lua_pushnumber(L, object->getPositionY()); lua_setfield(L, -2, "localY");
+		}
+		lua_rawseti(L, -2, ++n);
+	}
+	return 1;
+}
+
+// Final Boss (7.0, the seat): dumpTemplates(path) writes every loaded object template as one JSON line
+// {"crc":<client crc>,"serverCrc":<server crc>,"type":<gameObjectType>,"name":"<objectName>","file":"<server path>"}.
+// The bot client's Lua templates carry only the file name (the data "is deprecated and loaded from the tres"),
+// so without this table it knows no object's type or name. Returns the number of lines, or nil.
+int DirectorManager::dumpTemplates(lua_State* L) {
+	if (checkArgumentCount(L, 1) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::dumpTemplates";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	String path = lua_tostring(L, -1);
+	TemplateManager* templateManager = TemplateManager::instance();
+	if (templateManager == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	File file(path);
+	FileWriter writer(&file);
+	int n = 0;
+	TemplateCRCMap& map = templateManager->getTemplateCRCMap();
+	HashTableIterator<uint32, TemplateReference<SharedObjectTemplate*> > iterator = map.iterator();
+	while (iterator.hasNext()) {
+		SharedObjectTemplate* tmpl = iterator.getNextValue();
+		if (tmpl == nullptr)
+			continue;
+		JSONSerializationType line;
+		line["crc"] = tmpl->getClientObjectCRC();
+		line["serverCrc"] = tmpl->getServerObjectCRC();
+		line["type"] = tmpl->getGameObjectType();
+		line["name"] = tmpl->getObjectName().toCharArray();
+		line["file"] = tmpl->getFullTemplateString().toCharArray();
+		writer << line.dump().c_str() << "\n";
+		n++;
+	}
+	writer.close();
+	lua_pushinteger(L, n);
+	return 1;
+}
+
+// Final Boss (7.6a): isBuildingPermittedAt(zoneName, x, y) -> true when a structure may stand there (no-build areas,
+// client city regions and the footprint check of PlanetManager::isBuildingPermittedAt), nil for an unknown zone.
+int DirectorManager::isBuildingPermittedAt(lua_State* L) {
+	if (checkArgumentCount(L, 3) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::isBuildingPermittedAt";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	float y = lua_tonumber(L, -1);
+	float x = lua_tonumber(L, -2);
+	String zoneName = lua_tostring(L, -3);
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	Zone* zone = zoneServer != nullptr ? zoneServer->getZone(zoneName) : nullptr;
+	PlanetManager* planetManager = zone != nullptr ? zone->getPlanetManager() : nullptr;
+	if (planetManager == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+	lua_pushboolean(L, planetManager->isBuildingPermittedAt(x, y, nullptr));
+	return 1;
+}
+
+// Final Boss (7.6a): setDeedValues(deedOid, extractionRate, hopperSize) — a harvester deed carries its extraction rate
+// and hopper size from crafting (updateCraftingValues); a deed the lab creates has 0 for both, and the harvester
+// placed from it would extract nothing. -> true, or nil for a missing deed.
+int DirectorManager::setDeedValues(lua_State* L) {
+	if (checkArgumentCount(L, 3) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::setDeedValues";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	float hopper = lua_tonumber(L, -1);
+	float rate = lua_tonumber(L, -2);
+	uint64 oid = lua_tointeger(L, -3);
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	ManagedReference<StructureDeed*> deed = zoneServer != nullptr ? zoneServer->getObject(oid).castTo<StructureDeed*>() : nullptr;
+	if (deed == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+	Locker locker(deed);
+	deed->setExtractionRate(rate);
+	deed->setHopperSize(hopper);
+	lua_pushboolean(L, true);
+	return 1;
+}
+
+// Final Boss (7.6a): getResourceUnits(playerName, resourceName) -> units of that resource (by spawn name) in the
+// player's inventory, summed over its containers (an emptied hopper merges into an existing container, so counting
+// containers tells nothing), or nil when the player is offline.
+int DirectorManager::getResourceUnits(lua_State* L) {
+	if (checkArgumentCount(L, 2) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::getResourceUnits";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	String resourceName = lua_tostring(L, -1);
+	String playerName = lua_tostring(L, -2);
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	PlayerManager* playerManager = zoneServer != nullptr ? zoneServer->getPlayerManager() : nullptr;
+	ManagedReference<CreatureObject*> player = playerManager != nullptr ? playerManager->getPlayer(playerName) : nullptr;
+	SceneObject* inventory = player != nullptr ? player->getSlottedObject("inventory") : nullptr;
+	if (inventory == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	int units = 0;
+	for (int i = 0; i < inventory->getContainerObjectsSize(); ++i) {
+		SceneObject* item = inventory->getContainerObject(i);
+		if (item == nullptr || !item->isResourceContainer())
+			continue;
+		ResourceContainer* container = cast<ResourceContainer*>(item);
+		ManagedReference<ResourceSpawn*> spawn = container != nullptr ? container->getSpawnObject() : nullptr;
+		if (spawn != nullptr && spawn->getName() == resourceName)
+			units += container->getQuantity();
+	}
+	lua_pushinteger(L, units);
+	return 1;
+}
+
+// Final Boss (Phase 7.6a, harvesters): what a structure owner sees in the management windows, for the lab and
+// the citizens. getStructureStatus(oid) -> {oid, template, type, zone, x, y, z, owner, lotSize, maintenance
+// (surplus), maintenanceRate, power (surplus), powerRate, active, installationType, activeResource (spawn oid),
+// activeResourceName, extractionRate, actualRate, hopperSize, hopperMax, hopper = {{spawn, name, quantity}, …}},
+// or nil. getOwnedStructures(playerName) -> {oid, …}. harvesterAddToHopper(oid, units) puts units of the
+// active resource into the hopper (the lab's stand-in for hours of extraction) -> units added or nil.
+int DirectorManager::getStructureStatus(lua_State* L) {
+	if (checkArgumentCount(L, 1) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::getStructureStatus";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	uint64 oid = lua_tointeger(L, -1);
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	ManagedReference<StructureObject*> structure = zoneServer != nullptr ? zoneServer->getObject(oid).castTo<StructureObject*>() : nullptr;
+	if (structure == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	Locker locker(structure);
+	Vector3 world = structure->getWorldPosition();
+
+	lua_newtable(L);
+	lua_pushinteger(L, (lua_Integer) structure->getObjectID()); lua_setfield(L, -2, "oid");
+	lua_pushstring(L, structure->getObjectTemplate() != nullptr ? structure->getObjectTemplate()->getFullTemplateString().toCharArray() : ""); lua_setfield(L, -2, "template");
+	lua_pushinteger(L, structure->getGameObjectType()); lua_setfield(L, -2, "type");
+	lua_pushstring(L, structure->getZone() != nullptr ? structure->getZone()->getZoneName().toCharArray() : ""); lua_setfield(L, -2, "zone");
+	lua_pushnumber(L, world.getX()); lua_setfield(L, -2, "x");
+	lua_pushnumber(L, world.getY()); lua_setfield(L, -2, "y");
+	lua_pushnumber(L, world.getZ()); lua_setfield(L, -2, "z");
+	lua_pushinteger(L, (lua_Integer) structure->getOwnerObjectID()); lua_setfield(L, -2, "owner");
+	lua_pushinteger(L, structure->getLotSize()); lua_setfield(L, -2, "lotSize");
+	lua_pushinteger(L, structure->getSurplusMaintenance()); lua_setfield(L, -2, "maintenance");
+	lua_pushinteger(L, structure->getBaseMaintenanceRate()); lua_setfield(L, -2, "maintenanceRate");
+	lua_pushinteger(L, structure->getSurplusPower()); lua_setfield(L, -2, "power");
+	lua_pushinteger(L, structure->getBasePowerRate()); lua_setfield(L, -2, "powerRate");
+
+	InstallationObject* inso = structure->isInstallationObject() ? cast<InstallationObject*>(structure.get()) : nullptr;
+	if (inso != nullptr) {
+		lua_pushboolean(L, inso->isActive()); lua_setfield(L, -2, "active");
+		lua_pushinteger(L, inso->getInstallationType()); lua_setfield(L, -2, "installationType");
+		uint64 activeSpawn = inso->getActiveResourceSpawnID();
+		lua_pushinteger(L, (lua_Integer) activeSpawn); lua_setfield(L, -2, "activeResource");
+		ManagedReference<ResourceSpawn*> spawn = activeSpawn != 0 ? zoneServer->getObject(activeSpawn).castTo<ResourceSpawn*>() : nullptr;
+		lua_pushstring(L, spawn != nullptr ? spawn->getName().toCharArray() : ""); lua_setfield(L, -2, "activeResourceName");
+		lua_pushnumber(L, inso->getExtractionRate()); lua_setfield(L, -2, "extractionRate");
+		lua_pushnumber(L, inso->getActualRate()); lua_setfield(L, -2, "actualRate");
+		lua_pushnumber(L, inso->getHopperSize()); lua_setfield(L, -2, "hopperSize");
+		lua_pushnumber(L, inso->getHopperSizeMax()); lua_setfield(L, -2, "hopperMax");
+
+		lua_newtable(L);
+		HopperList* hopper = inso->getHopperList();
+		for (int i = 0; hopper != nullptr && i < hopper->size(); ++i) {
+			ResourceContainer* container = hopper->get(i);
+			if (container == nullptr)
+				continue;
+			ManagedReference<ResourceSpawn*> itemSpawn = container->getSpawnObject();
+			lua_newtable(L);
+			lua_pushinteger(L, itemSpawn != nullptr ? (lua_Integer) itemSpawn->getObjectID() : 0); lua_setfield(L, -2, "spawn");
+			lua_pushstring(L, itemSpawn != nullptr ? itemSpawn->getName().toCharArray() : ""); lua_setfield(L, -2, "name");
+			lua_pushinteger(L, container->getQuantity()); lua_setfield(L, -2, "quantity");
+			lua_rawseti(L, -2, i + 1);
+		}
+		lua_setfield(L, -2, "hopper");
+	}
+	return 1;
+}
+
+int DirectorManager::getOwnedStructures(lua_State* L) {
+	if (checkArgumentCount(L, 1) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::getOwnedStructures";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	String name = lua_tostring(L, -1);
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	PlayerManager* playerManager = zoneServer != nullptr ? zoneServer->getPlayerManager() : nullptr;
+	ManagedReference<CreatureObject*> player = playerManager != nullptr ? playerManager->getPlayer(name) : nullptr;
+	PlayerObject* ghost = player != nullptr ? player->getPlayerObject() : nullptr;
+	if (ghost == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	lua_newtable(L);
+	int n = 0;
+	for (int i = 0; i < ghost->getTotalOwnedStructureCount(); ++i) {
+		uint64 oid = ghost->getOwnedStructure(i);
+		if (oid == 0)
+			continue;
+		lua_pushinteger(L, (lua_Integer) oid);
+		lua_rawseti(L, -2, ++n);
+	}
+	lua_pushinteger(L, ghost->getLotsRemaining()); lua_setfield(L, -2, "lotsRemaining");
+	return 1;
+}
+
+int DirectorManager::harvesterAddToHopper(lua_State* L) {
+	if (checkArgumentCount(L, 2) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::harvesterAddToHopper";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	int units = lua_tointeger(L, -1);
+	uint64 oid = lua_tointeger(L, -2);
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	ManagedReference<InstallationObject*> inso = zoneServer != nullptr ? zoneServer->getObject(oid).castTo<InstallationObject*>() : nullptr;
+	if (inso == nullptr || units <= 0) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	Locker locker(inso);
+	ManagedReference<ResourceSpawn*> spawn = zoneServer->getObject(inso->getActiveResourceSpawnID()).castTo<ResourceSpawn*>();
+	if (spawn == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+	// the hopper already holds a (possibly empty) container for the active resource: top it up, as extraction does
+	ManagedReference<ResourceContainer*> existing = inso->getContainerFromHopper(spawn);
+	if (existing != nullptr) {
+		Locker clocker(existing, inso);
+		existing->setQuantity(existing->getQuantity() + units, false, true, false);
+		lua_pushinteger(L, units);
+		return 1;
+	}
+	ManagedReference<ResourceContainer*> container = spawn->createResource(units);
+	if (container == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+	inso->addResourceToHopper(container);
+	lua_pushinteger(L, units);
+	return 1;
+}
+
+// Final Boss (Phase 7.6a): the resource oracle — the citizens' stand-in for the community resource spreadsheet.
+// getResourceSpawns(zoneName) -> { {name, type, family, finalClass, tool, despawn, attributes = {res_x = n, …},
+// best = { {x, y, density}, … (up to 3) } }, … } for every spawn currently in shift on that planet; the best spots
+// come from a 256 m scan of the spawn's concentration map refined to 32 m around each peak (the same noise the
+// survey tool reads). getResourceDensityAt(spawnName, zoneName, x, y) -> 0..1.
+static void fbPushResourceBestSpots(lua_State* L, ResourceSpawn* spawn, const String& zoneName) {
+	const float lo = -8192.f, hi = 8192.f;
+	const float coarse = 256.f;
+	// top three coarse peaks, kept apart by at least 1 km
+	Vector<Vector3> peaks;
+	for (float y = lo; y <= hi; y += coarse) {
+		for (float x = lo; x <= hi; x += coarse) {
+			float d = spawn->getDensityAt(zoneName, x, y);
+			if (d <= 0.05f)
+				continue;
+			bool nearExisting = false;
+			for (int i = 0; i < peaks.size(); ++i) {
+				Vector3& pk = peaks.get(i);
+				if (fabs(pk.getX() - x) < 1000.f && fabs(pk.getY() - y) < 1000.f) {
+					nearExisting = true;
+					if (d > pk.getZ()) {
+						pk.setX(x); pk.setY(y); pk.setZ(d);
+					}
+					break;
+				}
+			}
+			if (nearExisting)
+				continue;
+			if (peaks.size() < 3) {
+				peaks.add(Vector3(x, y, d));
+			} else {
+				int weakest = 0;
+				for (int i = 1; i < 3; ++i)
+					if (peaks.get(i).getZ() < peaks.get(weakest).getZ())
+						weakest = i;
+				if (d > peaks.get(weakest).getZ())
+					peaks.get(weakest) = Vector3(x, y, d);
+			}
+		}
+	}
+	// refine each peak on a 32 m grid within the coarse cell
+	for (int i = 0; i < peaks.size(); ++i) {
+		Vector3 pk = peaks.get(i);
+		Vector3 best = pk;
+		for (float y = pk.getY() - coarse; y <= pk.getY() + coarse; y += 32.f) {
+			for (float x = pk.getX() - coarse; x <= pk.getX() + coarse; x += 32.f) {
+				if (x < lo || x > hi || y < lo || y > hi)
+					continue;
+				float d = spawn->getDensityAt(zoneName, x, y);
+				if (d > best.getZ())
+					best = Vector3(x, y, d);
+			}
+		}
+		peaks.get(i) = best;
+	}
+	// sort descending by density
+	for (int i = 0; i < peaks.size(); ++i)
+		for (int j = i + 1; j < peaks.size(); ++j)
+			if (peaks.get(j).getZ() > peaks.get(i).getZ()) {
+				Vector3 t = peaks.get(i); peaks.get(i) = peaks.get(j); peaks.get(j) = t;
+			}
+
+	lua_newtable(L);
+	for (int i = 0; i < peaks.size(); ++i) {
+		lua_newtable(L);
+		lua_pushnumber(L, peaks.get(i).getX()); lua_setfield(L, -2, "x");
+		lua_pushnumber(L, peaks.get(i).getY()); lua_setfield(L, -2, "y");
+		lua_pushnumber(L, peaks.get(i).getZ()); lua_setfield(L, -2, "density");
+		lua_rawseti(L, -2, i + 1);
+	}
+}
+
+int DirectorManager::getResourceSpawns(lua_State* L) {
+	if (checkArgumentCount(L, 1) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::getResourceSpawns";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	String zoneName = lua_tostring(L, -1);
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	ResourceManager* resourceManager = zoneServer != nullptr ? zoneServer->getResourceManager() : nullptr;
+
+	if (resourceManager == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	Vector<ManagedReference<ResourceSpawn*> > spawns;
+	{
+		ReadLocker locker(resourceManager);
+		ResourceSpawner* spawner = resourceManager->getResourceSpawner();
+		ResourceMap* resourceMap = spawner != nullptr ? spawner->getResourceMap() : nullptr;
+		ZoneResourceMap* zoneMap = resourceMap != nullptr ? resourceMap->getZoneResourceList(zoneName) : nullptr;
+		if (zoneMap != nullptr) {
+			for (int i = 0; i < zoneMap->size(); ++i) {
+				ManagedReference<ResourceSpawn*> spawn = zoneMap->get(i);
+				if (spawn != nullptr && spawn->inShift())
+					spawns.add(spawn);
+			}
+		}
+	}
+
+	lua_newtable(L);
+	for (int i = 0; i < spawns.size(); ++i) {
+		ResourceSpawn* spawn = spawns.get(i);
+		lua_newtable(L);
+		lua_pushstring(L, spawn->getName().toCharArray()); lua_setfield(L, -2, "name");
+		lua_pushstring(L, spawn->getType().toCharArray()); lua_setfield(L, -2, "type");
+		lua_pushstring(L, spawn->getFamilyName().toCharArray()); lua_setfield(L, -2, "family");
+		lua_pushstring(L, spawn->getFinalClass().toCharArray()); lua_setfield(L, -2, "finalClass");
+		lua_pushinteger(L, spawn->getSurveyToolType()); lua_setfield(L, -2, "tool");
+		lua_pushinteger(L, (lua_Integer) spawn->getDespawned()); lua_setfield(L, -2, "despawn");
+
+		lua_newtable(L);
+		for (int a = 0; ; ++a) {
+			String attribute;
+			int value = spawn->getAttributeAndValue(attribute, a);
+			if (attribute.isEmpty())
+				break;
+			lua_pushinteger(L, value);
+			lua_setfield(L, -2, attribute.toCharArray());
+		}
+		lua_setfield(L, -2, "attributes");
+
+		fbPushResourceBestSpots(L, spawn, zoneName);
+		lua_setfield(L, -2, "best");
+
+		lua_rawseti(L, -2, i + 1);
+	}
+	return 1;
+}
+
+int DirectorManager::getResourceDensityAt(lua_State* L) {
+	if (checkArgumentCount(L, 4) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::getResourceDensityAt";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	float y = lua_tonumber(L, -1);
+	float x = lua_tonumber(L, -2);
+	String zoneName = lua_tostring(L, -3);
+	String spawnName = lua_tostring(L, -4);
+
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	ResourceManager* resourceManager = zoneServer != nullptr ? zoneServer->getResourceManager() : nullptr;
+	ManagedReference<ResourceSpawn*> spawn = resourceManager != nullptr ? resourceManager->getResourceSpawn(spawnName) : nullptr;
+
+	if (spawn == nullptr) {
+		lua_pushnumber(L, -1);
+		return 1;
+	}
+
+	lua_pushnumber(L, spawn->getDensityAt(zoneName, x, y));
 	return 1;
 }
 

@@ -15,8 +15,14 @@ class ObjectMap;
 class Zone;
 class SpaceZone;
 
+struct TemplateInfo {
+	uint32 type;
+	String name;
+};
+
 class ObjectManager : public Mutex, public Logger {
 	ObjectMap* objectMap;
+	HashTable<uint32, TemplateInfo*> templateTable;   // client crc -> type/name from the server's template dump
 
 	static ObjectFactory<SceneObject* (LuaObject*), uint32> objectFactory;
 	static Lua* luaInstance;
@@ -35,7 +41,16 @@ public:
 
 	SceneObject* getObject(uint64 objectID);
 
+	void destroyObject(uint64 objectID);   // SceneDestroyObject: it left our view
+	void clear();                          // a new scene (zone switch): everything of the old one is gone
+	void loadTemplateTable();              // ~/.swg-lab/templates.jsonl: crc -> gameObjectType/objectName
+
 	SceneObject* getObject(const UnicodeString& customName);
+
+	// the seat (SeatAction) lists what the client knows about; lock the manager while iterating
+	inline ObjectMap* getObjectMap() {
+		return objectMap;
+	}
 
 	inline void setZone(Zone* zn) {
 		zone = zn;

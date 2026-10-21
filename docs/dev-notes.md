@@ -186,6 +186,120 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-20 (night) — 7.6a travel on a seat.** Chuck: "get started on the seats", key to follow. Built the trip:
+  ticket terminal → `purchaseTicket` → shuttle → `boardShuttle` → the new scene. **Where the terminals are:** not
+  in the `.ws` snapshot (`lotsurvey near` finds none) — they are `childObjects` of the port building's Lua template,
+  spawned with it; a starport's four stand inside the building (cell 4), a shuttleport's one outdoors. Hence
+  `getObjectsInRange(zone, x, y, range[, type])` (zone tree + every building's cell contents, world and cell-local
+  positions) and `findPath(zone, x1, y1, x2, y2[, cell1, cell2])` returning `{x, z, y, cell}` rows: the
+  pathfinder's world→cell path puts the door node on both sides, so the client's walk makes one short step across
+  the space change and sends `DataTransformWithParent` (0xF1: parent oid right after moveCount, position
+  cell-local) inside. **Zone switch on the bot client:** `switchZone` destroys the character from the old world and
+  `sendToOwner` sends a second `CmdStartScene` (same planet too); the client never reset anything, so it now counts
+  scenes (`Scene/count`, `Scene/terrain|x|y`, `Scene/readyCount` from the server's `CmdSceneReady`) and clears its
+  object map on a re-scene (`ObjectManager::clear`). `board` polls those vars instead of `waitFor` (the packet can
+  land before a waiter registers — same lesson as CommandQueueRemove). The shuttle's "ready to board in N minutes and
+  M seconds" is parsed and slept through. **Python runtime:** Debian 12 ships no pip/ensurepip; `apt-get install
+  python3-venv python3-pip` (sudo is passwordless here), venv at `~/.swg-lab/venv` with `anthropic` 1.17.0; the pilot
+  re-execs itself there when the system python lacks the SDK — compare `sys.prefix` with the venv dir, **not**
+  `realpath(sys.executable)` (the venv's python is a symlink to the system one, so that compared equal). The key is
+  read from `~/.env` when the environment has none. Scenario `seat-travel`: Mos Eisley Shuttleport → Bestine
+  Shuttleport (outdoor terminal), then Bestine Starport → Mos Eisley Starport (indoor terminal, cell walk).
+  **Harvesters** followed in the same session: the seat places from a deed, lists what the spot offers (0xEA), selects,
+  pays maintenance and deposits power through the real transfer boxes (radial 129/51; `sui` learned `values`, the
+  server reads the second argument as the amount — `StructurePayMaintenanceSuiCallback`, `InsertPowerSuiCallback`),
+  activates and empties the hopper (0xED). The installation's hopper/surplus state only reaches a client as baseline 7,
+  so the lab's `getStructureStatus` binding is the citizens' status window. Scenario `seat-harvester` (the lab fills the
+  hopper with `harvesterAddToHopper` instead of waiting hours; `structureDestroy` = `destroyBuilding` cleans up).
+  **Bench lessons from getting both scenarios green:** (1) every object the bot client held was type 0 and nameless —
+  the client-side Lua templates only carry `clientTemplateFileName` ("data below here is deprecated and loaded from the
+  tres"); the fix is a server dump of its template table (`dumpTemplates` → `~/.swg-lab/templates.jsonl`, 15 926 lines,
+  2.5 MB) that `core3client` reads at start — and `createObject` leaked one Lua stack slot per object (the result table was
+  never popped). (2) `getObjectsInRange` crashed twice: `getCell(idx)` is a VectorMap keyed by cell number (1..N), and
+  `getCellName()` wants the number, not the oid (an oid as an index → ArrayIndexOutOfBounds). (3) The AI navmesh does not
+  cover a port's pad: `findPath` to the terminal or shuttle stops at the mesh edge ~29 m short; players are not bound by
+  the mesh, so the seat walks a straight final leg (the server only speed-checks). (4) `purchaseTicket` and
+  `boardShuttle` send no `CommandQueueRemove` at all — the ticket action waits for the ticket object, the board action for
+  the new scene. A scenario run right after a server restart twice saw the purchase vanish without any reply while every
+  later manual run worked; not reproduced since, watch the gate. (5) `EmptyHopper` 0xED: the server's callback skips 12
+  bytes after the header oid (int pad + player oid) before harvester/resource/quantity. (6) `placeStructure` said
+  `not_permitted` 600 m east of Mos Eisley: the no-build region is huge; `isBuildingPermittedAt` is now a binding
+  (`canBuild`). (7) A lab-made harvester deed has extraction rate 0 and hopper size 0 (crafting sets them:
+  `updateCraftingValues`), so the placed harvester would never fill: `deedValues` sets them. (8) `addResourceToHopper`
+  appends; the hopper already holds an empty container for the active resource, and `EmptyHopper` takes the first
+  container for the spawn — top that one up instead. (9) The bench build (`swg build`) builds the *bench* checkout, not
+  the worktree: uncommitted worktree changes need a commit + `bench use`; and copying a file onto the bench to test it
+  leaves the bench dirty, which `bench use` refuses (restore it with `git checkout --` there). (10) **The bot client's
+  packet dispatcher switches on the opcount first** (the short before the opcode): a new `case` must sit in the branch
+  for its packet's opcount (`UpdateTransformMessage` is `insertShort(0x08)` → `case 8:`); under the wrong opcount it
+  never runs and nothing says so. Others' movement is decoded now (`Moves/count`); the seat-daemon scenario sends a
+  spawned stormtrooper walking (lab `walkNpc` = `setNextPosition`) to prove it, since `moveNpc`/`teleportObject`
+  re-create the object instead of moving it.
+- **2026-10-20 (evening) — 7.6a resources: oracle, survey, sample.** Chuck: crafters cannot sit in one town, resources
+  are elsewhere. What the code says is in `docs/Game-Systems.md`. Built: `getResourceSpawns(zone)` /
+  `getResourceDensityAt` Lua bindings (the citizens' spreadsheet: every spawn in shift with attributes and up to
+  three best spots — a 256 m scan of the simplex concentration map refined to 32 m; ~4k noise reads per spawn, ms),
+  lab `resources:<planet>[:<class>]` / `resourceDensity`, seat `survey` / `sample` / `resources`. **Survey on the
+  wire:** radial 20 on the survey tool → `ResourceListForSurveyMessage` (opcount 4, 0x8A64B1D5: int n, n × (ascii
+  name, long oid, ascii type), ascii toolType, long player) — or first the range window (`@survey:select_range`,
+  rows "64m x 3pts" … "384m x 5pts" by skill; after answering, use the tool again) → command `requestsurvey
+  <resource name>` → `SurveyMessage` (opcount 2, 0x877F79AC: int n, n × (x, 0, y, pct)). **Sample:** command
+  `requestcoresample <name>` → `@survey:sample_located` (DI units) after 3 s, then the server re-samples every 25 s
+  on its own until the player moves / fights / cancels; `@survey:trace_amount`, `sample_failed`,
+  `density_below_threshold` are the other verdicts. **String-id system messages** (`ChatSystemMessage(StringIdChatParameter&)`):
+  byte type, int 0 (empty unicode), int size, then `ChatParameter::insertToMessage` writes a **short** (odd-length pad
+  flag), **byte 1** (TYPE_STRINGID), **int** STRINGID, and only then `addToPacketStream` (ascii file, int, ascii id,
+  TU/TT/TO as long + ascii + int + ascii + unicode, int DI, float DF, byte) — the bot read one byte where three fields
+  stood, so every `@file:id` message had arrived empty since the lab was built; fixed with 7.6a. **New characters** land
+  in `characters_dirty` and reach `characters` (which the login server lists) only at the next ODB commit — console
+  `save` forces it; and they wake in the tutorial zone (`FbAttunement: Teyla settled at tutorial`), so `citizen new`
+  sends them home with the lab's `travel`. Yield ≈ density × 25–28 × surveying/100 per sample, so a
+  fresh artisan (surveying 10) gets single digits; the scenario grants `crafting_artisan_survey_04`. Untested on
+  the bench yet (held by the trials agent for hours; `SWG_WAIT` gives up after an hour and the lock is renewed).
+- **2026-10-20 — Phase 7 planned, 7.0 seat daemon.** Chuck's ask: a galaxy that feels alive, and AI "players"
+  (real accounts) he can group, trade and talk with. Plan written into the roadmap (Phase 3.13–3.18 galaxy-wide
+  life, Phase 7 Citizens: seat / autopilot / playbooks / pilot / cast), cast of ten drafted in
+  `docs/Citizens-Cast.md`. **Subscription vs API:** the docs say Pro/Max OAuth is for ordinary individual use of
+  Claude Code and automated agents must use an API key, but a Max plan includes monthly API credits ($100 / $200)
+  that cover the API and the Agent SDK — link a Console org under claude.ai Settings → Billing, cap a workspace.
+  **7.0 the seat:** `core3client --seat <unix socket>` is just another action in the chain (after the auto-inserted
+  login / zone-in, before the auto-appended logout): it serves JSON lines — `action` runs any registered action from
+  its JSON form through `ActionManager::fromJSON`, `vars` dumps the var store under the packet handler's lock,
+  `objects` walks the ObjectMap, `wait` blocks on `Zone::waitFor(hash)`. New actions `say` (`spatialchatinternal`
+  with `"<target> <chatType> <mood> <flags> <language> <text>"`), `tell` (a `ChatInstantMessageToCharacter` packet:
+  ascii SWG, galaxy, name, unicode text, int 0, int sequence; the verdict comes back as `ChatOnSendInstantMessage`
+  opcount 3 / 0x88DBB381: int result, int seq — 0 delivered, 4 no such player, 5 offline, 6 ignored) and `emote`
+  (`socialinternal` `"<target> <id> 1 1"`). **Emote ids** are the 1-based row numbers of
+  `datatables/chat/social_types.iff` (the newest copy is in `patch_11_02.tre`; 382 rows, DTII with two string
+  columns, the second always empty) — `tools/seat_emotes.json` is generated from it; a guessed table was wrong
+  (wave is 364). The client never set positions on created objects (`SceneCreateObjectByCrc` carries x,z,y; now
+  `initializePosition`); others' movement (`UpdateTransformMessage`) is still not decoded, that is 7.2.
+  **Worktrees have no engine3 submodule** (`MMOCoreORB/utils/engine3` is empty in `Core3-alice`), so a local build
+  is impossible; a syntax check works by taking the compile command for a sibling file from the bench's
+  `build/unix/ninja-debug/compile_commands.json`, rewriting the `-I…/Core3/MMOCoreORB/src` paths to the worktree and
+  running `clang++ … -fsyntax-only` on the new file (the engine3 headers come from the bench). **Name filter:** the
+  canon/profanity regexes in `managers/name/name_manager.lua` can be run from Python (`re`, case-insensitive) to
+  vet names before character creation; some patterns are broad (anything with a `k` + vowel, words starting with
+  `p`), so pick names that match none. Scenario `seat-daemon` covers the channel end to end.
+  **Lab run lessons (same day):** (1) `tools/tre` resolved `TrePath` from its own checkout's conf — a worktree has no
+  `config-local.lua`, so `swg start` from a worktree tried to install the archive into the upstream default path;
+  it now reads the bench's conf. (2) The client's `ObjectManager::registerObjectTypes()` has every typed class
+  commented out, so `createObject` returned null for everything and the ObjectMap stayed empty; a plain
+  `SceneObject` is created instead now. (3) `spatialchatinternal` and `socialinternal` never get a
+  `CommandQueueRemove`: only an explicit rejection counts. (4) **Movement:** the server flags a player as
+  *teleporting* at character select and after every `teleport()` and silently drops every `DataTransform` until a
+  `TeleportAck` (ObjController 0x13F, int counter) arrives — the real client sends one after loading; the bot now
+  acks on `CmdSceneReady` and on every server move. (5) **Client→server ObjController payloads have no pad int
+  after the oid**: `ObjectControllerMessageCallback::parse` reads priority, type, oid and hands the rest to the
+  sub-callback. The server's *outbound* `ObjectControllerMessage` carries an extra int, and `CommandQueueEnqueue`'s
+  parser happens to read one as "size", which is why the command action got away with it — the walk's transform
+  arrived shifted by four bytes (timestamp 0, speed = y) and was dropped as "deltaTime". `#define TRANSFORM_DEBUG`
+  in `packets/object/transform/Transform.h` prints the server's verdict per packet (`DT ---- …` in the console
+  log); worth a temporary build when movement is silently ignored. (6) Movement rules that hold now: ≥ 200 ms
+  between packets and ≥ 400 ms unless speed/yaw change, average speed ≤ run speed × 1.05 measured against the last
+  fully validated position (one per second), posture upright/sitting/prone ok. 60 m at 4.5 m/s = 34 packets in
+  16 s, server position exact. (7) `seat-walk` and `pilot-dry` pass; `pilot-dry` proves the loop, files and the
+  seat round trip without a model.
 - **2026-10-20 — 4a.2 the shrines.** First feature built the parallel way: worktree `Core3-shrines`, branch
   `feature/shrines`, `swg bench use feature/shrines` to test. Content: 49 lore lines (five per world, four where a
   world has four shrines), keyed by shrine index so a shrine always says the same thing; the Old Man's return
