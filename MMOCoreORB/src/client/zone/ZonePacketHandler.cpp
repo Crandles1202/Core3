@@ -316,8 +316,17 @@ void ZonePacketHandler::handleCmdStartScene(Message* pack) {
 		if (objectManager != nullptr)
 			objectManager->clear();
 	}
+	// "terrain/tatooine.trn" -> "tatooine" (the zone name the server and the oracles use)
+	String zoneName = terrain;
+	int slash = zoneName.lastIndexOf('/');
+	if (slash >= 0)
+		zoneName = zoneName.subString(slash + 1);
+	int dot = zoneName.lastIndexOf('.');
+	if (dot >= 0)
+		zoneName = zoneName.subString(0, dot);
 	core->setVar("Scene/count", sceneCount);
-	core->setVar("Scene/terrain", terrain);
+	core->setVar("Scene/terrain", zoneName);
+	core->setVar("Scene/terrainFile", terrain);
 	core->setVar("Scene/x", x);
 	core->setVar("Scene/y", y);
 	core->setVar("Scene/z", z);

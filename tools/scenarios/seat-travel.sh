@@ -13,13 +13,13 @@ NAME="labtravel-$$"
 cleanup() { "$SEAT" stop "$NAME" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
-near() {  # near <x> <y> <radius> → 1 when the character stands within radius of x,y
+near() {  # near <x> <y> <radius> → NEAR_OK=1 when the character stands within radius of x,y (plus LAST_DIST, LAST_POS)
   local POS PX PY
   POS=$(lab "where:$CHAR" 8 | grep -a '^INFO where' | head -n1)
   PX=$(sed -n 's/.*[[:space:]]x=\(-\{0,1\}[0-9.]*\).*/\1/p' <<<"$POS"); PY=$(sed -n 's/.*[[:space:]]y=\(-\{0,1\}[0-9.]*\).*/\1/p' <<<"$POS")
   LAST_DIST=$(awk -v px="${PX:-0}" -v py="${PY:-0}" -v gx="$1" -v gy="$2" 'BEGIN{printf "%.0f", sqrt((px-gx)^2+(py-gy)^2)}')
   LAST_POS="$PX,$PY"
-  [ "$LAST_DIST" -le "$3" ] && echo 1 || echo 0
+  NEAR_OK=$( [ "$LAST_DIST" -le "$3" ] && echo 1 || echo 0 )
 }
 
 # --- the oracle knows the points, their terminals and shuttles ------------------------------------
@@ -38,15 +38,17 @@ sleep 3
 "$SEAT" cmd "$NAME" stand --nowait >/dev/null 2>&1 || true
 
 # --- leg 1: shuttleport to shuttleport ------------------------------------------------------------
+SCENES0=$("$SEAT" vars "$NAME" /Scene 2>&1 | sed -n 's/.*"count": \([0-9]*\).*/\1/p' | head -n1)
 T0=$(date +%s)
 TRIP=$("$SEAT" travel "$NAME" tatooine Bestine_Shuttleport --wait 300 2>&1); RC=$?
 T1=$(date +%s)
 check_eq "leg1_trip_ok" "$RC" "0" "$(grep -o '"error": "[^"]*"' <<<"$TRIP" | head -n1)"
 check "leg1_ticket_bought" "$( grep -q '^ticket [1-9]' <<<"$TRIP" && echo 1 || echo 0 )" "$(grep -a '^ticket' <<<"$TRIP" | cut -c1-100)"
-check_eq "leg1_new_scene" "$(sed -n 's/.*"terrain": "\([a-z0-9_]*\)".*/\1/p' <<<"$TRIP" | head -n1)" "tatooine" "arrival scene $(grep -o '"terrain": "[^"]*"' <<<"$TRIP" | head -n1) after $((T1 - T0)) s"
-check "leg1_arrived_at_bestine" "$(near -1098.5 -3563.5 60)" "server says $LAST_POS — $LAST_DIST m from the Bestine shuttleport pad"
+check_eq "leg1_new_scene" "$(grep -o '"terrain": "[a-z0-9_]*"' <<<"$TRIP" | head -n1 | sed 's/.*: "//;s/"//')" "tatooine" "arrival scene $(grep -o '"terrain": "[^"]*"' <<<"$TRIP" | head -n1) after $((T1 - T0)) s"
+near -1098.5 -3563.5 60
+check "leg1_arrived_at_bestine" "$NEAR_OK" "server says $LAST_POS — $LAST_DIST m from the Bestine shuttleport pad"
 SCENES=$("$SEAT" vars "$NAME" /Scene 2>&1 | sed -n 's/.*"count": \([0-9]*\).*/\1/p' | head -n1)
-check_ge "client_counted_two_scenes" "${SCENES:-0}" 2 "Scene/count=${SCENES:-?}"
+check_gt "client_counted_a_new_scene" "${SCENES:-0}" "${SCENES0:-0}" "Scene/count ${SCENES0:-?} -> ${SCENES:-?} (a teleport is a scene too)"
 [ "$RC" = 0 ] || { "$SEAT" log "$NAME" 40 | sed 's/^/   client: /'; die "leg 1 failed"; }
 
 # --- leg 2: starport to starport, ticket terminal inside the building -----------------------------
@@ -59,7 +61,8 @@ T1=$(date +%s)
 check_eq "leg2_trip_ok" "$RC" "0" "$(grep -o '"error": "[^"]*"' <<<"$TRIP" | head -n1)"
 check "leg2_walked_indoors_to_the_terminal" "$( grep -q 'ends indoors' <<<"$TRIP" && echo 1 || echo 0 )" "$(grep -a '^path' <<<"$TRIP" | head -n1)"
 check "leg2_ticket_bought" "$( grep -q '^ticket [1-9]' <<<"$TRIP" && echo 1 || echo 0 )" "$(grep -a '^ticket' <<<"$TRIP" | cut -c1-100)"
-check "leg2_arrived_at_mos_eisley_starport" "$(near 3599.9 -4780.4 60)" "server says $LAST_POS — $LAST_DIST m from the starport pad after $((T1 - T0)) s"
+near 3599.9 -4780.4 60
+check "leg2_arrived_at_mos_eisley_starport" "$NEAR_OK" "server says $LAST_POS — $LAST_DIST m from the starport pad after $((T1 - T0)) s"
 [ "$RC" = 0 ] || "$SEAT" log "$NAME" 40 | sed 's/^/   client: /'
 
 "$SEAT" stop "$NAME" >/dev/null 2>&1

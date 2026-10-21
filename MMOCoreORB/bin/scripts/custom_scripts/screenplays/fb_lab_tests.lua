@@ -2191,6 +2191,15 @@ function FbLabTests:templateDump(path)
 	return tostring(n)
 end
 
+-- queueSize:<char> → how many actions wait in the character's command queue (a stuck queue swallows every command)
+function FbLabTests:queueSize(charName)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then print("ERROR queueSize: " .. tostring(charName) .. " is offline"); return "offline" end
+	local n = CreatureObject(pPlayer):getQueueSize()
+	print(string.format("INFO queue char=%s size=%d posture=%d", charName, n, CreatureObject(pPlayer):getPosture()))
+	return tostring(n)
+end
+
 -- structureDestroy:<oid> → tear a structure down the proper way (DestroyStructureTask: lot refunded, owner list
 -- updated), for scenario cleanup.
 function FbLabTests:structureDestroy(oid)

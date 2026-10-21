@@ -230,9 +230,11 @@ def travel_seat(s, name, to_planet, to_point, from_point=None, round_trip=False,
 
 
 def path_length(points):
+    """planar length; a change of cell (world <-> cell-local coordinates) is a door step, not a leg"""
     total = 0.0
     for a, b in zip(points, points[1:]):
-        total += ((a[0] - b[0]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
+        if (a[3] if len(a) > 3 else 0) == (b[3] if len(b) > 3 else 0):
+            total += ((a[0] - b[0]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
     return total
 
 
