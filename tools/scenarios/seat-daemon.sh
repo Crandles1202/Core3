@@ -44,6 +44,12 @@ COUNT=$(sed -n 's/^\([0-9]*\) objects$/\1/p' <<<"$OBJS")
 check_gt "objects_listed" "${COUNT:-0}" 0 "${COUNT:-0} objects in view"
 check "self_in_objects" "$( grep -q "^ *$CHAR_OID " <<<"$OBJS" && echo 1 || echo 0 )" "own creature is in the list"
 
+# others move around us (the helper droid that follows a new character, patrols, ambient life): the client
+# keeps their positions current from UpdateTransformMessage, counted in Moves/count
+"$SEAT" wait "$NAME" UpdateTransform 15000 >/dev/null 2>&1 || true
+MOVES=$("$SEAT" vars "$NAME" /Moves 2>&1 | sed -n 's/.*"count": \([0-9]*\).*/\1/p' | head -n1)
+check_ge "others_movement_decoded" "${MOVES:-0}" 1 "Moves/count=${MOVES:-0} within 15 s"
+
 # a slash command through the channel (sit: the posture command, no queue ack)
 CMD=$("$SEAT" cmd "$NAME" sitServer --nowait 2>&1)
 check "command_via_channel" "$( grep -q '"ok": true' <<<"$CMD" && echo 1 || echo 0 )"
