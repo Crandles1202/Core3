@@ -82,13 +82,14 @@ check_eq "active_resource_is_the_pick" "$(sed -n 's/.*activeResource=\([0-9]*\).
 lab "harvesterFill:$HOID:150" >/dev/null
 HOP=$(lab "harvester:$HOID" | grep -a "^INFO hopper .* spawn=$SPAWN " | head -n1)
 check "hopper_holds_the_fill" "$( grep -q 'quantity=150' <<<"$HOP" && echo 1 || echo 0 )" "$(cut -c6-120 <<<"$HOP")"
+UNITS0=$(lab "resourceUnits:$CHAR:$SNAME" | sed -n 's/.*units=\([0-9]*\).*/\1/p' | head -n1)
 E=$("$SEAT" harvester "$NAME" "$HOID" empty "$SPAWN" 150 2>&1); RC=$?
 check_eq "empty_hopper_ok" "$RC" "0" "$(grep -o '"error": "[^"]*"' <<<"$E" | head -n1)"
 sleep 1
 HOP2=$(lab "harvester:$HOID" | grep -a '^INFO harvester' | head -n1)
 check_eq "hopper_emptied" "$(sed -n 's/.*hopperSize=\([0-9]*\).*/\1/p' <<<"$HOP2")" "0" "$(grep -o 'hopperSize=[0-9]* hopperMax=[0-9]* hopperItems=[0-9]*' <<<"$HOP2")"
-CB=$(sed -n 's/.*"containersBefore": \([0-9]*\).*/\1/p' <<<"$E" | head -n1); CA=$(sed -n 's/.*"containersAfter": \([0-9]*\).*/\1/p' <<<"$E" | head -n1)
-check "resource_container_arrived" "$( [ "${CA:-0}" -gt "${CB:-0}" ] && echo 1 || echo 0 )" "resource containers in view $CB -> $CA (the wind energy was one already)"
+UNITS1=$(lab "resourceUnits:$CHAR:$SNAME" | sed -n 's/.*units=\([0-9]*\).*/\1/p' | head -n1)
+check_eq "resource_in_inventory" "$(( ${UNITS1:-0} - ${UNITS0:-0} ))" "150" "$SNAME in the inventory ${UNITS0:-0} -> ${UNITS1:-0} units (an existing container takes the merge)"
 
 "$SEAT" harvester "$NAME" "$HOID" deactivate >/dev/null 2>&1 || true
 lab "structureDestroy:$HOID" >/dev/null 2>&1; HOID=""

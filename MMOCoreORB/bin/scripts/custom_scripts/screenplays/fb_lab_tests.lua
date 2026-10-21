@@ -2231,6 +2231,14 @@ function FbLabTests:walkNpc(oid, x, y)
 	return "ok"
 end
 
+-- resourceUnits:<char>:<resource name> → units of that resource in the inventory, all containers summed.
+function FbLabTests:resourceUnits(charName, resourceName)
+	local n = getResourceUnits(charName, resourceName)
+	if n == nil then print("ERROR resourceUnits: " .. tostring(charName) .. " is offline"); return "offline" end
+	print(string.format("INFO resourceUnits char=%s resource=%s units=%d", charName, resourceName, n))
+	return tostring(n)
+end
+
 -- structureDestroy:<oid> → tear a structure down the proper way (DestroyStructureTask: lot refunded, owner list
 -- updated), for scenario cleanup.
 function FbLabTests:structureDestroy(oid)

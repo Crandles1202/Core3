@@ -538,6 +538,7 @@ void DirectorManager::initializeLuaEngine(Lua* luaEngine) {
 	luaEngine->registerFunction("dumpTemplates", dumpTemplates);
 	luaEngine->registerFunction("isBuildingPermittedAt", isBuildingPermittedAt);
 	luaEngine->registerFunction("setDeedValues", setDeedValues);
+	luaEngine->registerFunction("getResourceUnits", getResourceUnits);
 	luaEngine->registerFunction("getZoneWeather", getZoneWeather);
 	luaEngine->registerFunction("setZoneWeather", setZoneWeather);
 	luaEngine->registerFunction("awardSkill", awardSkill);
@@ -4370,6 +4371,42 @@ int DirectorManager::setDeedValues(lua_State* L) {
 	deed->setExtractionRate(rate);
 	deed->setHopperSize(hopper);
 	lua_pushboolean(L, true);
+	return 1;
+}
+
+// Final Boss (7.6a): getResourceUnits(playerName, resourceName) -> units of that resource (by spawn name) in the
+// player's inventory, summed over its containers (an emptied hopper merges into an existing container, so counting
+// containers tells nothing), or nil when the player is offline.
+int DirectorManager::getResourceUnits(lua_State* L) {
+	if (checkArgumentCount(L, 2) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::getResourceUnits";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	String resourceName = lua_tostring(L, -1);
+	String playerName = lua_tostring(L, -2);
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	PlayerManager* playerManager = zoneServer != nullptr ? zoneServer->getPlayerManager() : nullptr;
+	ManagedReference<CreatureObject*> player = playerManager != nullptr ? playerManager->getPlayer(playerName) : nullptr;
+	SceneObject* inventory = player != nullptr ? player->getSlottedObject("inventory") : nullptr;
+	if (inventory == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	int units = 0;
+	for (int i = 0; i < inventory->getContainerObjectsSize(); ++i) {
+		SceneObject* item = inventory->getContainerObject(i);
+		if (item == nullptr || !item->isResourceContainer())
+			continue;
+		ResourceContainer* container = cast<ResourceContainer*>(item);
+		ManagedReference<ResourceSpawn*> spawn = container != nullptr ? container->getSpawnObject() : nullptr;
+		if (spawn != nullptr && spawn->getName() == resourceName)
+			units += container->getQuantity();
+	}
+	lua_pushinteger(L, units);
 	return 1;
 }
 
