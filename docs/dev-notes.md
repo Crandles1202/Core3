@@ -1011,3 +1011,8 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 - A vision holds the shared `FbAttunement.visit.<oid>` slot while it runs so a visitor and a vision never
   overlap; the lab's shortcuts (`attunementAccept`, `trialsUnlock`) mark every vision seen, or the
   attunement / shrines / trials scenarios' trigger order would change under them.
+- **`writeData` / `readData` hold numbers only** (uint64): a string written there reads back as 0 without any
+  error. The visions' cast went that way and every vision ended at once. Strings go into screenplay data
+  (`writeScreenPlayData`) or quest status. An event scheduled with an object pointer (`createEvent(ms, play,
+  fn, pObj, "")`) panics the Lua state if the object is gone by then: pass the oid as the string argument and
+  `getSceneObject` it.
