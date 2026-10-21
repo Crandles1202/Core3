@@ -4225,7 +4225,7 @@ int DirectorManager::getObjectsInRange(lua_State* L) {
 		BuildingObject* building = object->asBuildingObject();
 		if (building == nullptr)
 			continue;
-		for (int c = 1; c <= building->getTotalCellNumber(); ++c) {
+		for (int c = 0; c < building->getTotalCellNumber(); ++c) {   // getCell(idx) is 0-based over the cells vector (cell *numbers* are 1-based)
 			CellObject* cell = building->getCell(c);
 			if (cell == nullptr)
 				continue;
