@@ -98,6 +98,11 @@ SceneObject* ObjectManager::createObject(uint32 objectCRC, uint64 objectID) {
 
 		uint32 gameObjectType = result.getIntField("gameObjectType");
 
+		static int diagnosed = 0;
+		if (diagnosed++ < 12)
+			info(true) << "createObject diag crc=0x" << hex << objectCRC << dec << " top=" << lua_gettop(luaInstance->getLuaState()) << " table=" << result.isValidTable()
+				<< " type=" << gameObjectType << " name=" << result.getStringField("objectName") << " client=" << result.getStringField("clientTemplateFileName");
+
 		object = objectFactory.createObject(gameObjectType, &result);
 
 		// every typed class is commented out of registerObjectTypes(), so without this nothing the
