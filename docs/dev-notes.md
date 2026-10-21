@@ -186,6 +186,25 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-20 (night) — 7.6a travel on a seat.** Chuck: "get started on the seats", key to follow. Built the trip:
+  ticket terminal → `purchaseTicket` → shuttle → `boardShuttle` → the new scene. **Where the terminals are:** not
+  in the `.ws` snapshot (`lotsurvey near` finds none) — they are `childObjects` of the port building's Lua template,
+  spawned with it; a starport's four stand inside the building (cell 4), a shuttleport's one outdoors. Hence
+  `getObjectsInRange(zone, x, y, range[, type])` (zone tree + every building's cell contents, world and cell-local
+  positions) and `findPath(zone, x1, y1, x2, y2[, cell1, cell2])` returning `{x, z, y, cell}` rows: the
+  pathfinder's world→cell path puts the door node on both sides, so the client's walk makes one short step across
+  the space change and sends `DataTransformWithParent` (0xF1: parent oid right after moveCount, position
+  cell-local) inside. **Zone switch on the bot client:** `switchZone` destroys the character from the old world and
+  `sendToOwner` sends a second `CmdStartScene` (same planet too); the client never reset anything, so it now counts
+  scenes (`Scene/count`, `Scene/terrain|x|y`, `Scene/readyCount` from the server's `CmdSceneReady`) and clears its
+  object map on a re-scene (`ObjectManager::clear`). `board` polls those vars instead of `waitFor` (the packet can
+  land before a waiter registers — same lesson as CommandQueueRemove). The shuttle's "ready to board in N minutes and
+  M seconds" is parsed and slept through. **Python runtime:** Debian 12 ships no pip/ensurepip; `apt-get install
+  python3-venv python3-pip` (sudo is passwordless here), venv at `~/.swg-lab/venv` with `anthropic` 1.17.0; the pilot
+  re-execs itself there when the system python lacks the SDK — compare `sys.prefix` with the venv dir, **not**
+  `realpath(sys.executable)` (the venv's python is a symlink to the system one, so that compared equal). The key is
+  read from `~/.env` when the environment has none. Scenario `seat-travel`: Mos Eisley Shuttleport → Bestine
+  Shuttleport (outdoor terminal), then Bestine Starport → Mos Eisley Starport (indoor terminal, cell walk).
 - **2026-10-20 (evening) — 7.6a resources: oracle, survey, sample.** Chuck: crafters cannot sit in one town, resources
   are elsewhere. What the code says is in `docs/Game-Systems.md`. Built: `getResourceSpawns(zone)` /
   `getResourceDensityAt` Lua bindings (the citizens' spreadsheet: every spawn in shift with attributes and up to

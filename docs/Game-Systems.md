@@ -120,6 +120,19 @@ inventory model (containers, quantities), pick resources by the schematic's weig
 **For a citizen.** `travel_to(planet, city)` = walk to the terminal, buy, walk to the shuttle, board, wait for
 the scene. Credits matter: fares are hundreds of credits, harvesters cost thousands a week.
 
+**Built 2026-10-20 (7.6a).** The terminals are not in the world snapshot: they are `childObjects` of the port
+building's template (`object/building/<planet>/starport_<planet>.lua`, `shuttleport_<planet>.lua`), spawned by
+the server with the building. A **starport's four ticket terminals stand inside the building (cell 4)**; a
+**shuttleport's one stands outdoors** by the pad. So an interplanetary trip means walking through the starport
+door: `findPath` now takes cells and returns cell-local rows, and the seat's `walk` sends
+`DataTransformWithParent` for them. `purchaseTicket` wants the character within 8 m of a travel terminal and
+answers with `@base_player:prose_pay_acct_success` plus a plain message box; the ticket is a `TRAVELTICKET`
+(0x2012) object in the inventory. `boardShuttle` wants the shuttle within 25 m and, when it is away, says
+"The next shuttle will be ready to board in N minutes and M seconds." (our away time 60 s, landed 120 s,
+landing 11/14 s). Boarding is `switchZone`: the character is destroyed from the old world and a second
+`CmdStartScene` starts the new one (same planet or not), so a client must treat the old scene's objects as
+gone. `tools/seat travel` strings it together; `FbLabTests:travelPoints:<planet>` is the lookup.
+
 ## 6. Trade (`AuctionManager`, 2.5 bazaar limits, 2.10 vendors)
 
 - Bazaar terminals in every city: up to 100 listings per character for a year (our 2.5), price caps as stock;
