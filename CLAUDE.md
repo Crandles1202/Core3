@@ -292,6 +292,8 @@ Persisted object fields (`containerVolumeLimit`, …) are only read from the tem
   `start()`, and clear `AI_FOLLOW`/`AI_ESCORT` + `setFollowObject(nil)` before despawning a follower (the
   helper's deferred despawn re-schedules forever while the follow stands). Encounter spawns are invisible to
   `findNpc` unless the screenplay adds them to the lab registry itself.
+- **Bot client packet dispatcher** (`ZonePacketHandler::handleMessage`) switches on the packet's *opcount* first: a new
+  `case` goes into the branch for its opcount (UpdateTransform = 8, CmdStartScene = 9) or it never runs, silently.
 - **Bot client packets to the server** (ObjController): after the header's oid, `DataTransform` 0x71/0xF1 carry the
   payload at once, but `EmptyHopper` 0xED (and others whose callback says "skip passed player") expect an int pad and
   the player oid again first — read the callback's `parse()` before writing a new packet. The **AI navmesh leaves out a

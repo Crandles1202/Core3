@@ -229,7 +229,12 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   appends; the hopper already holds an empty container for the active resource, and `EmptyHopper` takes the first
   container for the spawn — top that one up instead. (9) The bench build (`swg build`) builds the *bench* checkout, not
   the worktree: uncommitted worktree changes need a commit + `bench use`; and copying a file onto the bench to test it
-  leaves the bench dirty, which `bench use` refuses (restore it with `git checkout --` there).
+  leaves the bench dirty, which `bench use` refuses (restore it with `git checkout --` there). (10) **The bot client's
+  packet dispatcher switches on the opcount first** (the short before the opcode): a new `case` must sit in the branch
+  for its packet's opcount (`UpdateTransformMessage` is `insertShort(0x08)` → `case 8:`); under the wrong opcount it
+  never runs and nothing says so. Others' movement is decoded now (`Moves/count`); the seat-daemon scenario sends a
+  spawned stormtrooper walking (lab `walkNpc` = `setNextPosition`) to prove it, since `moveNpc`/`teleportObject`
+  re-create the object instead of moving it.
 - **2026-10-20 (evening) — 7.6a resources: oracle, survey, sample.** Chuck: crafters cannot sit in one town, resources
   are elsewhere. What the code says is in `docs/Game-Systems.md`. Built: `getResourceSpawns(zone)` /
   `getResourceDensityAt` Lua bindings (the citizens' spreadsheet: every spawn in shift with attributes and up to
