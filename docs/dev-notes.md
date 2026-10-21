@@ -961,3 +961,21 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 - **2026-10-16** — Lab set up: CLAUDE.md, docs/, `tools/swg`, test accounts, upstream merge (14
   commits) on `feature/test-lab`, baseline snapshot, 258/258 unit tests, 41/41 Lua content checks, bot
   smoke test. Phase 2.x uncommitted work parked on `feature/phase2-mos-eisley-npcs`.
+
+### 2026-10-21 — the trials gate after the rebase onto alice's merge
+
+- **Visitors stop past the conversation rule.** A following NPC (`AI_FOLLOW`) halts about 5.6–6.4 m from the
+  player; `NpcConversationStartCommand` wants ≤ 5 m (2-D, against the player's *last validated position*) and
+  line of sight. The Old Man's talk had passed before only by luck of the stop distance. `FbTrials.settleBeside`
+  (the 30 s settle of every visit) now moves a visitor farther than 4 m to 2.5 m on the same bearing.
+- **`SceneObject:teleport` did not move an AI agent** (probe `zz-oldman`: position unchanged after the call);
+  `switchZone(zone, x, z, y, 0)` + `setHomeLocation` does — the same pair the lab's `teleportObject` uses.
+- **The shared-wrapper gotcha, again:** `local ps = SceneObject(pPlayer)` kept across `SceneObject(pNpc)` reads
+  the NPC. settleBeside measured the visitor against itself (distance 0) for three runs before the probe
+  showed it. Take the numbers out first, then wrap the next object.
+- A `local function` must be defined *above* the function that calls it, or the call compiles as a nil
+  global (`settle … attempt to call a nil value (global 'settleBeside')`); the lab's `visitSettle:<char>`
+  runs the settle on demand, and the console state has no `SpawnMobiles` global (`require` it in oracles).
+- Scenarios share one character within the hour (the server's one-creation-per-hour rule): a scenario that
+  sets the cash (`cashSet`) must put it back, or the purchase scenarios after it fail with `no_credits`.
+- `rebase` conflicts in CLAUDE.md / BOARD.md / dev-notes.md between two agents' lanes: keep both sides.
