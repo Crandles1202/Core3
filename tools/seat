@@ -36,6 +36,8 @@ control channel on a unix socket (SeatAction, Phase 7.0). A pilot (7.3) sits on 
   seat sample <name> <resource> [rounds]               sample where the character stands (3 s, then 25 s per extra round)
   seat resources <planet> [class]                      the resource oracle (FbLabTests:resources over swg cmd --shared)
   seat log <name> [lines]                              tail of the client log
+  seat fight <name> <target oid> [--max S]            attack that creature and keep swinging (defaultattack every 3 s) until it is dead
+                                                        or --max s (default 90) pass, then loot all from the corpse; prints a verdict line
   seat templates                                       (re)write ~/.swg-lab/templates.jsonl, the client's object type/name table, from the
                                                         server's loaded templates (FbLabTests:templateDump); start does it when the file is missing
 
@@ -169,6 +171,33 @@ def path_within(char, x, y, within, cell=0, z=None):
     ez = z if z is not None else last[1]
     print(f"route stops {dist:.0f} m short of the target (off the navmesh): straight final leg of {stop:.0f} m")
     return direct + [[round(ex, 2), round(ez, 2), round(ey, 2), 0]]
+
+
+def fight_seat(s, char, target, max_s=90):
+    """attack, keep attacking, loot. Death is read server-side (objectAlive) since the bot client decodes no
+    creature deltas; own health too (ham), to stop at a third of health."""
+    import time as _t
+    started = _t.time()
+    s.action("command", name="attack", target=str(target), timeout=5)
+    swings, verdict = 1, "timeout"
+    while _t.time() - started < max_s:
+        _t.sleep(3)
+        alive = lab_fields(next((l for l in lab(f"objectAlive:{target}", 8).splitlines() if l.startswith("INFO object")), "")).get("alive", "1")
+        if alive == "0":
+            verdict = "killed"; break
+        ham = lab_fields(next((l for l in lab(f"ham:{char}", 8).splitlines() if l.startswith("INFO ham")), ""))
+        hp = ham.get("health", "1/1/1").split("/")
+        if len(hp) >= 2 and int(hp[1]) > 0 and int(hp[0]) < int(hp[1]) // 3:
+            verdict = "retreat"; break
+        s.action("command", name="defaultattack", target=str(target), nowait=True, timeout=5)
+        swings += 1
+    loot = None
+    if verdict == "killed":
+        loot = s.action("command", name="loot", target=str(target), args="all", timeout=8)
+    result = {"ok": verdict == "killed", "verdict": verdict, "target": target, "swings": swings, "seconds": round(_t.time() - started),
+              "looted": bool(loot and loot.get("ok"))}
+    print(f"fight: {verdict} after {swings} swing(s), {result['seconds']} s" + (", looted" if result["looted"] else ""))
+    return result
 
 
 def walk_seat(s, char, x, y, cell=0, speed=4.5, within=None, z=None):
@@ -571,6 +600,11 @@ def main(argv):
         elif op == "empty":
             fields["resource"] = int(rest[2]); fields["quantity"] = int(rest[3]); fields["discard"] = "--discard" in rest
         reply = s.action("harvester", **fields)
+    elif cmd == "fight":
+        if not rest:
+            die("fight <name> <target oid> [--max S]")
+        char = s.request({"op": "ping"}).get("characterName") or seat_character_name(name)
+        reply = fight_seat(s, char, int(rest[0]), int(rest[rest.index("--max") + 1]) if "--max" in rest else 90)
     elif cmd == "travel":
         if len(rest) < 2:
             die("travel <name> <planet> <point> [--from POINT] [--round-trip] [--wait S]")

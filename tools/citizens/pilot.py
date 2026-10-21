@@ -335,6 +335,89 @@ def seat_tools(seat, files, character_name, seat_name):
         lots = next((seat_mod.lab_fields(l).get("remaining") for l in out.splitlines() if l.startswith("INFO lots")), None)
         return {"ok": True, "structures": rows, "lotsRemaining": lots}
 
+    def my_health(returning=None):
+        seat_mod = load_seat_module()
+        line = next((l for l in seat_mod.lab(f"ham:{character_name}", 8).splitlines() if l.startswith("INFO ham")), "")
+        f = seat_mod.lab_fields(line)
+        return {"ok": bool(f), "health": f.get("health"), "action": f.get("action"), "mind": f.get("mind")}
+
+    def creatures_near(name_fragment):
+        """creatures (not players, not city NPCs) within 80 m, nearest first"""
+        objs = _objects()
+        me = next((o for o in objs if o["oid"] == seat.request({"op": "ping"}).get("character")), None)
+        if me is None:
+            return {"ok": False, "error": "no self in view"}
+        out = []
+        for o in objs:
+            if o["type"] != 0x400 or (name_fragment and name_fragment.lower() not in o["name"].lower()):
+                continue
+            d = ((o["x"] - me["x"]) ** 2 + (o["y"] - me["y"]) ** 2) ** 0.5
+            if d <= 80:
+                out.append({"oid": o["oid"], "name": o["name"], "distance": round(d, 1), "x": round(o["x"], 1), "y": round(o["y"], 1)})
+        out.sort(key=lambda c: c["distance"])
+        return {"ok": True, "creatures": out[:12]}
+
+    def hunt(name_fragment, kills):
+        """the fighter's loop: nearest matching creature, walk to 20 m, fight, loot; up to `kills` times"""
+        seat_mod = load_seat_module()
+        done, log = 0, []
+        for _ in range(max(1, min(int(kills), 5))):
+            near = creatures_near(name_fragment)
+            if not near.get("ok") or not near["creatures"]:
+                log.append("nothing matching in view"); break
+            c = near["creatures"][0]
+            if c["distance"] > 22:
+                w = seat_mod.walk_seat(seat, character_name, c["x"], c["y"], within=18)
+                if not w.get("ok"):
+                    log.append(f"could not reach {c['name']}: {seat_mod.action_error(w)}"); break
+            r = seat_mod.fight_seat(seat, character_name, c["oid"], 90)
+            log.append(f"{c['name']}: {r['verdict']} in {r['seconds']} s" + (", looted" if r["looted"] else ""))
+            if r["verdict"] == "killed":
+                done += 1
+            elif r["verdict"] == "retreat":
+                break
+        return {"ok": done > 0, "kills": done, "log": log, "health": my_health().get("health")}
+
+    def tend_harvesters(hours_of_reserve):
+        """the gatherer's round: every harvester you own on this planet — walk to it, empty every hopper line into
+        your inventory, top up maintenance and power to `hours_of_reserve` hours at its rates"""
+        seat_mod = load_seat_module()
+        hours = max(6, min(int(hours_of_reserve), 168))
+        planet = seat.request({"op": "vars", "path": "/Scene/terrain"}).get("vars")
+        mine = my_structures()
+        visited, log = 0, []
+        for st in mine.get("structures", []):
+            if st.get("zone") != planet or st.get("type") not in ("0x1003", "0x1002", "0x1000"):
+                continue
+            oid, x, y = int(st["oid"]), float(st["x"]), float(st["y"])
+            w = seat_mod.walk_seat(seat, character_name, x, y, within=12)
+            if not w.get("ok"):
+                log.append(f"{oid}: unreachable ({seat_mod.action_error(w)})"); continue
+            status = harvester_status(oid)
+            if not status.get("ok"):
+                log.append(f"{oid}: no status"); continue
+            lines = []
+            for h in status.get("hopper", []):
+                q = int(h.get("quantity", 0))
+                if q > 0:
+                    r = seat.action("harvester", target=oid, op="empty", resource=int(h["spawn"]), quantity=q)
+                    lines.append(f"emptied {q} {h.get('name')}" if r.get("ok") else f"empty failed: {seat_mod.action_error(r)}")
+            m_rate, p_rate = int(status.get("maintenanceRate", 0)), int(status.get("powerRate", 0))
+            need_m = hours * m_rate - int(status.get("maintenance", 0))
+            need_p = hours * p_rate - int(status.get("power", 0))
+            if need_m > 0:
+                r = seat.action("harvester", target=oid, op="maintain", amount=need_m)
+                lines.append(f"paid {need_m} maintenance" if r.get("ok") else f"maintenance failed: {seat_mod.action_error(r)}")
+            if need_p > 0:
+                r = seat.action("harvester", target=oid, op="power", amount=need_p)
+                lines.append(f"deposited {need_p} power" if r.get("ok") else f"power failed: {seat_mod.action_error(r)}")
+            if status.get("active") != "true":
+                r = seat.action("harvester", target=oid, op="activate")
+                lines.append("activated" if r.get("ok") else f"activate failed: {seat_mod.action_error(r)}")
+            visited += 1
+            log.append(f"{oid} ({status.get('activeResourceName', '?')}): " + ("; ".join(lines) or "fine"))
+        return {"ok": visited > 0 or not mine.get("structures"), "visited": visited, "log": log}
+
     def remember(note):
         files.remember(note)
         return {"ok": True}
@@ -355,6 +438,7 @@ def seat_tools(seat, files, character_name, seat_name):
         "say": say, "tell": tell, "emote": emote, "walk_to": walk_to, "travel_to": travel_to,
         "resources_here": resources_here, "survey": survey, "sample": sample, "place_harvester": place_harvester,
         "harvester": harvester, "harvester_status": harvester_status, "my_structures": my_structures,
+        "my_health": my_health, "creatures_near": creatures_near, "hunt": hunt, "tend_harvesters": tend_harvesters,
         "remember": remember, "complete_milestone": complete_milestone, "change_plan": change_plan, "rest": rest,
     }
     schema = [
@@ -382,6 +466,14 @@ def seat_tools(seat, files, character_name, seat_name):
          "input_schema": {"type": "object", "properties": {"oid": {"type": "integer"}}, "required": ["oid"], "additionalProperties": False}, "strict": True},
         {"name": "my_structures", "description": "The structures you own (oid, planet, position, active) and the lots you have left.",
          "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},
+        {"name": "my_health", "description": "Your health/action/mind pools as current/max/wounds.",
+         "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},
+        {"name": "creatures_near", "description": "Creatures within 80 m whose name contains the fragment (empty for all), nearest first, with positions.",
+         "input_schema": {"type": "object", "properties": {"name_fragment": {"type": "string"}}, "required": ["name_fragment"], "additionalProperties": False}, "strict": True},
+        {"name": "hunt", "description": "Fight creatures whose name contains the fragment: walk to the nearest, attack until it dies, loot, repeat up to `kills` times (1-5). Stops if your health drops to a third. Takes a minute or two per kill.",
+         "input_schema": {"type": "object", "properties": {"name_fragment": {"type": "string"}, "kills": {"type": "integer"}}, "required": ["name_fragment", "kills"], "additionalProperties": False}, "strict": True},
+        {"name": "tend_harvesters", "description": "The gatherer's round on this planet: walk to each harvester you own, empty its hopper into your inventory, pay maintenance and power up to this many hours of reserve, switch it on. Takes minutes.",
+         "input_schema": {"type": "object", "properties": {"hours_of_reserve": {"type": "integer"}}, "required": ["hours_of_reserve"], "additionalProperties": False}, "strict": True},
         {"name": "remember", "description": "Write a note into your long-term memory (people met, promises, what happened).",
          "input_schema": {"type": "object", "properties": {"note": {"type": "string"}}, "required": ["note"], "additionalProperties": False}, "strict": True},
         {"name": "complete_milestone", "description": "Tick a milestone of your life plan, quoting its text exactly.",
