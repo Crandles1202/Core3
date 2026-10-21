@@ -723,7 +723,7 @@ function FbOldManVisit:onEncounterSpawned(pPlayer, spawned)
 	createEvent(30000, self.taskName, "settle", pPlayer, "")   -- settles where it got to if the ground never lets it in range
 end
 function FbOldManVisit:settle(pPlayer)
-	if pPlayer ~= nil and FbTrials ~= nil and FbTrials.standStill ~= nil then FbTrials.standStill(SpawnMobiles.getSpawnedMobiles(pPlayer, self.taskName)) end
+	if pPlayer ~= nil and FbTrials ~= nil and FbTrials.settleBeside ~= nil then FbTrials.settleBeside(pPlayer, SpawnMobiles.getSpawnedMobiles(pPlayer, self.taskName)) end
 end
 
 function FbOldManVisit:onEncounterInRange(pPlayer, spawned)
@@ -767,7 +767,7 @@ function FbOldManReturn:onEncounterSpawned(pPlayer, spawned)
 	createEvent(30000, self.taskName, "settle", pPlayer, "")   -- settles where it got to if the ground never lets it in range
 end
 function FbOldManReturn:settle(pPlayer)
-	if pPlayer ~= nil and FbTrials ~= nil and FbTrials.standStill ~= nil then FbTrials.standStill(SpawnMobiles.getSpawnedMobiles(pPlayer, self.taskName)) end
+	if pPlayer ~= nil and FbTrials ~= nil and FbTrials.settleBeside ~= nil then FbTrials.settleBeside(pPlayer, SpawnMobiles.getSpawnedMobiles(pPlayer, self.taskName)) end
 end
 function FbOldManReturn:onEncounterInRange(pPlayer, spawned)
 	if pPlayer == nil or spawned == nil or spawned[1] == nil then return end

@@ -96,7 +96,7 @@ bot_bg --wait 14 --converse "$SPIRIT" --options "$RIGHT" --wait 3
 wait_online || die "$CHAR never came back online"
 lab "gotoNpc:$CHAR:fb_trial_spirit" >/dev/null
 wait "$BOT_PID"
-check_eq "riddle_converse_ok" "$(bot_action_status converse)" "ok" "riddle $RIDDLE option $RIGHT: $(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tail -n1)"
+check_eq "riddle_converse_ok" "$(bot_action_status converse)" "ok" "riddle $RIDDLE option $RIGHT: $(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tail -n1); spirit: $(lab "objectPos:$SPIRIT" | sed 's/.*zone=/zone=/' | cut -c1-70); char: $(lab "where:$CHAR" | sed 's/.*zone=/zone=/' | cut -c1-70)"
 T=$(lab "trials:$CHAR")
 check "insight_done" "$(grep -q 'done=stillness,restraint,strength,mercy,farwalk,insight' <<<"$T" && echo 1 || echo 0)" "$T"
 
@@ -117,7 +117,7 @@ bot_bg --wait 14 --converse "$SPIRIT" --options 0 --wait 3
 wait_online || die "$CHAR never came back online"
 lab "gotoNpc:$CHAR:fb_trial_spirit" >/dev/null
 wait "$BOT_PID"
-check_eq "sacrifice_converse_ok" "$(bot_action_status converse)" "ok" "$(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tail -n1)"
+check_eq "sacrifice_converse_ok" "$(bot_action_status converse)" "ok" "$(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tail -n1); spirit: $(lab "objectPos:$SPIRIT" | sed 's/.*zone=/zone=/' | cut -c1-70); char: $(lab "where:$CHAR" | sed 's/.*zone=/zone=/' | cut -c1-70)"
 T=$(lab "trials:$CHAR")
 check "sacrifice_done_and_paid" "$(grep -q 'done=stillness,restraint,strength,mercy,farwalk,insight,sacrifice' <<<"$T" && grep -q 'cash=2000' <<<"$T" && echo 1 || echo 0)" "$T"
 

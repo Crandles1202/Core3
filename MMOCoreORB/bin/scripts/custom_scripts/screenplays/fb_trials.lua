@@ -345,7 +345,7 @@ function FbTrialSpirit:onEncounterSpawned(pPlayer, spawned)
 end
 function FbTrialSpirit:settle(pPlayer)
 	if pPlayer == nil then return end
-	standStill(SpawnMobiles.getSpawnedMobiles(pPlayer, self.taskName))
+	settleBeside(pPlayer, SpawnMobiles.getSpawnedMobiles(pPlayer, self.taskName))
 end
 -- having reached the player, a visitor stands where it is: a follower whose target logs out wanders off
 local function standStill(spawned)
@@ -362,6 +362,24 @@ local function standStill(spawned)
 	end
 end
 FbTrials.standStill = standStill
+
+-- a visitor the ground kept away appears beside the player (2 m, on the terrain), then stands still
+local function settleBeside(pPlayer, spawned)
+	if pPlayer == nil then return end
+	local ps = SceneObject(pPlayer)
+	for _, pNpc in ipairs(spawned or {}) do
+		if SpawnMobiles.isValidMobile(pNpc) and ps:getZoneName() ~= "" and ps:getParentID() == 0 then
+			local so = SceneObject(pNpc)
+			local dx, dy = so:getWorldPositionX() - ps:getWorldPositionX(), so:getWorldPositionY() - ps:getWorldPositionY()
+			if math.sqrt(dx * dx + dy * dy) > 6 then
+				local x, y = ps:getWorldPositionX() + 2, ps:getWorldPositionY() + 2
+				so:teleport(x, getTerrainHeightAt(ps:getZoneName(), x, y), y, 0)
+			end
+		end
+	end
+	standStill(spawned)
+end
+FbTrials.settleBeside = settleBeside
 
 function FbTrialSpirit:onEncounterInRange(pPlayer, spawned)
 	if spawned ~= nil and spawned[1] ~= nil then standStill(spawned); spatialChat(spawned[1], "@fb_force:spirit_greeting") end
