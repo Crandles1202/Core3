@@ -11,7 +11,6 @@ borrowing with a lock; this file carries the intent.
 |---|---|---|---|---|---|
 | chuck | — | play-testing, design calls, merges by request | ongoing | as needed | 2026-10-20 |
 | alice | `feature/alice` | Phase 7 Citizens: 7.0 seat, 7.1 walk, 7.2 tooling + others' movement, 7.3 pilot skeleton, 7.6a oracle/survey/sample/travel/harvesters — merged 2026-10-21 (421d50e15d); second batch (7.4 fighting, the cast, Teyla's model wakes, the gate's weather fix, the seat serving several drivers) gated, awaiting Chuck's `bench merge feature/alice`; next: citizens acting between tells (Teyla hunting, Wex's harvesters), grouping/follow | gated, merge pending | no | 2026-10-21 |
-| claude (main session) | feature/shrines | 4a.2 shrines | testing | holds while testing | 2026-10-20 |
 | _(add a row with `swg agent new <name>`)_ | | | | | |
 
 Status words: `planning`, `coding`, `testing` (holds the bench), `gate` (running `swg test all`), `ready to merge`,
