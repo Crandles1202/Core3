@@ -26,6 +26,12 @@ control channel on a unix socket (SeatAction, Phase 7.0). A pilot (7.3) sits on 
                                                         and report where the character arrived. Point names take underscores for spaces.
   seat ticket <name> <fromPlanet> <fromPoint> <toPlanet> <toPoint> [--round-trip]   the purchase alone (stand by a terminal)
   seat board <name> [ticket oid] [--wait S]            the boarding alone (stand by the shuttle)
+  seat place <name> <deed oid> <x> <y> [angle 0-3]     placeStructure from a deed in the inventory (within 100 m, outdoors,
+                                                        outside cities); prints the new structure's oid
+  seat harvester <name> <oid> resources                what this harvester could extract here, with density %
+  seat harvester <name> <oid> select <spawn oid> | activate | deactivate | maintain <credits> | power <units>
+  seat harvester <name> <oid> empty <spawn oid> <units> [--discard]   the hopper into the inventory
+  seat harvester <name> <oid> status                   the server-side view (FbLabTests:harvester: hopper, maintenance, power)
   seat survey <name> <tool oid> <resource> [range]    use the survey tool, survey that resource, print the grid's best point
   seat sample <name> <resource> [rounds]               sample where the character stands (3 s, then 25 s per extra round)
   seat resources <planet> [class]                      the resource oracle (FbLabTests:resources over swg cmd --shared)
@@ -491,6 +497,27 @@ def main(argv):
         ticket = int(rest[0]) if rest and rest[0].isdigit() else 0
         wait = int(rest[rest.index("--wait") + 1]) if "--wait" in rest else 240
         reply = s.request({"op": "action", "action": {"action": "board", "ticket": ticket, "maxWaitS": wait}}, timeout=wait + 60)
+    elif cmd == "place":
+        if len(rest) < 3:
+            die("place <name> <deed oid> <x> <y> [angle 0-3]")
+        reply = s.action("place", deed=int(rest[0]), x=float(rest[1]), y=float(rest[2]), angle=int(rest[3]) if len(rest) > 3 else 0)
+    elif cmd == "harvester":
+        if len(rest) < 2:
+            die("harvester <name> <oid> resources|select <spawn>|activate|deactivate|maintain <credits>|power <units>|empty <spawn> <units> [--discard]|status")
+        hoid, op = int(rest[0]), rest[1]
+        if op == "status":
+            for line in lab(f"harvester:{hoid}", 15).splitlines():
+                if line.startswith(("INFO harvester", "INFO hopper", "ERROR")):
+                    print(line[5:] if line.startswith("INFO ") else line)
+            return 0
+        fields = {"target": hoid, "op": op}
+        if op == "select":
+            fields["resource"] = int(rest[2])
+        elif op in ("maintain", "power"):
+            fields["amount"] = int(rest[2])
+        elif op == "empty":
+            fields["resource"] = int(rest[2]); fields["quantity"] = int(rest[3]); fields["discard"] = "--discard" in rest
+        reply = s.action("harvester", **fields)
     elif cmd == "travel":
         if len(rest) < 2:
             die("travel <name> <planet> <point> [--from POINT] [--round-trip] [--wait S]")

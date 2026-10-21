@@ -7,6 +7,10 @@
 
 #include "DirectorManager.h"
 #include "server/zone/objects/cell/CellObject.h"
+#include "server/zone/objects/installation/InstallationObject.h"
+#include "server/zone/objects/installation/HopperList.h"
+#include "server/zone/objects/resource/ResourceContainer.h"
+#include "server/zone/objects/structure/StructureObject.h"
 #include "server/zone/objects/creature/LuaCreatureObject.h"
 #include "templates/params/creature/ObjectFlag.h"
 #include "server/zone/objects/scene/LuaSceneObject.h"
@@ -525,6 +529,9 @@ void DirectorManager::initializeLuaEngine(Lua* luaEngine) {
 	luaEngine->registerFunction("getResourceSpawns", getResourceSpawns);
 	luaEngine->registerFunction("getResourceDensityAt", getResourceDensityAt);
 	luaEngine->registerFunction("getObjectsInRange", getObjectsInRange);
+	luaEngine->registerFunction("getStructureStatus", getStructureStatus);
+	luaEngine->registerFunction("getOwnedStructures", getOwnedStructures);
+	luaEngine->registerFunction("harvesterAddToHopper", harvesterAddToHopper);
 	luaEngine->registerFunction("getZoneWeather", getZoneWeather);
 	luaEngine->registerFunction("setZoneWeather", setZoneWeather);
 	luaEngine->registerFunction("awardSkill", awardSkill);
@@ -4264,6 +4271,141 @@ int DirectorManager::getObjectsInRange(lua_State* L) {
 		}
 		lua_rawseti(L, -2, ++n);
 	}
+	return 1;
+}
+
+// Final Boss (Phase 7.6a, harvesters): what a structure owner sees in the management windows, for the lab and
+// the citizens. getStructureStatus(oid) -> {oid, template, type, zone, x, y, z, owner, lotSize, maintenance
+// (surplus), maintenanceRate, power (surplus), powerRate, active, installationType, activeResource (spawn oid),
+// activeResourceName, extractionRate, actualRate, hopperSize, hopperMax, hopper = {{spawn, name, quantity}, …}},
+// or nil. getOwnedStructures(playerName) -> {oid, …}. harvesterAddToHopper(oid, units) puts units of the
+// active resource into the hopper (the lab's stand-in for hours of extraction) -> units added or nil.
+int DirectorManager::getStructureStatus(lua_State* L) {
+	if (checkArgumentCount(L, 1) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::getStructureStatus";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	uint64 oid = lua_tointeger(L, -1);
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	ManagedReference<StructureObject*> structure = zoneServer != nullptr ? zoneServer->getObject(oid).castTo<StructureObject*>() : nullptr;
+	if (structure == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	Locker locker(structure);
+	Vector3 world = structure->getWorldPosition();
+
+	lua_newtable(L);
+	lua_pushinteger(L, (lua_Integer) structure->getObjectID()); lua_setfield(L, -2, "oid");
+	lua_pushstring(L, structure->getObjectTemplate() != nullptr ? structure->getObjectTemplate()->getFullTemplateString().toCharArray() : ""); lua_setfield(L, -2, "template");
+	lua_pushinteger(L, structure->getGameObjectType()); lua_setfield(L, -2, "type");
+	lua_pushstring(L, structure->getZone() != nullptr ? structure->getZone()->getZoneName().toCharArray() : ""); lua_setfield(L, -2, "zone");
+	lua_pushnumber(L, world.getX()); lua_setfield(L, -2, "x");
+	lua_pushnumber(L, world.getY()); lua_setfield(L, -2, "y");
+	lua_pushnumber(L, world.getZ()); lua_setfield(L, -2, "z");
+	lua_pushinteger(L, (lua_Integer) structure->getOwnerObjectID()); lua_setfield(L, -2, "owner");
+	lua_pushinteger(L, structure->getLotSize()); lua_setfield(L, -2, "lotSize");
+	lua_pushinteger(L, structure->getSurplusMaintenance()); lua_setfield(L, -2, "maintenance");
+	lua_pushinteger(L, structure->getBaseMaintenanceRate()); lua_setfield(L, -2, "maintenanceRate");
+	lua_pushinteger(L, structure->getSurplusPower()); lua_setfield(L, -2, "power");
+	lua_pushinteger(L, structure->getBasePowerRate()); lua_setfield(L, -2, "powerRate");
+
+	InstallationObject* inso = structure->isInstallationObject() ? cast<InstallationObject*>(structure.get()) : nullptr;
+	if (inso != nullptr) {
+		lua_pushboolean(L, inso->isActive()); lua_setfield(L, -2, "active");
+		lua_pushinteger(L, inso->getInstallationType()); lua_setfield(L, -2, "installationType");
+		uint64 activeSpawn = inso->getActiveResourceSpawnID();
+		lua_pushinteger(L, (lua_Integer) activeSpawn); lua_setfield(L, -2, "activeResource");
+		ManagedReference<ResourceSpawn*> spawn = activeSpawn != 0 ? zoneServer->getObject(activeSpawn).castTo<ResourceSpawn*>() : nullptr;
+		lua_pushstring(L, spawn != nullptr ? spawn->getName().toCharArray() : ""); lua_setfield(L, -2, "activeResourceName");
+		lua_pushnumber(L, inso->getExtractionRate()); lua_setfield(L, -2, "extractionRate");
+		lua_pushnumber(L, inso->getActualRate()); lua_setfield(L, -2, "actualRate");
+		lua_pushnumber(L, inso->getHopperSize()); lua_setfield(L, -2, "hopperSize");
+		lua_pushnumber(L, inso->getHopperSizeMax()); lua_setfield(L, -2, "hopperMax");
+
+		lua_newtable(L);
+		HopperList* hopper = inso->getHopperList();
+		for (int i = 0; hopper != nullptr && i < hopper->size(); ++i) {
+			ResourceContainer* container = hopper->get(i);
+			if (container == nullptr)
+				continue;
+			ManagedReference<ResourceSpawn*> itemSpawn = container->getSpawnObject();
+			lua_newtable(L);
+			lua_pushinteger(L, itemSpawn != nullptr ? (lua_Integer) itemSpawn->getObjectID() : 0); lua_setfield(L, -2, "spawn");
+			lua_pushstring(L, itemSpawn != nullptr ? itemSpawn->getName().toCharArray() : ""); lua_setfield(L, -2, "name");
+			lua_pushinteger(L, container->getQuantity()); lua_setfield(L, -2, "quantity");
+			lua_rawseti(L, -2, i + 1);
+		}
+		lua_setfield(L, -2, "hopper");
+	}
+	return 1;
+}
+
+int DirectorManager::getOwnedStructures(lua_State* L) {
+	if (checkArgumentCount(L, 1) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::getOwnedStructures";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	String name = lua_tostring(L, -1);
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	PlayerManager* playerManager = zoneServer != nullptr ? zoneServer->getPlayerManager() : nullptr;
+	ManagedReference<CreatureObject*> player = playerManager != nullptr ? playerManager->getPlayer(name) : nullptr;
+	PlayerObject* ghost = player != nullptr ? player->getPlayerObject() : nullptr;
+	if (ghost == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	lua_newtable(L);
+	int n = 0;
+	for (int i = 0; i < ghost->getTotalOwnedStructureCount(); ++i) {
+		uint64 oid = ghost->getOwnedStructure(i);
+		if (oid == 0)
+			continue;
+		lua_pushinteger(L, (lua_Integer) oid);
+		lua_rawseti(L, -2, ++n);
+	}
+	lua_pushinteger(L, ghost->getLotsRemaining()); lua_setfield(L, -2, "lotsRemaining");
+	return 1;
+}
+
+int DirectorManager::harvesterAddToHopper(lua_State* L) {
+	if (checkArgumentCount(L, 2) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::harvesterAddToHopper";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	int units = lua_tointeger(L, -1);
+	uint64 oid = lua_tointeger(L, -2);
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	ManagedReference<InstallationObject*> inso = zoneServer != nullptr ? zoneServer->getObject(oid).castTo<InstallationObject*>() : nullptr;
+	if (inso == nullptr || units <= 0) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	Locker locker(inso);
+	ManagedReference<ResourceSpawn*> spawn = zoneServer->getObject(inso->getActiveResourceSpawnID()).castTo<ResourceSpawn*>();
+	if (spawn == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+	ManagedReference<ResourceContainer*> container = spawn->createResource(units);
+	if (container == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+	inso->addResourceToHopper(container);
+	lua_pushinteger(L, units);
 	return 1;
 }
 

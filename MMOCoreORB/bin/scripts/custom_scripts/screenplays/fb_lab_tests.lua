@@ -2141,6 +2141,68 @@ function FbLabTests:objectsNear(planet, x, y, range, otype)
 	return tostring(#objects)
 end
 
+-- structures:<char> → the structures the character owns (oid per line) and the lots left.
+function FbLabTests:structures(charName)
+	local t = getOwnedStructures(charName)
+	if t == nil then print("ERROR structures: no player " .. tostring(charName)); return "none" end
+	for _, oid in ipairs(t) do
+		local st = getStructureStatus(oid)
+		if st ~= nil then
+			print(string.format("INFO structure oid=%d type=0x%x template=%s zone=%s x=%.1f y=%.1f active=%s", oid, st.type, st.template, st.zone, st.x, st.y, tostring(st.active)))
+		else
+			print(string.format("INFO structure oid=%d missing=1", oid))
+		end
+	end
+	print(string.format("INFO lots char=%s remaining=%d owned=%d", charName, t.lotsRemaining or -1, #t))
+	return tostring(#t)
+end
+
+-- harvester:<oid> → the management view of a harvester (or any structure): maintenance/power surplus and rates,
+-- active flag, active resource, rates, hopper size and every hopper line (getStructureStatus binding).
+function FbLabTests:harvester(oid)
+	oid = tonumber(oid)
+	local st = oid and getStructureStatus(oid)
+	if st == nil then print("ERROR harvester: no structure " .. tostring(oid)); return "none" end
+	print(string.format("INFO harvester oid=%d template=%s zone=%s x=%.1f y=%.1f owner=%d lotSize=%d maintenance=%d maintenanceRate=%d power=%d powerRate=%d active=%s activeResource=%d activeResourceName=%s extractionRate=%.1f actualRate=%.2f hopperSize=%.0f hopperMax=%.0f hopperItems=%d",
+		st.oid, st.template, st.zone, st.x, st.y, st.owner, st.lotSize, st.maintenance, st.maintenanceRate, st.power, st.powerRate,
+		tostring(st.active), st.activeResource or 0, st.activeResourceName or "-", st.extractionRate or 0, st.actualRate or 0,
+		st.hopperSize or 0, st.hopperMax or 0, st.hopper and #st.hopper or 0))
+	for i, item in ipairs(st.hopper or {}) do
+		print(string.format("INFO hopper oid=%d spawn=%d name=%s quantity=%d", st.oid, item.spawn, item.name, item.quantity))
+	end
+	return "ok"
+end
+
+-- harvesterFill:<oid>:<units> → units of the active resource straight into the hopper (stands in for hours of
+-- extraction so the hopper can be emptied in a scenario).
+function FbLabTests:harvesterFill(oid, units)
+	local added = harvesterAddToHopper(tonumber(oid) or 0, tonumber(units) or 0)
+	if added == nil then print("ERROR harvesterFill: no harvester " .. tostring(oid) .. " with an active resource"); return "none" end
+	print(string.format("INFO harvesterFill oid=%s added=%d", tostring(oid), added))
+	return tostring(added)
+end
+
+-- structureDestroy:<oid> → tear a structure down the proper way (DestroyStructureTask: lot refunded, owner list
+-- updated), for scenario cleanup.
+function FbLabTests:structureDestroy(oid)
+	local pStructure = getSceneObject(tonumber(oid))
+	if pStructure == nil then print("ERROR structureDestroy: no object " .. tostring(oid)); return "none" end
+	destroyBuilding(tonumber(oid))
+	print("INFO structureDestroy oid=" .. tostring(oid))
+	return "ok"
+end
+
+-- giveResource:<char>:<type>:<units> → a resource container of that survey type (mineral, chemical, flora, gas,
+-- water, wind, solar, fusion, organic, geothermal) into the inventory (givePlayerResource binding; wind/solar/fusion
+-- are the power a harvester burns).
+function FbLabTests:giveResource(charName, rtype, units)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then print("ERROR giveResource: " .. tostring(charName) .. " is offline"); return "offline" end
+	givePlayerResource(pPlayer, rtype, tonumber(units) or 100)
+	print(string.format("INFO giveResource char=%s type=%s units=%d", charName, rtype, tonumber(units) or 100))
+	return "ok"
+end
+
 -- travelPoints:<planet> → the planet's travel points (planet_manager.lua data) with, for each, the nearest travel
 -- terminal (where purchaseTicket must be sent from: within 8 m; starport terminals stand inside the starport
 -- building, cell given) and the shuttle creature (boardShuttle within 25 m). Names carry underscores for

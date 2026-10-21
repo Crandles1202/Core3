@@ -572,6 +572,32 @@ void ZonePacketHandler::handleObjectControllerMessage(Message* pack) {
 			zone->signal(STRING_HASHCODE("Teleport"));
 			break;
 		}
+		case 0xEA: { // HarvesterResourceDataMessage: what a harvester here could extract (after harvesterGetResourceData)
+			// long harvester, int n, n × (long spawn oid, ascii name, ascii type, byte density 0..100)
+			uint64 harvesterID = pack->parseLong();
+			uint32 count = pack->parseInt();
+			String base = "Harvester/h" + String::valueOf(harvesterID);
+			auto& list = core->vars[JSONSerializationType::json_pointer("/Harvester/h" + std::string(String::valueOf(harvesterID).toCharArray()) + "/resources")];
+			list = JSONSerializationType::array();
+			for (uint32 i = 0; i < count && i < 512; ++i) {
+				uint64 spawn = pack->parseLong();
+				String name, type;
+				pack->parseAscii(name);
+				pack->parseAscii(type);
+				uint8 density = pack->parseByte();
+				JSONSerializationType entry;
+				entry["spawn"] = spawn;
+				entry["name"] = name.toCharArray();
+				entry["type"] = type.toCharArray();
+				entry["density"] = (int) density;
+				list.push_back(entry);
+			}
+			core->setVar(base + "/count", (int) count);
+			core->setVar("Harvester/last", harvesterID);
+			info(true) << "harvester " << harvesterID << " resource list: " << count << " spawn(s)";
+			zone->signal(STRING_HASHCODE("HarvesterResourceData"));
+			break;
+		}
 		case 0xDE: { // StopNpcConversation
 			uint64 npcID = pack->parseLong();
 
