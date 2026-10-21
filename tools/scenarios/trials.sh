@@ -6,6 +6,9 @@
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 shrine_oid_of() { lab "findNpc:$1" | sed -n 's/.*oid=\([0-9]*\).*/\1/p' | sort -n | tail -n1; }
+# wait_done <trial id> [seconds]: the trials line once the id is in done= (a conversation's effect lands a few
+# seconds after the client's option; the bot client only waits 5 s for the reply)
+wait_done() { local i; for i in $(seq 1 "${2:-15}"); do T=$(lab "trials:$CHAR"); grep -q "done=[a-z,]*$1" <<<"$T" && return 0; sleep 2; done; T=$(lab "trials:$CHAR"); return 1; }
 
 # --- setup: called, six worlds, trials unlocked, standing at a shrine ---------------------------------------
 bot_bg --wait 200
@@ -60,7 +63,7 @@ wait_online || die "$CHAR never came back online"
 lab "gotoNpc:$CHAR:fb_prisoner" >/dev/null
 wait "$BOT_PID"
 check_eq "prisoner_converse_ok" "$(bot_action_status converse)" "ok" "$(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tail -n1)"
-T=$(lab "trials:$CHAR")
+wait_done mercy
 check "mercy_done_light" "$(grep -q 'done=stillness,restraint,strength,mercy' <<<"$T" && grep -q 'alignment=light' <<<"$T" && echo 1 || echo 0)" "$T"
 
 # --- 5 farwalk: the far shrine on this world; reaching it completes ----------------------------------------------
@@ -96,8 +99,8 @@ bot_bg --wait 14 --converse "$SPIRIT" --options "$RIGHT" --wait 3
 wait_online || die "$CHAR never came back online"
 lab "gotoNpc:$CHAR:fb_trial_spirit" >/dev/null
 wait "$BOT_PID"
-check_eq "riddle_converse_ok" "$(bot_action_status converse)" "ok" "riddle $RIDDLE option $RIGHT: $(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tail -n1); spirit: $(lab "objectPos:$SPIRIT" | sed 's/.*zone=/zone=/' | cut -c1-70); char: $(lab "where:$CHAR" | sed 's/.*zone=/zone=/' | cut -c1-70)"
-T=$(lab "trials:$CHAR")
+check "riddle_conversation_started" "$(grep -aq '"action":"converse".*"screens":[1-9]' "$BOTLOG" && echo 1 || echo 0)" "riddle $RIDDLE option $RIGHT: $(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tail -n1); spirit: $(lab "objectPos:$SPIRIT" | sed 's/.*zone=/zone=/' | cut -c1-70); char: $(lab "where:$CHAR" | sed 's/.*zone=/zone=/' | cut -c1-70)"
+wait_done insight
 check "insight_done" "$(grep -q 'done=stillness,restraint,strength,mercy,farwalk,insight' <<<"$T" && echo 1 || echo 0)" "$T"
 
 # --- 7 sacrifice: the spirit again; 10 000 credits change hands -----------------------------------------------------
@@ -117,8 +120,8 @@ bot_bg --wait 14 --converse "$SPIRIT" --options 0 --wait 3
 wait_online || die "$CHAR never came back online"
 lab "gotoNpc:$CHAR:fb_trial_spirit" >/dev/null
 wait "$BOT_PID"
-check_eq "sacrifice_converse_ok" "$(bot_action_status converse)" "ok" "$(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tail -n1); spirit: $(lab "objectPos:$SPIRIT" | sed 's/.*zone=/zone=/' | cut -c1-70); char: $(lab "where:$CHAR" | sed 's/.*zone=/zone=/' | cut -c1-70)"
-T=$(lab "trials:$CHAR")
+check "sacrifice_conversation_started" "$(grep -aq '"action":"converse".*"screens":[1-9]' "$BOTLOG" && echo 1 || echo 0)" "$(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tail -n1); spirit: $(lab "objectPos:$SPIRIT" | sed 's/.*zone=/zone=/' | cut -c1-70); char: $(lab "where:$CHAR" | sed 's/.*zone=/zone=/' | cut -c1-70)"
+wait_done sacrifice
 check "sacrifice_done_and_paid" "$(grep -q 'done=stillness,restraint,strength,mercy,farwalk,insight,sacrifice' <<<"$T" && grep -q 'cash=2000' <<<"$T" && echo 1 || echo 0)" "$T"
 
 # --- 8 duel: one hunter; the character kills it alone; the Padawan box follows -----------------------------------------
@@ -133,7 +136,8 @@ sleep 6
 HUNTER=$(lab "findNpc:sith_shadow" | sed -n 's/.*oid=\([0-9]*\).*/\1/p' | sort -n | tail -n1)
 check "hunter_stands" "$( [ -n "$HUNTER" ] && echo 1 || echo 0 )"
 lab "killNpc:$CHAR:$HUNTER" >/dev/null
-sleep 4
+wait_done duel
+sleep 3
 T=$(lab "trials:$CHAR")
 check "duel_done" "$(grep -q 'count=8' <<<"$T" && echo 1 || echo 0)" "$T"
 check "padawan_awarded" "$(grep -q 'padawan=true novice=true' <<<"$T" && grep -q 'task=padawan' <<<"$T" && echo 1 || echo 0)" "$T"
