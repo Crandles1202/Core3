@@ -107,7 +107,8 @@ bool runSubAction(ClientCore& core, const char* name, const JSONSerializationTyp
 	return ok;
 }
 
-// ObjController 0xED EmptyHopper as the client sends it (EmptyHopperCallback::parse): long harvester, long resource,
+// ObjController 0xED EmptyHopper as the client sends it. EmptyHopperCallback::parse skips 12 bytes after the
+// header's oid ("skip passed player": an int pad and the player oid again), then long harvester, long resource,
 // int quantity, byte retrieve(0)/discard(1), byte checksum
 class ClientEmptyHopper : public BaseMessage {
 public:
@@ -116,6 +117,8 @@ public:
 		insertInt(0x80CE5E46);   // ObjControllerMessage
 		insertInt(0x0B);         // priority
 		insertInt(0xED);         // EmptyHopper
+		insertLong(playerOid);
+		insertInt(0);            // the 12 bytes the server skips
 		insertLong(playerOid);
 		insertLong(harvester);
 		insertLong(resource);
