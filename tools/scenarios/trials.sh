@@ -52,12 +52,14 @@ check "prisoner_sent" "$(grep -q 'sent=true' <<<"$T" && echo 1 || echo 0)" "$T"
 sleep 6
 PRIS=$(shrine_oid_of fb_prisoner)
 check "prisoner_stands" "$( [ -n "$PRIS" ] && echo 1 || echo 0 )"
-lab "gotoNpc:$CHAR:fb_prisoner" >/dev/null     # he stands where he was left; the bot client does not walk
 wait "$BOT_PID"
 sleep 8
-PRIS_BEFORE=$(lab "objectPos:$PRIS" | sed 's/.*zone=/zone=/' | cut -c1-70)
-bot --wait 4 --converse "$PRIS" --options 1 --wait 3 >/dev/null 2>&1 || true
-check_eq "prisoner_converse_ok" "$(bot_action_status converse)" "ok" "prisoner before: $PRIS_BEFORE; $(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tail -n1); char: $(lab "where:$CHAR" | sed 's/.*zone=/zone=/' | cut -c1-60)"
+# the talking session: log in, be placed beside him (a player would walk up; the bot client does not walk), talk
+bot_bg --wait 14 --converse "$PRIS" --options 1 --wait 3
+wait_online || die "$CHAR never came back online"
+lab "gotoNpc:$CHAR:fb_prisoner" >/dev/null
+wait "$BOT_PID"
+check_eq "prisoner_converse_ok" "$(bot_action_status converse)" "ok" "$(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tail -n1)"
 T=$(lab "trials:$CHAR")
 check "mercy_done_light" "$(grep -q 'done=stillness,restraint,strength,mercy' <<<"$T" && grep -q 'alignment=light' <<<"$T" && echo 1 || echo 0)" "$T"
 
@@ -87,12 +89,14 @@ lab "trialTick:$CHAR" >/dev/null
 sleep 35
 SPIRIT=$(shrine_oid_of fb_trial_spirit)
 check "spirit_stands" "$( [ -n "$SPIRIT" ] && echo 1 || echo 0 )"
-lab "gotoNpc:$CHAR:fb_trial_spirit" >/dev/null
 wait "$BOT_PID"
 sleep 8
 case "$RIDDLE" in 1) RIGHT=0 ;; 2) RIGHT=1 ;; 3) RIGHT=2 ;; *) RIGHT=0 ;; esac
-bot --wait 4 --converse "$SPIRIT" --options "$RIGHT" --wait 3 >/dev/null 2>&1 || true
-check_eq "riddle_converse_ok" "$(bot_action_status converse)" "ok" "riddle $RIDDLE option $RIGHT: $(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tail -n1); spirit: $(lab "objectPos:$SPIRIT" | sed 's/.*zone=/zone=/' | cut -c1-70); char: $(lab "where:$CHAR" | sed 's/.*zone=/zone=/' | cut -c1-60)"
+bot_bg --wait 14 --converse "$SPIRIT" --options "$RIGHT" --wait 3
+wait_online || die "$CHAR never came back online"
+lab "gotoNpc:$CHAR:fb_trial_spirit" >/dev/null
+wait "$BOT_PID"
+check_eq "riddle_converse_ok" "$(bot_action_status converse)" "ok" "riddle $RIDDLE option $RIGHT: $(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tail -n1)"
 T=$(lab "trials:$CHAR")
 check "insight_done" "$(grep -q 'done=stillness,restraint,strength,mercy,farwalk,insight' <<<"$T" && echo 1 || echo 0)" "$T"
 
@@ -107,12 +111,13 @@ T=$(lab "trialTick:$CHAR")
 check "spirit_sent_again" "$(grep -q 'sent=true' <<<"$T" && echo 1 || echo 0)" "$T"
 sleep 35                                         # arrive (or settle at 30 s) before the character leaves
 SPIRIT=$(shrine_oid_of fb_trial_spirit)
-lab "gotoNpc:$CHAR:fb_trial_spirit" >/dev/null
-SP_BEFORE=$(lab "objectPos:$SPIRIT" | sed 's/.*zone=/zone=/' | cut -c1-70)
 wait "$BOT_PID"
 sleep 8
-bot --wait 4 --converse "$SPIRIT" --options 0 --wait 3 >/dev/null 2>&1 || true
-check_eq "sacrifice_converse_ok" "$(bot_action_status converse)" "ok" "spirit before: $SP_BEFORE; $(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tail -n1); spirit: $(lab "objectPos:$SPIRIT" | sed 's/.*zone=/zone=/' | cut -c1-70); char: $(lab "where:$CHAR" | sed 's/.*zone=/zone=/' | cut -c1-60)"
+bot_bg --wait 14 --converse "$SPIRIT" --options 0 --wait 3
+wait_online || die "$CHAR never came back online"
+lab "gotoNpc:$CHAR:fb_trial_spirit" >/dev/null
+wait "$BOT_PID"
+check_eq "sacrifice_converse_ok" "$(bot_action_status converse)" "ok" "$(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tail -n1)"
 T=$(lab "trials:$CHAR")
 check "sacrifice_done_and_paid" "$(grep -q 'done=stillness,restraint,strength,mercy,farwalk,insight,sacrifice' <<<"$T" && grep -q 'cash=2000' <<<"$T" && echo 1 || echo 0)" "$T"
 
