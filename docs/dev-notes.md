@@ -1039,3 +1039,11 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   before it reads `frsEnabled`): enabled, its login validation forced light-council characters to Rebel overt
   and dark to Imperial overt, which would have set every patrol in Phase 3 on a fresh Padawan; it also ran votes,
   petitions and XP debt. The enclave doors and the Masters only need the council in the player's FRS data.
+- **A visitor must be seen, not just near.** The conversation rule is ≤ 5 m *and* line of sight; a follower
+  that stops behind a shrine's stone 3 m away fails it. `FbTrials.settleBeside` now places the visitor at 2.5 m
+  on its own bearing and walks the compass until `AiAgent:checkLineOfSight(pPlayer)` holds (gate 2026-10-21,
+  the Old Man at Tatooine shrine 02).
+- **The enclave admits the Padawan *box*, not the flag.** A lab character given only `FbAttunement` flag
+  `padawan` was ejected from the enclave's cells at login (the door rule reads `force_title_jedi_novice`);
+  the jedi-master scenario grants the skill as the trials do, and the lab's `skill` oracle falls back to
+  `awardSkillUnchecked` for boxes with prerequisites.
