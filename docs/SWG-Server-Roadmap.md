@@ -386,7 +386,7 @@ and Chuck checks each one off; the API key comes from Chuck's Max plan credits.
   sell loot, bank, train at a trainer when XP allows.
 - **7.5 \[M\] Entertainer playbook.** Cantina sets (dance / music, flourishes), buffs for groupmates, tips, the 1.10
   XP rule applies.
-- **7.6a \[L\] Gathering and the resource economy.** ⏳ 2026-10-20: oracle, survey, sample, travel (ticket + shuttle, indoor terminals) done; harvesters, playbooks next. Resources are galaxy-wide, patchy and transient
+- **7.6a \[L\] Gathering and the resource economy.** ⏳ 2026-10-20: oracle, survey, sample, travel (ticket + shuttle, indoor terminals) and harvesters (place, resource list, select, maintenance, power, activate, empty hopper) done on a seat, scenarios `seat-travel` / `seat-harvester`; playbooks (the gatherer's week) and `redeed` next. Resources are galaxy-wide, patchy and transient
   (`docs/Game-Systems.md`): a *resource oracle* (Lua binding over `ResourceManager`: current spawns per planet with
   attributes and best spots — the citizens' SWGCraft) + seat primitives `survey` / `sample` (decode `SurveyMessage`
   and `ResourceListForSurveyMessage`), `travel_to` (`purchaseTicket` + `boardShuttle`), `place_structure`,

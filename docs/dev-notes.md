@@ -211,6 +211,25 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   activates and empties the hopper (0xED). The installation's hopper/surplus state only reaches a client as baseline 7,
   so the lab's `getStructureStatus` binding is the citizens' status window. Scenario `seat-harvester` (the lab fills the
   hopper with `harvesterAddToHopper` instead of waiting hours; `structureDestroy` = `destroyBuilding` cleans up).
+  **Bench lessons from getting both scenarios green:** (1) every object the bot client held was type 0 and nameless —
+  the client-side Lua templates only carry `clientTemplateFileName` ("data below here is deprecated and loaded from the
+  tres"); the fix is a server dump of its template table (`dumpTemplates` → `~/.swg-lab/templates.jsonl`, 15 926 lines,
+  2.5 MB) that `core3client` reads at start — and `createObject` leaked one Lua stack slot per object (the result table was
+  never popped). (2) `getObjectsInRange` crashed twice: `getCell(idx)` is a VectorMap keyed by cell number (1..N), and
+  `getCellName()` wants the number, not the oid (an oid as an index → ArrayIndexOutOfBounds). (3) The AI navmesh does not
+  cover a port's pad: `findPath` to the terminal or shuttle stops at the mesh edge ~29 m short; players are not bound by
+  the mesh, so the seat walks a straight final leg (the server only speed-checks). (4) `purchaseTicket` and
+  `boardShuttle` send no `CommandQueueRemove` at all — the ticket action waits for the ticket object, the board action for
+  the new scene. A scenario run right after a server restart twice saw the purchase vanish without any reply while every
+  later manual run worked; not reproduced since, watch the gate. (5) `EmptyHopper` 0xED: the server's callback skips 12
+  bytes after the header oid (int pad + player oid) before harvester/resource/quantity. (6) `placeStructure` said
+  `not_permitted` 600 m east of Mos Eisley: the no-build region is huge; `isBuildingPermittedAt` is now a binding
+  (`canBuild`). (7) A lab-made harvester deed has extraction rate 0 and hopper size 0 (crafting sets them:
+  `updateCraftingValues`), so the placed harvester would never fill: `deedValues` sets them. (8) `addResourceToHopper`
+  appends; the hopper already holds an empty container for the active resource, and `EmptyHopper` takes the first
+  container for the spawn — top that one up instead. (9) The bench build (`swg build`) builds the *bench* checkout, not
+  the worktree: uncommitted worktree changes need a commit + `bench use`; and copying a file onto the bench to test it
+  leaves the bench dirty, which `bench use` refuses (restore it with `git checkout --` there).
 - **2026-10-20 (evening) — 7.6a resources: oracle, survey, sample.** Chuck: crafters cannot sit in one town, resources
   are elsewhere. What the code says is in `docs/Game-Systems.md`. Built: `getResourceSpawns(zone)` /
   `getResourceDensityAt` Lua bindings (the citizens' spreadsheet: every spawn in shift with attributes and up to

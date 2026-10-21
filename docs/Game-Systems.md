@@ -97,6 +97,10 @@ resource containers (wind, solar, radiant…) in the inventory (`getAvailablePow
 resource's potential energy). The hopper, the surpluses and the rates are not pushed to a bot client in a form
 worth decoding (baseline 7 of the installation), so the citizens read them server-side (`FbLabTests:harvester`)
 — the owner's status window, in effect. `tools/seat place` / `harvester` are the primitives; `redeed` is still to do.
+Numbers from the first run (ore harvester style 1 at 4400,−4700 on Tatooine, a 17 % spot): maintenance 30/h, power
+25/h, extraction rate 120 × 0.17 = 20.6 units/h; a crafted deed decides the rate and the hopper size (a lab deed has 0
+until `deedValues`). Building is refused inside the city's no-build region, which reaches ~700 m past the Mos Eisley
+walls (`canBuild` tells).
 
 ## 4. Crafting (`objects/player/sessions/crafting/CraftingSession*`, `commands/*Crafting*`, `*Schematic*`)
 
