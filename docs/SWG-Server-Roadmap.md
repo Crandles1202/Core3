@@ -291,7 +291,7 @@ This phase has more sub-phases than the others because it's the most ambitious c
 #### 4b — Master/Apprentice quest chain
 
 - **4b.1 \[L\] Jedi Master NPC.** ✅ shipped 2026-10-21 — Master Ilara Venn in the Light Enclave's training room: enrols a light Padawan on the rank ladder (council light, novice box), two training tasks paid in Jedi XP, the dark Padawan sent to the other door; the enclave doors open to anyone with the Padawan box (scenario `jedi-master`). Once Padawan trials complete, the player is assigned a Jedi Master NPC. Each Master is a unique character (canonical or custom — your choice). Master gives quests that advance Jedi training.  
-- **4b.2 \[L\] Sith Master NPC alternate path.** If you chose the dark path in 4a, you instead encounter a Sith Master who corrupts you. Different quest chain, different abilities focus.  
+- **4b.2 \[L\] Sith Master NPC alternate path.** ✅ shipped 2026-10-21 — Darth Ysanne Vhal in the Dark Enclave's chamber, the dark council and novice box, two training tasks (patience, prey), light Padawans sent to the other door (scenario `sith-master`). If you chose the dark path in 4a, you instead encounter a Sith Master who corrupts you. Different quest chain, different abilities focus.  
 - **4b.3 \[M\] Light/Dark alignment system.** Actions in-game shift alignment. Certain abilities lock/unlock based on alignment. Both paths can reach Knight rank but with different signature abilities.  
 - **4b.4 \[L\] Knight trial quest.** Final exam to graduate from Padawan to Knight. A single, hard, narrative dungeon. Tied to chosen alignment.  
 - **4b.5 \[L\] Companion Padawan / Apprentice.** Once you reach Knight, you can take on a companion of your own — same framework, different feel by alignment:  

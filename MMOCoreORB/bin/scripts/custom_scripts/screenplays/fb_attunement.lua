@@ -149,10 +149,10 @@ end
 
 function FbAttunement:reset(pPlayer)
 	for _, s in ipairs(self.sources) do deleteScreenPlayData(pPlayer, self.DATA, s) end
-	for _, f in ipairs({ "ghost25", "ghost50", "ghost75", "oldman", "called", "task", "incapAt", "incapDay", "medWorlds", "lore", "return", "trials", "ambushDue", "ambushDone", "alignment", "padawan" }) do deleteScreenPlayData(pPlayer, self.DATA, "flag:" .. f) end
+	for _, f in ipairs({ "ghost25", "ghost50", "ghost75", "oldman", "called", "task", "incapAt", "incapDay", "medWorlds", "lore", "return", "trials", "ambushDue", "ambushDone", "alignment", "padawan", "master" }) do deleteScreenPlayData(pPlayer, self.DATA, "flag:" .. f) end
 	if FbTrials ~= nil then FbTrials:reset(pPlayer) end
 	if FbVisions ~= nil then FbVisions:reset(pPlayer) end
-	if FbJediMaster ~= nil then FbJediMaster:reset(pPlayer) end
+	if FbMasters ~= nil then FbMasters.reset(pPlayer) end
 	deleteScreenPlayData(pPlayer, self.DATA, "ghostTier")
 	removeQuestStatus("FbAttunement.visit." .. SceneObject(pPlayer):getObjectID())
 	removeQuestStatus("FbAttunement.poll." .. SceneObject(pPlayer):getObjectID())
@@ -172,7 +172,7 @@ function FbAttunement:status(pPlayer)
 	local st = { total = self:total(pPlayer), per = {}, raw = {}, flags = {} }
 	st.tier = self:tier(st.total)
 	for _, s in ipairs(self.sources) do st.per[s], st.raw[s] = self:sourceTotal(pPlayer, s) end
-	for _, f in ipairs({ "ghost25", "ghost50", "ghost75", "called", "task", "medWorlds", "lore", "return", "trials", "ambushDue", "ambushDone", "alignment", "padawan" }) do st.flags[f] = self:flag(pPlayer, f) end
+	for _, f in ipairs({ "ghost25", "ghost50", "ghost75", "called", "task", "medWorlds", "lore", "return", "trials", "ambushDue", "ambushDone", "alignment", "padawan", "master" }) do st.flags[f] = self:flag(pPlayer, f) end
 	return st
 end
 
@@ -390,7 +390,7 @@ function FbAttunement:onKill(pPlayer, pVictim)
 	end
 	self:scanItems(pPlayer)
 	if FbTrials ~= nil then FbTrials:onKill(pPlayer, pVictim) end
-	if FbJediMaster ~= nil then FbJediMaster:onKill(pPlayer, pVictim) end   -- 4b.1: the shadows task
+	if FbMasters ~= nil then FbMasters.onKill(pPlayer, pVictim) end   -- 4b.1/4b.2: the Masters' kill tasks
 	-- the fight may still be on: look again in 20 s
 	createEvent(20000, "FbAttunement", "maybeVisitLater", pPlayer, "")
 	return 0
@@ -534,7 +534,7 @@ function FbAttunement:onLogin(pPlayer)
 	if pPlayer == nil then return end
 	printf("FbAttunement: login hook for %s\n", CreatureObject(pPlayer):getFirstName())
 	if FbVisions ~= nil then FbVisions:onLogin(pPlayer) end   -- 4a.4: a logout inside a vision ends it at home
-	if FbJediMaster ~= nil then FbJediMaster:onLogin(pPlayer) end   -- 4b.1: re-arm the stillness poll
+	if FbMasters ~= nil then FbMasters.onLogin(pPlayer) end   -- 4b.1/4b.2: re-arm the sit polls
 	dropObserver(KILLEDCREATURE, "FbAttunement", "onKill", pPlayer); createObserver(KILLEDCREATURE, "FbAttunement", "onKill", pPlayer)
 	dropObserver(OBJECTDESTRUCTION, "FbAttunement", "onIncap", pPlayer); createObserver(OBJECTDESTRUCTION, "FbAttunement", "onIncap", pPlayer)
 	dropObserver(BADGEAWARDED, "FbAttunement", "onBadge", pPlayer); createObserver(BADGEAWARDED, "FbAttunement", "onBadge", pPlayer)

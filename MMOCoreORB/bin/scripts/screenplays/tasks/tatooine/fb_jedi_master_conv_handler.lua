@@ -1,5 +1,5 @@
--- fb_jedi_master_conv_handler.lua — Master Ilara Venn's conversation (Phase 4b.1). The opening screen comes
--- from FbJediMaster:screenFor (custom_scripts/screenplays/fb_jedi_master.lua); the screens' effects are here.
+-- fb_jedi_master_conv_handler.lua — Master Ilara Venn's conversation (Phase 4b.1). The opening screen comes from FbJediMaster:screenFor
+-- (custom_scripts/screenplays/fb_masters.lua); the screens' effects are here. Both Masters share the screen ids.
 
 fbJediMasterConvoHandler = conv_handler:new {}
 
@@ -7,7 +7,7 @@ function fbJediMasterConvoHandler:getInitialScreen(pPlayer, pNpc, pConvTemplate)
 	local convoTemplate = LuaConversationTemplate(pConvTemplate)
 	if FbJediMaster == nil then return convoTemplate:getScreen("stranger") end
 	local id = FbJediMaster:screenFor(pPlayer)
-	if id == "dark" then FbJediMaster:turnAway(pPlayer) end
+	if id == "otherdoor" then FbJediMaster:turnAway(pPlayer) end
 	return convoTemplate:getScreen(id)
 end
 

@@ -1047,3 +1047,11 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   `padawan` was ejected from the enclave's cells at login (the door rule reads `force_title_jedi_novice`);
   the jedi-master scenario grants the skill as the trials do, and the lab's `skill` oracle falls back to
   `awardSkillUnchecked` for boxes with prerequisites.
+
+### 2026-10-21 — 4b.2 the Sith Master
+
+- Dark Jedi Enclave = snapshot building `3435626` at (5070.1, 310.2, h 90), entrance (5068, 310); 27 cells, a long
+  descent (ramps → foyer → antechamber → main room → chamber ramp → *chamber*, cell 16, flat at −43.3, two chairs
+  at its far end: (0, −150) is clear, (0, −155) is in a chair). `fb_jedi_master.lua` became `fb_masters.lua`:
+  `FbMasterBase:new{…}` carries everything, the two Masters are data (side, council, rank box, room, tasks,
+  string prefix). The `master` flag on the character says whose student it is; the other Master turns it away.

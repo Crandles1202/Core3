@@ -15,7 +15,7 @@ end
 
 -- not on the path / the other door
 screen("stranger", "master_stranger", {}, true)
-screen("dark", "master_dark", {}, true)
+screen("otherdoor", "master_otherdoor", {}, true)
 
 -- the offer
 screen("offer", "master_offer", {
