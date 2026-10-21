@@ -34,6 +34,7 @@ check_eq "seat_started" "$RC" "0" "$(tail -n1 <<<"$OUT")"
 [ "$RC" = 0 ] || { "$SEAT" log "$NAME" 30 | sed 's/^/   client: /'; die "seat did not start"; }
 DEED=$(lab "give:$CHAR:object/tangible/deed/harvester_deed/harvester_ore_s1_deed.iff" | sed -n 's/.*oid=\([0-9]*\).*/\1/p' | head -n1)
 check "deed_given" "$( [ -n "$DEED" ] && echo 1 || echo 0 )" "ore harvester deed oid $DEED"
+lab "deedValues:$DEED:120:12000" >/dev/null     # a crafted deed carries these; a lab-made one has 0 and 0
 lab "giveResource:$CHAR:wind:2000" >/dev/null
 lab "travel:$CHAR:tatooine:$X0:$Y0" >/dev/null
 sleep 3
@@ -53,11 +54,11 @@ check_eq "one_lot_used" "$(( ${LOTS0:-0} - ${LOTS1:-0} ))" "1" "lots $LOTS0 -> $
 # --- what is here, pick the densest ------------------------------------------------------------------------
 RES=$("$SEAT" harvester "$NAME" "$HOID" resources 2>&1); RC=$?
 check_eq "resource_list_ok" "$RC" "0" "$(grep -o '"error": "[^"]*"' <<<"$RES" | head -n1)"
-NRES=$(json "len(d['resources'])" <<<"$RES")
+NRES=$(json "len(d['result']['resources'])" <<<"$RES")
 check_ge "resources_listed" "${NRES:-0}" 1 "${NRES:-0} spawns offered"
-SPAWN=$(json "max(d['resources'], key=lambda r: r['density'])['spawn']" <<<"$RES")
-SNAME=$(json "max(d['resources'], key=lambda r: r['density'])['name']" <<<"$RES")
-SDENS=$(json "max(d['resources'], key=lambda r: r['density'])['density']" <<<"$RES")
+SPAWN=$(json "max(d['result']['resources'], key=lambda r: r['density'])['spawn']" <<<"$RES")
+SNAME=$(json "max(d['result']['resources'], key=lambda r: r['density'])['name']" <<<"$RES")
+SDENS=$(json "max(d['result']['resources'], key=lambda r: r['density'])['density']" <<<"$RES")
 say "   densest here: $SNAME ($SDENS%) spawn $SPAWN"
 SEL=$("$SEAT" harvester "$NAME" "$HOID" select "$SPAWN" 2>&1); RC=$?
 check_eq "select_ok" "$RC" "0" "$(grep -o '"error": "[^"]*"' <<<"$SEL" | head -n1)"
@@ -74,17 +75,18 @@ ST=$(lab "harvester:$HOID" | grep -a '^INFO harvester' | head -n1)
 check "server_says_active" "$( grep -q ' active=true' <<<"$ST" && echo 1 || echo 0 )" "$(grep -o 'active=[a-z]*' <<<"$ST")"
 check_ge "maintenance_deposited" "$(sed -n 's/.*[[:space:]]maintenance=\([0-9-]*\).*/\1/p' <<<"$ST")" 400 "$(grep -o 'maintenance=[0-9-]* maintenanceRate=[0-9]*' <<<"$ST")"
 check_ge "power_deposited" "$(sed -n 's/.*[[:space:]]power=\([0-9-]*\).*/\1/p' <<<"$ST")" 250 "$(grep -o 'power=[0-9-]* powerRate=[0-9]*' <<<"$ST")"
+check_eq "hopper_max_from_the_deed" "$(sed -n 's/.*hopperMax=\([0-9]*\).*/\1/p' <<<"$ST")" "12000" "$(grep -o 'extractionRate=[0-9.]* actualRate=[0-9.]* hopperSize=[0-9]* hopperMax=[0-9]*' <<<"$ST")"
 check_eq "active_resource_is_the_pick" "$(sed -n 's/.*activeResource=\([0-9]*\).*/\1/p' <<<"$ST")" "$SPAWN" "$(grep -o 'activeResourceName=[^ ]*' <<<"$ST")"
 
 # --- the hopper: filled by the lab, emptied by the seat -----------------------------------------------------
 lab "harvesterFill:$HOID:150" >/dev/null
-HOP=$(lab "harvester:$HOID" | grep -a '^INFO hopper' | head -n1)
+HOP=$(lab "harvester:$HOID" | grep -a "^INFO hopper .* spawn=$SPAWN " | head -n1)
 check "hopper_holds_the_fill" "$( grep -q 'quantity=150' <<<"$HOP" && echo 1 || echo 0 )" "$(cut -c6-120 <<<"$HOP")"
 E=$("$SEAT" harvester "$NAME" "$HOID" empty "$SPAWN" 150 2>&1); RC=$?
 check_eq "empty_hopper_ok" "$RC" "0" "$(grep -o '"error": "[^"]*"' <<<"$E" | head -n1)"
 sleep 1
 HOP2=$(lab "harvester:$HOID" | grep -a '^INFO harvester' | head -n1)
-check_eq "hopper_emptied" "$(sed -n 's/.*hopperItems=\([0-9]*\).*/\1/p' <<<"$HOP2")" "0" "$(grep -o 'hopperSize=[0-9]* hopperMax=[0-9]* hopperItems=[0-9]*' <<<"$HOP2")"
+check_eq "hopper_emptied" "$(sed -n 's/.*hopperSize=\([0-9]*\).*/\1/p' <<<"$HOP2")" "0" "$(grep -o 'hopperSize=[0-9]* hopperMax=[0-9]* hopperItems=[0-9]*' <<<"$HOP2")"
 CB=$(sed -n 's/.*"containersBefore": \([0-9]*\).*/\1/p' <<<"$E" | head -n1); CA=$(sed -n 's/.*"containersAfter": \([0-9]*\).*/\1/p' <<<"$E" | head -n1)
 check "resource_container_arrived" "$( [ "${CA:-0}" -gt "${CB:-0}" ] && echo 1 || echo 0 )" "resource containers in view $CB -> $CA (the wind energy was one already)"
 

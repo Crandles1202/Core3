@@ -11,6 +11,7 @@
 #include "server/zone/objects/installation/HopperList.h"
 #include "templates/manager/TemplateManager.h"
 #include "templates/manager/TemplateCRCMap.h"
+#include "server/zone/objects/tangible/deed/structure/StructureDeed.h"
 #include "server/zone/objects/resource/ResourceContainer.h"
 #include "server/zone/objects/structure/StructureObject.h"
 #include "server/zone/objects/creature/LuaCreatureObject.h"
@@ -536,6 +537,7 @@ void DirectorManager::initializeLuaEngine(Lua* luaEngine) {
 	luaEngine->registerFunction("harvesterAddToHopper", harvesterAddToHopper);
 	luaEngine->registerFunction("dumpTemplates", dumpTemplates);
 	luaEngine->registerFunction("isBuildingPermittedAt", isBuildingPermittedAt);
+	luaEngine->registerFunction("setDeedValues", setDeedValues);
 	luaEngine->registerFunction("getZoneWeather", getZoneWeather);
 	luaEngine->registerFunction("setZoneWeather", setZoneWeather);
 	luaEngine->registerFunction("awardSkill", awardSkill);
@@ -4344,6 +4346,33 @@ int DirectorManager::isBuildingPermittedAt(lua_State* L) {
 	return 1;
 }
 
+// Final Boss (7.6a): setDeedValues(deedOid, extractionRate, hopperSize) — a harvester deed carries its extraction rate
+// and hopper size from crafting (updateCraftingValues); a deed the lab creates has 0 for both, and the harvester
+// placed from it would extract nothing. -> true, or nil for a missing deed.
+int DirectorManager::setDeedValues(lua_State* L) {
+	if (checkArgumentCount(L, 3) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::setDeedValues";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	float hopper = lua_tonumber(L, -1);
+	float rate = lua_tonumber(L, -2);
+	uint64 oid = lua_tointeger(L, -3);
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	ManagedReference<StructureDeed*> deed = zoneServer != nullptr ? zoneServer->getObject(oid).castTo<StructureDeed*>() : nullptr;
+	if (deed == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+	Locker locker(deed);
+	deed->setExtractionRate(rate);
+	deed->setHopperSize(hopper);
+	lua_pushboolean(L, true);
+	return 1;
+}
+
 // Final Boss (Phase 7.6a, harvesters): what a structure owner sees in the management windows, for the lab and
 // the citizens. getStructureStatus(oid) -> {oid, template, type, zone, x, y, z, owner, lotSize, maintenance
 // (surplus), maintenanceRate, power (surplus), powerRate, active, installationType, activeResource (spawn oid),
@@ -4467,6 +4496,14 @@ int DirectorManager::harvesterAddToHopper(lua_State* L) {
 	ManagedReference<ResourceSpawn*> spawn = zoneServer->getObject(inso->getActiveResourceSpawnID()).castTo<ResourceSpawn*>();
 	if (spawn == nullptr) {
 		lua_pushnil(L);
+		return 1;
+	}
+	// the hopper already holds a (possibly empty) container for the active resource: top it up, as extraction does
+	ManagedReference<ResourceContainer*> existing = inso->getContainerFromHopper(spawn);
+	if (existing != nullptr) {
+		Locker clocker(existing, inso);
+		existing->setQuantity(existing->getQuantity() + units, false, true, false);
+		lua_pushinteger(L, units);
 		return 1;
 	}
 	ManagedReference<ResourceContainer*> container = spawn->createResource(units);

@@ -2208,6 +2208,15 @@ function FbLabTests:canBuild(planet, x, y)
 	return tostring(ok)
 end
 
+-- deedValues:<oid>:<extractionRate>:<hopperSize> → the crafting values a lab-made harvester deed lacks (both 0
+-- otherwise: the harvester would extract nothing into a hopper of size 0).
+function FbLabTests:deedValues(oid, rate, hopper)
+	local ok = setDeedValues(tonumber(oid) or 0, tonumber(rate) or 0, tonumber(hopper) or 0)
+	if ok == nil then print("ERROR deedValues: no deed " .. tostring(oid)); return "none" end
+	print(string.format("INFO deedValues oid=%s extractionRate=%s hopperSize=%s", tostring(oid), tostring(rate), tostring(hopper)))
+	return "ok"
+end
+
 -- structureDestroy:<oid> → tear a structure down the proper way (DestroyStructureTask: lot refunded, owner list
 -- updated), for scenario cleanup.
 function FbLabTests:structureDestroy(oid)

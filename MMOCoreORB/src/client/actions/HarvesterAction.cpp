@@ -71,7 +71,7 @@ String systemMessagesJoined(ClientCore& core, int since) {
 	return out;
 }
 
-// objects of a game object type range the client holds (installations 0x1000..0x1007, resource containers 0x400000)
+// objects of a game object type range the client holds (installations 0x1000..0x1007, resource containers 0x400000..0x40FFFF)
 Vector<uint64> objectsOfType(ClientCore& core, int typeFrom, int typeTo) {
 	Vector<uint64> found;
 	ObjectManager* objectManager = core.zone->getObjectManager();
@@ -389,10 +389,10 @@ public:
 			result.setSuccess();
 		} else if (op == "empty") {
 			if (resource == 0 || quantity == 0) { result.setError("empty needs the spawn oid (resource) and a quantity", 2); return; }
-			containersBefore = objectsOfType(core, 0x400000, 0x400000).size();
+			containersBefore = objectsOfType(core, 0x400000, 0x40FFFF).size();   // resource containers: 0x400000 + subtype
 			core.zone->getZoneClient()->sendMessage(new ClientEmptyHopper(core.selectedCharacterOid, target, resource, quantity, discard));
 			Thread::sleep(1500);
-			containersAfter = objectsOfType(core, 0x400000, 0x400000).size();
+			containersAfter = objectsOfType(core, 0x400000, 0x40FFFF).size();
 			serverSaid = systemMessagesJoined(core, msgBefore);
 			if (serverSaid.contains("too far")) { result.setError("empty hopper: " + serverSaid, 4); return; }
 			result.setSuccess();
