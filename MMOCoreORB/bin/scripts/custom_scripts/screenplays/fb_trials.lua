@@ -309,6 +309,14 @@ function FbTrialPrisoner:onEncounterInRange(pPlayer, spawned)
 	if spawned ~= nil and spawned[1] ~= nil then spatialChat(spawned[1], "@fb_force:prisoner_plea") end
 end
 function FbTrialPrisoner:belongsTo(pPlayer, pNpc) return pPlayer ~= nil and pNpc ~= nil and SpawnMobiles.isFromSpawn(pPlayer, self.taskName, pNpc) end
+-- why a prisoner did not recognise a character (printed when the conversation falls to "nothing")
+function FbTrialPrisoner:explain(pPlayer, pNpc)
+	local spawned = SpawnMobiles.getSpawnedMobiles(pPlayer, self.taskName)
+	local oids = {}
+	for _, p in ipairs(spawned or {}) do oids[#oids + 1] = SpawnMobiles.isValidMobile(p) and tostring(SceneObject(p):getObjectID()) or "-" end
+	printf("FbTrials: prisoner %d is not %s's (task started=%s, spawned=%s, current=%s, for=%s)\n", SceneObject(pNpc):getObjectID(), CreatureObject(pPlayer):getFirstName(),
+		tostring(self:hasTaskStarted(pPlayer)), table.concat(oids, ","), tostring(FbTrials:current(pPlayer)), tostring(readData(SceneObject(pNpc):getObjectID() .. ":fbTrialFor")))
+end
 function FbTrialPrisoner:runOff(pPlayer, pNpc)
 	if pNpc ~= nil then AiAgent(pNpc):removeObjectFlag(AI_STATIC); AiAgent(pNpc):setAITemplate(); AiAgent(pNpc):runAway(pPlayer, 80) end
 	FbAttunement.visitScheduleDespawn(self, pPlayer, 12000)

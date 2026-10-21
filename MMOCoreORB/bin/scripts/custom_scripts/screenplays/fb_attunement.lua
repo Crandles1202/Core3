@@ -417,10 +417,6 @@ function FbAttunement:maybeVisit(pPlayer)
 	end
 	if CreatureObject(pPlayer):isInCombat() or CreatureObject(pPlayer):isDead() or CreatureObject(pPlayer):isIncapacitated() then return false end
 	local total = self:total(pPlayer)
-	-- 4a.3: a trial in progress or due takes the trigger
-	if FbTrials ~= nil and FbTrials:active(pPlayer) then
-		if FbTrials:tick(pPlayer) then return true end
-	end
 	-- 4a.2: the shrine task done → the Old Man returns (once)
 	if self:flag(pPlayer, "called") ~= nil and self:flag(pPlayer, "task") == "shrines" and self:worldCount(pPlayer) >= 6 and self:flag(pPlayer, "return") == nil then
 		if FbOldManReturn:isPlayerInPositionForEncounter(pPlayer) and FbOldManReturn:start(pPlayer) then
@@ -437,6 +433,10 @@ function FbAttunement:maybeVisit(pPlayer)
 			setQuestStatus("FbAttunement.visit." .. oid, tostring(os.time()))
 			return true
 		end
+	end
+	-- 4a.3: a trial in progress or due takes the trigger (after the hunters the Old Man warned about)
+	if FbTrials ~= nil and FbTrials:active(pPlayer) then
+		if FbTrials:tick(pPlayer) then return true end
 	end
 	if total >= 100 then
 		if self:flag(pPlayer, "called") == nil and self:flag(pPlayer, "oldman") == nil then

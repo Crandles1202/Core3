@@ -9,6 +9,7 @@ function fbPrisonerConvoHandler:getInitialScreen(pPlayer, pNpc, pConvTemplate)
 	if FbTrialPrisoner ~= nil and FbTrialPrisoner:belongsTo(pPlayer, pNpc) then
 		return convoTemplate:getScreen("plea")
 	end
+	if FbTrialPrisoner ~= nil then FbTrialPrisoner:explain(pPlayer, pNpc) end
 	return convoTemplate:getScreen("nothing")
 end
 
