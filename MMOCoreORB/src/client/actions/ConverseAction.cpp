@@ -156,17 +156,23 @@ public:
 		// reset state from any earlier conversation
 		core.vars.erase("Conversation");
 		core.vars[JSONSerializationType::json_pointer("/Conversation/transcript")] = JSONSerializationType::array();
+		core.setVar("Conversation/optionCount", -1);   // -1 = no option list yet (the StringList packet sets it)
 
 		info() << "starting conversation with " << npc;
 		sendCommand(core, "npcconversationstart", npc, "");
 
-		if (!waitForScreen(core, -1) || !core.hasVar("Conversation/npc")) {
+		// the screen's option list and the StartNpcConversation packet arrive in either order
+		if (!waitForScreen(core, -1)) {
 			result.setError("NPC " + String::valueOf(npc) + " did not start a conversation within " + String::valueOf(timeoutSeconds) + "s (out of range? not conversable?)", 3);
 			return;
 		}
-		// waitForScreen returned on the option list (optionCount left -1 by the start packet until the StringList
-		// lands) or on the close; a short pause lets the message text settle too
-		Thread::sleep(100);
+		for (int waited = 0; !core.hasVar("Conversation/npc") && waited < 2000; waited += 50)
+			Thread::sleep(50);
+		if (!core.hasVar("Conversation/npc")) {
+			result.setError("NPC " + String::valueOf(npc) + " sent a screen but no conversation start", 3);
+			return;
+		}
+		Thread::sleep(100);   // lets the message text settle too
 		logScreen(core);
 
 		for (int i = 0; i < options.size(); ++i) {
