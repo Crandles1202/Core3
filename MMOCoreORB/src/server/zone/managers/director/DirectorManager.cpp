@@ -4225,7 +4225,7 @@ int DirectorManager::getObjectsInRange(lua_State* L) {
 		BuildingObject* building = object->asBuildingObject();
 		if (building == nullptr)
 			continue;
-		for (int c = 0; c < building->getTotalCellNumber(); ++c) {   // getCell(idx) is 0-based over the cells vector (cell *numbers* are 1-based)
+		for (int c = 1; c <= building->getTotalCellNumber(); ++c) {   // cells is a VectorMap keyed by cell number 1..N
 			CellObject* cell = building->getCell(c);
 			if (cell == nullptr)
 				continue;
@@ -4261,7 +4261,7 @@ int DirectorManager::getObjectsInRange(lua_State* L) {
 		lua_pushnumber(L, world.getZ()); lua_setfield(L, -2, "z");
 		lua_pushnumber(L, world.getY()); lua_setfield(L, -2, "y");
 		lua_pushinteger(L, cell != nullptr ? (lua_Integer) cell->getObjectID() : 0); lua_setfield(L, -2, "cell");
-		lua_pushstring(L, cell != nullptr && rootBuilding != nullptr ? rootBuilding->getCellName(cell->getObjectID()).toCharArray() : ""); lua_setfield(L, -2, "cellName");
+		lua_pushstring(L, cell != nullptr && rootBuilding != nullptr ? rootBuilding->getCellName(cell->getCellNumber()).toCharArray() : ""); lua_setfield(L, -2, "cellName");   // getCellName wants the cell number, not the oid
 		lua_pushinteger(L, cell != nullptr && root != nullptr ? (lua_Integer) root->getObjectID() : 0); lua_setfield(L, -2, "building");
 		if (cell != nullptr) {
 			// the local position too: what a DataTransformWithParent must carry to stand next to it
