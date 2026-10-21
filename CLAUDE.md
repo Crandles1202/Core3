@@ -141,7 +141,7 @@ tools/swg test planner          # headless check of the site planner's data path
 tools/swg whoami | lock [purpose] [--minutes N] | unlock [--force]   # the bench lock (docs/BOARD.md)
 tools/swg agent new <name> | list | done <name>                      # a worktree + branch per agent
 tools/swg bench status | use <branch> | release | merge <branch>     # deploy on the bench, gate, merge
-tools/seat start <user> <char> [--name N] [--timeout S] | stop | list | ping | say | tell | emote | cmd | do | vars | objects | wait | log
+tools/seat start <user> <char> [--name N] [--timeout S] | stop | list | prune | ping | say | tell | emote | cmd | do | vars | objects | wait | log
 tools/seat walk <seat> <x> <y> [--cell OID] | where | survey | sample | resources <planet> | points <planet> | travel <seat> <planet> <point> | ticket | board
 tools/seat place <seat> <deed oid> <x> <y> [angle] | harvester <seat> <oid> resources|select|activate|deactivate|maintain|power|empty|status | templates
 tools/seat fight <seat> <target oid> [--max S] [--reach M]   # close, attack until dead or a third of health, loot all
@@ -310,6 +310,12 @@ Persisted object fields (`containerVolumeLimit`, …) are only read from the tem
   state=N` names the *locomotion* that refused the command (20 = dead, 19 = incapacitated, 14 = sitting). A scenario's
   `trap - EXIT` before `finish` skips its cleanup on success: call `cleanup` explicitly.
 - gtest's `<<` cannot print an engine3 `String`; use `.toCharArray()` in assertion messages.
+- **Threads in engine3 code must be engine3 `Thread`s** (subclass, `run()`, `start()`, `join()`), never `std::thread`:
+  `Locker` skips the lock when the lock's holder equals `Thread::getCurrentThread()`, and on a foreign thread both are
+  null for a free lock — so every `Locker` is a no-op there, a condition wait re-acquires the mutex on return and nobody
+  releases it (the seat's first driver threads left the zone mutex owned by a dead thread; the client then deadlocked
+  at shutdown). A hung client is read with `sudo gdb -p <pid>` (plain gdb: `ptrace: Operation not permitted`);
+  `p ((pthread_mutex_t*)ADDR)->__data.__owner` names the LWP that holds a mutex.
 - Lua bindings read arguments from the top of the stack and do not validate: a call with the wrong
   arity (`faceObject(pNpc)` instead of `faceObject(pNpc, true)`) passes garbage/null into C++ and
   segfaults the server (or, for the global functions, silently reads garbage: `writeScreenPlayData(pPlayer, screenplay, key, value)` / `readScreenPlayData(pPlayer, screenplay, key)` take the screenplay name and the key as *separate* strings — folding them into one left 4a.1's score at zero without any error). Check the binding's signature in `Lua*.cpp` before using a method for the first

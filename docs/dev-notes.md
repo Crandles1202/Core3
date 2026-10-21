@@ -94,6 +94,9 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   `selectedCharacterOid` before sending `SelectCharacter` (otherwise the scene is aborted as "wrong
   OID"), and `--wait-after-zone` now sleeps *before* the auto-appended `logoutCharacter` action.
 - Exit codes: 0 ok, `100 + action error code` (104 = create failed, 105 = create timeout).
+- The seat serves every driver on its own engine3 `Thread` (2026-10-21): a `std::thread` cannot hold engine3 locks
+  (see CLAUDE.md gotchas). Requests other than `wait` are serialized by one lock; `quit` shuts the other drivers'
+  sockets and joins them. A `--seat` path must fit `sun_path` (107 bytes; the scratchpad is too deep — use `~/.swg-lab`).
 
 ## Scenario testing (bot + oracle)
 - `tools/swg test scenario <name>` runs `tools/scenarios/<name>.sh`; `lib.sh` gives `bot …` (core3client
