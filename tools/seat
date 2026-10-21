@@ -215,13 +215,18 @@ def fight_seat(s, char, target, max_s=90, reach=4.0):
         if out_of_range_since(msgs0):
             msgs0 = len(s.request({"op": "vars", "path": "/SystemMessages"}).get("vars") or [])
             approach()
-        s.action("command", name="defaultattack", target=str(target), nowait=True, timeout=5)
+        s.action("command", name="attack", target=str(target), nowait=True, timeout=5)
         swings += 1
-    loot = None
+    looted = False
     if verdict == "killed":
-        loot = s.action("command", name="loot", target=str(target), args="all", timeout=8)
+        # `loot all` sends no CommandQueueRemove on success (like purchaseTicket): send it and look for a refusal
+        n0 = len(s.request({"op": "vars", "path": "/SystemMessages"}).get("vars") or [])
+        s.action("command", name="loot", target=str(target), args="all", nowait=True, timeout=5)
+        _t.sleep(2)
+        said = (s.request({"op": "vars", "path": "/SystemMessages"}).get("vars") or [])[n0:]
+        looted = not any("@error_message" in m or "out_of_range" in m for m in said)
     result = {"ok": verdict == "killed", "verdict": verdict, "target": target, "swings": swings, "seconds": round(_t.time() - started),
-              "looted": bool(loot and loot.get("ok"))}
+              "looted": looted}
     print(f"fight: {verdict} after {swings} swing(s), {result['seconds']} s" + (", looted" if result["looted"] else ""))
     return result
 

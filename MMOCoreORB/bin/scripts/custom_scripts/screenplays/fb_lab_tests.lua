@@ -2245,6 +2245,12 @@ function FbLabTests:equip(charName, oid)
 	if pPlayer == nil then print("ERROR equip: " .. tostring(charName) .. " is offline"); return "offline" end
 	local pItem = getSceneObject(tonumber(oid))
 	if pItem == nil then print("ERROR equip: no item " .. tostring(oid)); return "none" end
+	-- a weapon already in hand goes back to the inventory first (the slot must be free)
+	local pHeld = SceneObject(pPlayer):getSlottedObject("hold_r")
+	local pInventory = SceneObject(pPlayer):getSlottedObject("inventory")
+	if pHeld ~= nil and pInventory ~= nil and SceneObject(pHeld):getObjectID() ~= tonumber(oid) then
+		SceneObject(pInventory):transferObject(pHeld, -1, true)
+	end
 	local ok = SceneObject(pPlayer):transferObject(pItem, 4, true)
 	print(string.format("INFO equip char=%s oid=%s ok=%s", charName, tostring(oid), tostring(ok)))
 	return tostring(ok)
