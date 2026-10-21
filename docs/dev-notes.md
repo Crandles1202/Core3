@@ -318,7 +318,9 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   point (`CLAUDE.md` gotcha) — once in range a visitor stops following, goes `AI_STATIC` and is re-homed where
   it stands; (3) a follower's own z still carries its spawn height when it arrives, so the new home uses
   `getTerrainHeightAt`, or the visitor snaps 16 m underground and no conversation can start. The Padawan box
-  is awarded on its own event: the last trial completes inside a kill observer, where `awardSkill` did not take.
+  is awarded on its own event (the last trial completes inside a kill observer) **after** `PlayerObject:setJediState(1)`:
+  without the Jedi state the skill manager refuses every `force_*` skill silently (a brawler box awards, the
+  novice box does not) — the Village sets the state the same way just before its own award.
 - **2026-10-20 — 4a.2 the shrines.** First feature built the parallel way: worktree `Core3-shrines`, branch
   `feature/shrines`, `swg bench use feature/shrines` to test. Content: 49 lore lines (five per world, four where a
   world has four shrines), keyed by shrine index so a shrine always says the same thing; the Old Man's return
