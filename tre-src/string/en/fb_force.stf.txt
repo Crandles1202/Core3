@@ -275,3 +275,25 @@ vision_padawan_kenobi_whisper = A voice, not his: there is still a light door. T
 vision_padawan_luke_whisper = A voice, not his: my father came back at the very end. You do not have to wait that long.
 vision_padawan_vader_whisper = A voice, not his: the light door is open too. It leads to the same moon and a smaller life.
 vision_padawan_exar_kun_whisper = A voice, not his: when their lessons bore you, the stone on Yavin is still warm.
+
+# ---- Phase 4b.1: Master Ilara Venn, the Light Enclave on Yavin 4
+master_stranger = You have the look of someone who walked a long way to stand in the wrong room. The enclave is not a sight to see. Go well.
+master_dark = I can feel it on you like heat off a stone. You chose, and you chose the other door. It is on the far side of this moon. I will not pretend to wish you luck.
+master_offer = So. The old man's Padawan. He sends me one every few years and keeps the rest for himself. I am Ilara Venn. If you want a teacher, I will teach. It will be slower than you want and harder than you think.
+master_take = Then we begin. You wear the novice's rank from today. It means you have promised to learn, nothing more. Sit with me first.
+master_later = Then go and be unsure somewhere else. The door stays open.
+master_taken = Master Ilara Venn has taken you as her student. You hold the first rank of the light.
+master_train_stillness = The first lesson is the one you think you have already learned. Sit here, in this room, and do nothing for a minute. Not a minute of waiting. A minute of nothing. Then tell me.
+master_told = She nods and turns back to the window.
+master_wait_stillness = You have not sat yet. Or you have sat and counted. Either way, not yet.
+master_done_stillness = You sat, and for most of it you were somewhere else, and for the last of it you were not. Good. That is the whole trick, and nobody ever finishes learning it.
+master_reward_stillness = Now something with an edge. There are Sith Shadows on this moon and on Dantooine, the old enclave's hunters. Five of them. Do not hunt them angry.
+master_train_shadows = Sith Shadows. They hunt what we are, and they are good at it. Find five and end them. Come back the same person who left.
+master_wait_shadows = Five, I said. You are not there yet.
+master_done_shadows = You came back. That was the lesson; the five were the price of it.
+master_reward_shadows = That is all I have for you today. The rank above the novice's is given, not taken, and I give it when the Council asks me what I have seen. Come back when you have done something worth telling them.
+master_trained = There is nothing more I can give you yet. Walk the moon. Go home. The next door opens when it opens.
+master_trained_note = Your training with Master Venn is complete for now. She will have more when the Council calls.
+master_stillness_done = A minute of nothing, done. Tell Master Venn.
+master_shadows_done = Five shadows. Tell Master Venn.
+master_shadows_progress = Shadows ended: %DI of 5.

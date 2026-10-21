@@ -1016,3 +1016,18 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   (`writeScreenPlayData`) or quest status. An event scheduled with an object pointer (`createEvent(ms, play,
   fn, pObj, "")`) panics the Lua state if the object is gone by then: pass the oid as the string argument and
   `getSceneObject` it.
+
+### 2026-10-21 — 4b.1 the Jedi Master
+
+- **Stock enclave facts.** Light Jedi Enclave = snapshot building `8525417` at (−5513.7, 4911.8, h 270), entrance
+  at (−5575, 4910); 27 cells (`lotsurvey cells yavin4 -5575 4910`, `rooms object/building/yavin/shared_light_enclave.iff`),
+  the training room (cell 24) is flat at −24.1 with no furniture, the lobby (22) is a ramp, the auditorium's
+  centre is a throne. Snapshot cell ids are stable across boots (stock city scripts rely on that), but
+  `BuildingObject:getNamedCell("trainingroom")` is the readable way. The door is `EnclaveContainerComponent::
+  checkBuildingPermission` (god mode, then FRS council match); cells have their own rule for the tier rooms.
+  The `light_jedi_sentinel`s outside (`customAiMap = "enclaveSentinel"`) only attack a player for whom
+  `CheckProspectJediTrial` holds, i.e. mid stock Knight trial — a Padawan walks past them.
+- **FRS as the ladder.** `frs_manager.lua` keeps `frsEnabled = 1`; the rank skills are `force_rank_light_novice`,
+  `force_rank_light_rank_01..10`, `force_rank_light_master` (dark likewise), the robes are certified on them.
+  Enrolment = `PlayerObject:setFrsCouncil(1)` (COUNCIL_LIGHT; 2 = dark), `setFrsRank(0)`, `awardSkill` of the
+  novice box. Jedi XP type is `jedi_general` (`CreatureObject:awardExperience(type, amount, true)`).

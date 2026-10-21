@@ -802,6 +802,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkAttunement()
 		FbLabTests.checkTrials()
 		FbLabTests.checkVisions()
+		FbLabTests.checkJediMaster()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)
@@ -2762,6 +2763,73 @@ function FbLabTests.checkVisions()
 		local mf = io.open("scripts/mobile/quest/tatooine/" .. fig.template .. ".lua", "r")
 		check("visions.figure." .. key, mf ~= nil, fig.template)
 		if mf ~= nil then mf:close() end
+	end
+end
+
+-- ---------------------------------------------------------------- Phase 4b.1: the Jedi Master
+
+local function masterLine(charName, pPlayer)
+	print("INFO jediMaster char=" .. charName .. " " .. FbJediMaster:status(pPlayer) .. " xp=" .. tostring(PlayerObject(CreatureObject(pPlayer):getPlayerObject()):getExperience("jedi_general")))
+end
+
+-- jediMaster:<char> → the student's state as the Master sees it, and the opening screen she would pick
+function FbLabTests:jediMaster(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	masterLine(charName, pPlayer)
+	print("INFO jediMaster screen=" .. FbJediMaster:screenFor(pPlayer) .. " npc=" .. tostring(FbJediMaster:npc() ~= nil))
+	return "ok"
+end
+
+-- jediMasterTake:<char> → be taken as her student without the conversation
+function FbLabTests:jediMasterTake(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	print("INFO jediMasterTake taken=" .. tostring(FbJediMaster:take(pPlayer)))
+	masterLine(charName, pPlayer)
+	return "ok"
+end
+
+-- trainingSet:<char>:<task>:told|ready|done → push a task to that state
+function FbLabTests:trainingSet(charName, id, state)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	if state == "told" then FbJediMaster:told(pPlayer, id)
+	elseif state == "ready" then FbJediMaster:set(pPlayer, "told:" .. id, os.time()); FbJediMaster:complete(pPlayer, id)
+	elseif state == "done" then FbJediMaster:set(pPlayer, "told:" .. id, os.time()); FbJediMaster:set(pPlayer, "ready:" .. id, os.time()); FbJediMaster:reward(pPlayer, id) end
+	masterLine(charName, pPlayer)
+	return "ok"
+end
+
+-- trainingTick:<char> → run the stillness poll once, now
+function FbLabTests:trainingTick(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	removeQuestStatus("FbJediMaster.sit." .. SceneObject(pPlayer):getObjectID())   -- the poll chain restarts from here
+	FbJediMaster:pollSit(pPlayer)
+	masterLine(charName, pPlayer)
+	return "ok"
+end
+
+function FbLabTests.checkJediMaster()
+	check("jedimaster.loaded", FbJediMaster ~= nil and FbJediMaster.tasks ~= nil)
+	if FbJediMaster == nil then return end
+	check("jedimaster.two_tasks", #FbJediMaster.tasks == 2)
+	if isZoneEnabled(FbJediMaster.zone) then
+		check("jedimaster.enclave_room", FbJediMaster:cell() ~= nil, FbJediMaster.room .. " of " .. FbJediMaster.buildingOid)
+		check("jedimaster.stands", FbJediMaster:npc() ~= nil, "spawned at boot into the training room")
+	end
+	local f = io.open("../../tre-src/string/en/fb_force.stf.txt", "r")
+	if f ~= nil then
+		local text = f:read("a"); f:close()
+		local missing = {}
+		local function need(k) if not text:find("\n" .. k .. " = ", 1, true) then missing[#missing + 1] = k end end
+		for _, k in ipairs({ "stranger", "dark", "offer", "take", "later", "taken", "told", "trained", "trained_note" }) do need("master_" .. k) end
+		for _, t in ipairs(FbJediMaster.tasks) do
+			for _, k in ipairs({ "train", "wait", "done", "reward" }) do need("master_" .. k .. "_" .. t.id) end
+			need("master_" .. t.id .. "_done")
+		end
+		check("jedimaster.strings", #missing == 0, #missing == 0 and "every screen and note" or ("missing: " .. table.concat(missing, ", ")))
 	end
 end
 

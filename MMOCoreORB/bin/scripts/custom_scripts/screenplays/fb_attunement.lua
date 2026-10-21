@@ -152,6 +152,7 @@ function FbAttunement:reset(pPlayer)
 	for _, f in ipairs({ "ghost25", "ghost50", "ghost75", "oldman", "called", "task", "incapAt", "incapDay", "medWorlds", "lore", "return", "trials", "ambushDue", "ambushDone", "alignment", "padawan" }) do deleteScreenPlayData(pPlayer, self.DATA, "flag:" .. f) end
 	if FbTrials ~= nil then FbTrials:reset(pPlayer) end
 	if FbVisions ~= nil then FbVisions:reset(pPlayer) end
+	if FbJediMaster ~= nil then FbJediMaster:reset(pPlayer) end
 	deleteScreenPlayData(pPlayer, self.DATA, "ghostTier")
 	removeQuestStatus("FbAttunement.visit." .. SceneObject(pPlayer):getObjectID())
 	removeQuestStatus("FbAttunement.poll." .. SceneObject(pPlayer):getObjectID())
@@ -389,6 +390,7 @@ function FbAttunement:onKill(pPlayer, pVictim)
 	end
 	self:scanItems(pPlayer)
 	if FbTrials ~= nil then FbTrials:onKill(pPlayer, pVictim) end
+	if FbJediMaster ~= nil then FbJediMaster:onKill(pPlayer, pVictim) end   -- 4b.1: the shadows task
 	-- the fight may still be on: look again in 20 s
 	createEvent(20000, "FbAttunement", "maybeVisitLater", pPlayer, "")
 	return 0
@@ -532,6 +534,7 @@ function FbAttunement:onLogin(pPlayer)
 	if pPlayer == nil then return end
 	printf("FbAttunement: login hook for %s\n", CreatureObject(pPlayer):getFirstName())
 	if FbVisions ~= nil then FbVisions:onLogin(pPlayer) end   -- 4a.4: a logout inside a vision ends it at home
+	if FbJediMaster ~= nil then FbJediMaster:onLogin(pPlayer) end   -- 4b.1: re-arm the stillness poll
 	dropObserver(KILLEDCREATURE, "FbAttunement", "onKill", pPlayer); createObserver(KILLEDCREATURE, "FbAttunement", "onKill", pPlayer)
 	dropObserver(OBJECTDESTRUCTION, "FbAttunement", "onIncap", pPlayer); createObserver(OBJECTDESTRUCTION, "FbAttunement", "onIncap", pPlayer)
 	dropObserver(BADGEAWARDED, "FbAttunement", "onBadge", pPlayer); createObserver(BADGEAWARDED, "FbAttunement", "onBadge", pPlayer)

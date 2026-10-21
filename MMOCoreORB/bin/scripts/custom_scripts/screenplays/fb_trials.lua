@@ -123,6 +123,8 @@ function FbTrials:finishAll(pPlayer)
 	say(pPlayer, "trials_complete")
 	local a = FbAttunement:flag(pPlayer, "alignment")
 	if a == "light" then say(pPlayer, "trials_light") elseif a == "dark" then say(pPlayer, "trials_dark") end
+	-- 4b.1/4b.2: the Masters wait in the Yavin 4 enclaves; the map shows the door that matches the choice
+	if a == "dark" then waypointTo(pPlayer, "yavin4", 5068, 310, "The Dark Enclave") else waypointTo(pPlayer, "yavin4", -5575, 4910, "The Light Enclave") end
 	-- the award is done on its own event: the last trial completes inside a kill observer, where the skill
 	-- manager's locks are not ours to take
 	createEvent(1500, "FbTrials", "awardNovice", pPlayer, "")
