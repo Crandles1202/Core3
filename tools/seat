@@ -36,8 +36,9 @@ control channel on a unix socket (SeatAction, Phase 7.0). A pilot (7.3) sits on 
   seat sample <name> <resource> [rounds]               sample where the character stands (3 s, then 25 s per extra round)
   seat resources <planet> [class]                      the resource oracle (FbLabTests:resources over swg cmd --shared)
   seat log <name> [lines]                              tail of the client log
-  seat fight <name> <target oid> [--max S]            attack that creature and keep swinging (defaultattack every 3 s) until it is dead
-                                                        or --max s (default 90) pass, then loot all from the corpse; prints a verdict line
+  seat fight <name> <target oid> [--max S] [--reach M]  close to --reach m (default 4: melee; a rifle allows ~60), attack and keep swinging
+                                                        (defaultattack every 3 s) until it is dead or --max s (90) pass, re-closing when the
+                                                        server says out of range, then loot all from the corpse; prints a verdict line
   seat templates                                       (re)write ~/.swg-lab/templates.jsonl, the client's object type/name table, from the
                                                         server's loaded templates (FbLabTests:templateDump); start does it when the file is missing
 
@@ -173,11 +174,33 @@ def path_within(char, x, y, within, cell=0, z=None):
     return direct + [[round(ex, 2), round(ez, 2), round(ey, 2), 0]]
 
 
-def fight_seat(s, char, target, max_s=90):
+def fight_seat(s, char, target, max_s=90, reach=4.0):
     """attack, keep attacking, loot. Death is read server-side (objectAlive) since the bot client decodes no
     creature deltas; own health too (ham), to stop at a third of health."""
-    import time as _t
+    import math, time as _t
     started = _t.time()
+
+    def approach():
+        """within weapon reach of the target (unarmed/melee: the server wants ~5 m; max(10, weapon range) is the check)"""
+        objs = s.request({"op": "objects"}).get("objects", [])
+        me = next((o for o in objs if o["oid"] == s.request({"op": "ping"}).get("character")), None)
+        it = next((o for o in objs if o["oid"] == target), None)
+        if me is None or it is None:
+            return False
+        if math.hypot(it["x"] - me["x"], it["y"] - me["y"]) <= reach:
+            return True
+        w = walk_seat(s, char, round(it["x"], 1), round(it["y"], 1), within=reach * 0.7)
+        return bool(w.get("ok"))
+
+    def out_of_range_since(n):
+        try:
+            kept = s.request({"op": "vars", "path": "/SystemMessages"}).get("vars") or []
+        except Exception:
+            return False
+        return any("target_out_of_range" in m for m in kept[n:])
+
+    approach()
+    msgs0 = len(s.request({"op": "vars", "path": "/SystemMessages"}).get("vars") or [])
     s.action("command", name="attack", target=str(target), timeout=5)
     swings, verdict = 1, "timeout"
     while _t.time() - started < max_s:
@@ -189,6 +212,9 @@ def fight_seat(s, char, target, max_s=90):
         hp = ham.get("health", "1/1/1").split("/")
         if len(hp) >= 2 and int(hp[1]) > 0 and int(hp[0]) < int(hp[1]) // 3:
             verdict = "retreat"; break
+        if out_of_range_since(msgs0):
+            msgs0 = len(s.request({"op": "vars", "path": "/SystemMessages"}).get("vars") or [])
+            approach()
         s.action("command", name="defaultattack", target=str(target), nowait=True, timeout=5)
         swings += 1
     loot = None
@@ -604,7 +630,8 @@ def main(argv):
         if not rest:
             die("fight <name> <target oid> [--max S]")
         char = s.request({"op": "ping"}).get("characterName") or seat_character_name(name)
-        reply = fight_seat(s, char, int(rest[0]), int(rest[rest.index("--max") + 1]) if "--max" in rest else 90)
+        reply = fight_seat(s, char, int(rest[0]), int(rest[rest.index("--max") + 1]) if "--max" in rest else 90,
+                           float(rest[rest.index("--reach") + 1]) if "--reach" in rest else 4.0)
     elif cmd == "travel":
         if len(rest) < 2:
             die("travel <name> <planet> <point> [--from POINT] [--round-trip] [--wait S]")

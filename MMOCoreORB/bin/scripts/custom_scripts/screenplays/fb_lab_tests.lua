@@ -2239,6 +2239,17 @@ function FbLabTests:resourceUnits(charName, resourceName)
 	return tostring(n)
 end
 
+-- equip:<char>:<item oid> → move an inventory item into its equipped slot (weapons, clothing, armour).
+function FbLabTests:equip(charName, oid)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then print("ERROR equip: " .. tostring(charName) .. " is offline"); return "offline" end
+	local pItem = getSceneObject(tonumber(oid))
+	if pItem == nil then print("ERROR equip: no item " .. tostring(oid)); return "none" end
+	local ok = SceneObject(pPlayer):transferObject(pItem, 4, true)
+	print(string.format("INFO equip char=%s oid=%s ok=%s", charName, tostring(oid), tostring(ok)))
+	return tostring(ok)
+end
+
 -- structureDestroy:<oid> → tear a structure down the proper way (DestroyStructureTask: lot refunded, owner list
 -- updated), for scenario cleanup.
 function FbLabTests:structureDestroy(oid)
