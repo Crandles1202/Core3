@@ -178,9 +178,20 @@ class CitizenFiles:
 class Senses:
     """Perception from the seat, as deltas since the last wake."""
 
-    def __init__(self, seat, state):
+    def __init__(self, seat, state, character_name="", files=None):
         self.seat = seat
         self.state = state
+        self.character_name = character_name
+        self.files = files
+
+    def current_milestone(self):
+        """the first unticked milestone of the life plan: what the character is working on"""
+        if self.files is None:
+            return None
+        for line in self.files.plan().splitlines():
+            if line.startswith("- [ ]"):
+                return line[5:].strip()
+        return None
 
     def _new_lines(self, path, key):
         reply = self.seat.request({"op": "vars", "path": path})
@@ -211,6 +222,8 @@ class Senses:
             near.sort(key=lambda n: n["distance"])
         planet = self.seat.request({"op": "vars", "path": "/Scene/terrain"}).get("vars")
         return {
+            "you": self.character_name,
+            "now": self.current_milestone(),
             "character": ping.get("character"),
             "planet": planet if isinstance(planet, str) else None,
             "position": {"x": round(me["x"], 1), "y": round(me["y"], 1)} if me else None,
@@ -384,7 +397,12 @@ def seat_tools(seat, files, character_name, seat_name):
 # ------------------------------------------------------------------ deciders
 SYSTEM_RULES = """You are playing a character in Star Wars Galaxies on a small private server. You act only through the tools.
 Stay in character at all times; never mention being an AI, a model or a program. Speak the way the persona's voice
-samples do, briefly. Other players are real people: be a good companion, answer tells, remember them.
+samples do: one or two short sentences, in your own words, like a person typing in a game. Other players are real
+people: be a good companion, answer tells, remember them.
+The perception JSON tells you who you are ("you"), where you are, what you are working on now ("now"), who is nearby
+and what you heard. A tell arrives as "Sender: text": answer that sender with the tell tool, by that name. Do not
+announce your own name unless asked who you are; people see your name over your head. Say concretely what you are
+doing (your "now"), not "on my way somewhere".
 Your life plan is a commitment: work its milestones in order and do not abandon it on a whim; change_plan only for a
 reason your character would give out loud, and expect it to be reviewed. Keep your memory honest and short.
 When nothing needs you, call rest. One wake is a few actions at most; the world keeps running between wakes."""
@@ -469,7 +487,7 @@ def run(args):
 
     state = files.state()
     state["seat"] = seat_name
-    senses = Senses(seat, state)
+    senses = Senses(seat, state, character, files)
     impl, schema = seat_tools(seat, files, character, seat_name)
 
     def run_tool(name, inputs):
