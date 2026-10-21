@@ -86,6 +86,18 @@ resource on the bazaar, move the harvesters when the spawn dies. That is a real 
 commands and windows the seat can send. Needed primitives: `place_structure`, `harvester_set_resource`,
 `harvester_deposit`, `harvester_empty`, `redeed`.
 
+**Built 2026-10-20 (7.6a).** `placeStructure` is one command (`PlaceStructureSession` builds the structure at once
+and sends it; the deed is consumed; a lot is taken). The harvester's own commands: `harvesterGetResourceData`
+(→ `HarvesterResourceDataMessage`, ObjController 0xEA: every spawn of the harvester's type on the planet with its
+density *at the harvester*), `harvesterSelectResource <spawn oid>`, `harvesterActivate` / `harvesterDeactivate`;
+the hopper is emptied with ObjController 0xED (`EmptyHopper`: harvester, spawn, units, retrieve/discard). Paying
+maintenance and depositing power are the owner's radial options 129 and 51 on the structure: each opens a
+**transfer box** whose answer carries two arguments, the second being the amount; power comes from the energy
+resource containers (wind, solar, radiant…) in the inventory (`getAvailablePowerFromPlayer`, weighted by the
+resource's potential energy). The hopper, the surpluses and the rates are not pushed to a bot client in a form
+worth decoding (baseline 7 of the installation), so the citizens read them server-side (`FbLabTests:harvester`)
+— the owner's status window, in effect. `tools/seat place` / `harvester` are the primitives; `redeed` is still to do.
+
 ## 4. Crafting (`objects/player/sessions/crafting/CraftingSession*`, `commands/*Crafting*`, `*Schematic*`)
 
 - A **crafting tool** per family (generic, weapon, armor, clothing, food, structure, droid, ship) in the

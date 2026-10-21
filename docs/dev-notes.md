@@ -205,6 +205,12 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   `realpath(sys.executable)` (the venv's python is a symlink to the system one, so that compared equal). The key is
   read from `~/.env` when the environment has none. Scenario `seat-travel`: Mos Eisley Shuttleport → Bestine
   Shuttleport (outdoor terminal), then Bestine Starport → Mos Eisley Starport (indoor terminal, cell walk).
+  **Harvesters** followed in the same session: the seat places from a deed, lists what the spot offers (0xEA), selects,
+  pays maintenance and deposits power through the real transfer boxes (radial 129/51; `sui` learned `values`, the
+  server reads the second argument as the amount — `StructurePayMaintenanceSuiCallback`, `InsertPowerSuiCallback`),
+  activates and empties the hopper (0xED). The installation's hopper/surplus state only reaches a client as baseline 7,
+  so the lab's `getStructureStatus` binding is the citizens' status window. Scenario `seat-harvester` (the lab fills the
+  hopper with `harvesterAddToHopper` instead of waiting hours; `structureDestroy` = `destroyBuilding` cleans up).
 - **2026-10-20 (evening) — 7.6a resources: oracle, survey, sample.** Chuck: crafters cannot sit in one town, resources
   are elsewhere. What the code says is in `docs/Game-Systems.md`. Built: `getResourceSpawns(zone)` /
   `getResourceDensityAt` Lua bindings (the citizens' spreadsheet: every spawn in shift with attributes and up to
