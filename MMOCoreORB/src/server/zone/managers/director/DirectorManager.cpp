@@ -542,6 +542,7 @@ void DirectorManager::initializeLuaEngine(Lua* luaEngine) {
 	luaEngine->registerFunction("getZoneWeather", getZoneWeather);
 	luaEngine->registerFunction("setZoneWeather", setZoneWeather);
 	luaEngine->registerFunction("awardSkill", awardSkill);
+	luaEngine->registerFunction("awardSkillUnchecked", awardSkillUnchecked);
 	luaEngine->registerFunction("getCityRegionAt", getCityRegionAt);
 	luaEngine->registerFunction("setDungeonTicketAttributes", setDungeonTicketAttributes);
 	luaEngine->registerFunction("setQuestStatus", setQuestStatus);
@@ -4788,6 +4789,30 @@ int DirectorManager::awardSkill(lua_State* L) {
 	SkillManager::instance()->awardSkill(skillName, creature, true, true, true);
 
 	return 0;
+}
+
+// awardSkillUnchecked(pCreature, skillName): the box regardless of its required skills, Jedi state or XP — the
+// Final Boss rank ladder (Phase 4b.1) hands the FRS rank boxes out through the Masters
+int DirectorManager::awardSkillUnchecked(lua_State* L) {
+	if (checkArgumentCount(L, 2) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::awardSkillUnchecked";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	CreatureObject* creature = (CreatureObject*)lua_touserdata(L, -2);
+	String skillName = lua_tostring(L, -1);
+
+	if (creature == nullptr) {
+		lua_pushboolean(L, false);
+		return 1;
+	}
+
+	bool ok = SkillManager::instance()->awardSkill(skillName, creature, true, false, true, true);
+	lua_pushboolean(L, ok);
+
+	return 1;
 }
 
 int DirectorManager::getCityRegionAt(lua_State* L) {

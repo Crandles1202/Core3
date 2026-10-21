@@ -1031,3 +1031,11 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   `force_rank_light_rank_01..10`, `force_rank_light_master` (dark likewise), the robes are certified on them.
   Enrolment = `PlayerObject:setFrsCouncil(1)` (COUNCIL_LIGHT; 2 = dark), `setFrsRank(0)`, `awardSkill` of the
   novice box. Jedi XP type is `jedi_general` (`CreatureObject:awardExperience(type, amount, true)`).
+- **The FRS rank boxes cannot be awarded the normal way:** `skills.iff` requires a Jedi Knight (required skills +
+  Jedi state) behind `force_rank_light_novice`, and `SkillManager::awardSkill` checks that even with
+  `noXpRequired`. New `awardSkill(..., ignorePrerequisites)` + the Lua global `awardSkillUnchecked(pPlayer,
+  skill)` grant a box regardless (skill mods, titles and schematics still applied). **The stock FRS manager is
+  now off** (`custom_scripts/managers/jedi/fb_frs_hooks.lua`, run by `FrsManagerImplementation::loadLuaConfig`
+  before it reads `frsEnabled`): enabled, its login validation forced light-council characters to Rebel overt
+  and dark to Imperial overt, which would have set every patrol in Phase 3 on a fresh Padawan; it also ran votes,
+  petitions and XP debt. The enclave doors and the Masters only need the council in the player's FRS data.

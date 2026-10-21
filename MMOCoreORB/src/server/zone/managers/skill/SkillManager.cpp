@@ -323,7 +323,7 @@ void SkillManager::removeDroidCommands(PlayerObject* ghost) {
 	return true;
 }*/
 
-bool SkillManager::awardSkill(const String& skillName, CreatureObject* creature, bool notifyClient, bool awardRequiredSkills, bool noXpRequired) {
+bool SkillManager::awardSkill(const String& skillName, CreatureObject* creature, bool notifyClient, bool awardRequiredSkills, bool noXpRequired, bool ignorePrerequisites) {
 	auto skill = skillMap.get(skillName.hashCode());
 
 	if (skill == nullptr)
@@ -335,7 +335,7 @@ bool SkillManager::awardSkill(const String& skillName, CreatureObject* creature,
 
 	//Check for required skills.
 	auto requiredSkills = skill->getSkillsRequired();
-	for (int i = 0; i < requiredSkills->size(); ++i) {
+	for (int i = 0; i < requiredSkills->size() && !ignorePrerequisites; ++i) {
 		const String& requiredSkillName = requiredSkills->get(i);
 		auto requiredSkill = skillMap.get(requiredSkillName.hashCode());
 
@@ -349,7 +349,7 @@ bool SkillManager::awardSkill(const String& skillName, CreatureObject* creature,
 			return false;
 	}
 
-	if (!canLearnSkill(skillName, creature, noXpRequired)) {
+	if (!canLearnSkill(skillName, creature, noXpRequired, ignorePrerequisites)) {
 		return false;
 	}
 
@@ -835,7 +835,7 @@ void SkillManager::updateXpLimits(PlayerObject* ghost) {
 	}
 }
 
-bool SkillManager::canLearnSkill(const String& skillName, CreatureObject* creature, bool noXpRequired) {
+bool SkillManager::canLearnSkill(const String& skillName, CreatureObject* creature, bool noXpRequired, bool ignorePrerequisites) {
 	Skill* skill = skillMap.get(skillName.hashCode());
 
 	if (skill == nullptr) {
@@ -847,7 +847,7 @@ bool SkillManager::canLearnSkill(const String& skillName, CreatureObject* creatu
 		return false;
 	}
 
-	if (!fulfillsSkillPrerequisites(skillName, creature)) {
+	if (!ignorePrerequisites && !fulfillsSkillPrerequisites(skillName, creature)) {
 		return false;
 	}
 

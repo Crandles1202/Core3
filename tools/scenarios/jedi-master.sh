@@ -38,7 +38,7 @@ check "stillness_given" "$(grep -q 'current=stillness told=true' <<<"$M" && echo
 check "client_got_taken" "$(grep -aq 'fb_force:master_taken' "$BOTLOG" && echo 1 || echo 0)" "$(grep -a 'master_' "$BOTLOG" | cut -c1-90 | tr '\n' ' ')"
 
 # --- C: stillness — sit in her room; the poll credits five seconds at a time ----------------------------------
-XP0=$(lab "xp:$CHAR:jedi_general" | sed -n 's/.*jedi_general=\([0-9-]*\).*/\1/p' | head -n1)
+XP0=$(lab "xp:$CHAR:jedi_general" | sed -n 's/.*amount=\([0-9-]*\).*/\1/p' | head -n1)
 sleep 8
 bot_bg --wait 2 --command sitServer --command-nowait --wait 80
 wait_online || die "$CHAR never came back online"
@@ -55,7 +55,7 @@ bot_bg --wait 14 --converse "$MASTER" --options 0 --wait 3 --converse "$MASTER" 
 wait_online || die "$CHAR never came back online"
 lab "gotoNpc:$CHAR:fb_jedi_master" >/dev/null
 wait "$BOT_PID"
-XP1=$(lab "xp:$CHAR:jedi_general" | sed -n 's/.*jedi_general=\([0-9-]*\).*/\1/p' | head -n1)
+XP1=$(lab "xp:$CHAR:jedi_general" | sed -n 's/.*amount=\([0-9-]*\).*/\1/p' | head -n1)
 check_eq "stillness_paid" "$(( ${XP1:-0} - ${XP0:-0} ))" "5000" "jedi_general $XP0 -> $XP1"
 M=$(lab "jediMaster:$CHAR" | head -n1)
 check "shadows_given" "$(grep -q 'current=shadows told=true' <<<"$M" && echo 1 || echo 0)" "$M"
@@ -73,7 +73,7 @@ bot_bg --wait 14 --converse "$MASTER" --options 0 --wait 3 --converse "$MASTER" 
 wait_online || die "$CHAR never came back online"
 lab "gotoNpc:$CHAR:fb_jedi_master" >/dev/null
 wait "$BOT_PID"
-XP2=$(lab "xp:$CHAR:jedi_general" | sed -n 's/.*jedi_general=\([0-9-]*\).*/\1/p' | head -n1)
+XP2=$(lab "xp:$CHAR:jedi_general" | sed -n 's/.*amount=\([0-9-]*\).*/\1/p' | head -n1)
 check_eq "shadows_paid" "$(( ${XP2:-0} - ${XP1:-0} ))" "5000" "jedi_general $XP1 -> $XP2"
 M=$(lab "jediMaster:$CHAR" | head -n1)
 check "training_complete" "$(grep -q 'done=stillness,shadows' <<<"$M" && grep -q 'current=-' <<<"$M" && echo 1 || echo 0)" "$M"

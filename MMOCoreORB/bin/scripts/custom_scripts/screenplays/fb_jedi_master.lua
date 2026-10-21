@@ -107,7 +107,8 @@ function FbJediMaster:take(pPlayer)
 		PlayerObject(pGhost):setFrsRank(0)
 	end
 	if not CreatureObject(pPlayer):hasSkill("force_title_jedi_novice") then awardSkill(pPlayer, "force_title_jedi_novice") end
-	if not CreatureObject(pPlayer):hasSkill("force_rank_light_novice") then awardSkill(pPlayer, "force_rank_light_novice") end
+	-- the rank box is given, not earned: stock requires a Knight behind it (awardSkillUnchecked, DirectorManager.cpp)
+	if not CreatureObject(pPlayer):hasSkill("force_rank_light_novice") then awardSkillUnchecked(pPlayer, "force_rank_light_novice") end
 	self:set(pPlayer, "master", "light")
 	self:set(pPlayer, "step", 1)
 	if FbAttunement ~= nil then FbAttunement:setFlag(pPlayer, "task", "training") end
