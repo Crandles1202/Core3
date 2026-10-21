@@ -2635,6 +2635,29 @@ function FbLabTests:trialSetDone(charName, ids)
 end
 
 -- cashSet:<char>:<credits> → set the character's cash (the sacrifice trial)
+-- visitSettle:<char>: run the visitors' settle now (what the 30 s event does) and report where each stands
+function FbLabTests:visitSettle(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local px, py = SceneObject(pPlayer):getWorldPositionX(), SceneObject(pPlayer):getWorldPositionY()
+	for _, v in ipairs({ FbOldManVisit, FbOldManReturn, FbTrialSpirit }) do
+		if v ~= nil and v.settle ~= nil then
+			local spawned = SpawnMobiles.getSpawnedMobiles(pPlayer, v.taskName)
+			if spawned ~= nil and #spawned > 0 then
+				v:settle(pPlayer)
+				for _, pNpc in ipairs(spawned) do
+					if SpawnMobiles.isValidMobile(pNpc) then
+						local so = SceneObject(pNpc)
+						local dx, dy = so:getWorldPositionX() - px, so:getWorldPositionY() - py
+						print(string.format("INFO visitSettle task=%s oid=%s dist=%.1f x=%.1f y=%.1f ai=%s", v.taskName, tostring(so:getObjectID()), math.sqrt(dx * dx + dy * dy), so:getWorldPositionX(), so:getWorldPositionY(), tostring(CreatureObject(pNpc):getOptionsBitmask())))
+					end
+				end
+			end
+		end
+	end
+	return "ok"
+end
+
 function FbLabTests:cashSet(charName, amount)
 	local pPlayer = loadedPlayer(charName)
 	if pPlayer == nil then return "offline" end
