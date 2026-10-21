@@ -2601,6 +2601,9 @@ function FbLabTests:trialsUnlock(charName)
 	local pPlayer = loadedPlayer(charName)
 	if pPlayer == nil then return "offline" end
 	FbAttunement:trialsUnlocked(pPlayer)
+	-- the lab's unlock skips the Old Man's return, so the hunters he warned of are marked as already come:
+	-- the due ambush takes the trigger before a trial word and would interrupt a trials run (gate 2026-10-21)
+	FbAttunement:setFlag(pPlayer, "ambushDone", os.time())
 	trialsLine(charName, pPlayer)
 	return "ok"
 end
