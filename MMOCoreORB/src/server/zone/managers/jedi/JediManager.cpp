@@ -63,6 +63,16 @@ void JediManager::loadConfiguration(Lua* luaEngine) {
 		break;
 	}
 
+	// Final Boss: the custom hooks run after the stock manager files, in every Lua state that loads them. A screenplay
+	// cannot wrap a Jedi manager function on its own: each thread's state loads the screenplays first and this
+	// manager afterwards, so a wrapper installed at screenplay load is overwritten here (and only survived a
+	// reloadscreenplays, which re-runs the screenplays into states that already hold the manager; 2026-10-21).
+	const char* hooks = "scripts/custom_scripts/managers/jedi/fb_jedi_hooks.lua";
+	if (FILE* f = fopen(hooks, "r")) {
+		fclose(f);
+		luaEngine->runFile(hooks);
+	}
+
 	if (loaded.compareAndSet(false, true)) {
 		auto managerName = luaEngine->getGlobalString(String("jediManagerName"));
 

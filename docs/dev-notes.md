@@ -988,3 +988,12 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   before it asks, the start packet only marks the conversation active, and the action waits for the list (or the
   close) and then for the start. Not a server-side recognition failure, which is what three rounds of visitor
   fixes assumed.
+- **Jedi manager functions cannot be wrapped from a screenplay.** Every thread's Lua state loads the screenplays
+  first and `jedi_manager.lua` + `village_jedi_manager.lua` later (`JediManager::loadConfiguration`, on first use
+  in that thread: `[JediManager] Thread N loaded.` in core3.log), so `VillageJediManager.checkForceStatusCommand`
+  set in `fb_attunement.lua` was overwritten and the stock `@jedi_spam:fs_progress_1` went out. It had passed in
+  earlier gates only because `swg test lua`'s `reloadscreenplays` re-ran the screenplays into states that already
+  held the manager. `JediManager.cpp` now runs `custom_scripts/managers/jedi/fb_jedi_hooks.lua` after the stock
+  files; Jedi-manager wrappers live there (Phase 4b will add more).
+- Bot client sessions log `handleNetStatusRequest … StreamIndexOutOfBoundsException at 8` every 5 s in core3.log
+  (not the console): the client's NetStatusRequest packet is short. Alice's lane (the client); harmless so far.
