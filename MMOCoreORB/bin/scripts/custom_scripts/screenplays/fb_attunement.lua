@@ -151,6 +151,7 @@ function FbAttunement:reset(pPlayer)
 	for _, s in ipairs(self.sources) do deleteScreenPlayData(pPlayer, self.DATA, s) end
 	for _, f in ipairs({ "ghost25", "ghost50", "ghost75", "oldman", "called", "task", "incapAt", "incapDay", "medWorlds", "lore", "return", "trials", "ambushDue", "ambushDone", "alignment", "padawan" }) do deleteScreenPlayData(pPlayer, self.DATA, "flag:" .. f) end
 	if FbTrials ~= nil then FbTrials:reset(pPlayer) end
+	if FbVisions ~= nil then FbVisions:reset(pPlayer) end
 	deleteScreenPlayData(pPlayer, self.DATA, "ghostTier")
 	removeQuestStatus("FbAttunement.visit." .. SceneObject(pPlayer):getObjectID())
 	removeQuestStatus("FbAttunement.poll." .. SceneObject(pPlayer):getObjectID())
@@ -434,6 +435,9 @@ function FbAttunement:maybeVisit(pPlayer)
 			return true
 		end
 	end
+	-- 4a.4: a vision due at this point of the path comes before a trial acts (the mercy and duel visions come
+	-- after the word, before the visitor)
+	if FbVisions ~= nil and FbVisions:maybe(pPlayer) then return true end
 	-- 4a.3: a trial in progress or due takes the trigger (after the hunters the Old Man warned about)
 	if FbTrials ~= nil and FbTrials:active(pPlayer) then
 		if FbTrials:tick(pPlayer) then return true end
@@ -527,6 +531,7 @@ end
 function FbAttunement:onLogin(pPlayer)
 	if pPlayer == nil then return end
 	printf("FbAttunement: login hook for %s\n", CreatureObject(pPlayer):getFirstName())
+	if FbVisions ~= nil then FbVisions:onLogin(pPlayer) end   -- 4a.4: a logout inside a vision ends it at home
 	dropObserver(KILLEDCREATURE, "FbAttunement", "onKill", pPlayer); createObserver(KILLEDCREATURE, "FbAttunement", "onKill", pPlayer)
 	dropObserver(OBJECTDESTRUCTION, "FbAttunement", "onIncap", pPlayer); createObserver(OBJECTDESTRUCTION, "FbAttunement", "onIncap", pPlayer)
 	dropObserver(BADGEAWARDED, "FbAttunement", "onBadge", pPlayer); createObserver(BADGEAWARDED, "FbAttunement", "onBadge", pPlayer)
