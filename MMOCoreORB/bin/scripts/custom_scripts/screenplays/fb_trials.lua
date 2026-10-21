@@ -308,7 +308,12 @@ end
 function FbTrialPrisoner:onEncounterInRange(pPlayer, spawned)
 	if spawned ~= nil and spawned[1] ~= nil then spatialChat(spawned[1], "@fb_force:prisoner_plea") end
 end
-function FbTrialPrisoner:belongsTo(pPlayer, pNpc) return pPlayer ~= nil and pNpc ~= nil and SpawnMobiles.isFromSpawn(pPlayer, self.taskName, pNpc) end
+function FbTrialPrisoner:belongsTo(pPlayer, pNpc)
+	if pPlayer == nil or pNpc == nil then return false end
+	if SpawnMobiles.isFromSpawn(pPlayer, self.taskName, pNpc) then return true end
+	-- the spawn list is per player and task; the visitor's own note of whom it came for is the fallback
+	return tonumber(readData(SceneObject(pNpc):getObjectID() .. ":fbTrialFor")) == SceneObject(pPlayer):getObjectID()
+end
 -- why a prisoner did not recognise a character (printed when the conversation falls to "nothing")
 function FbTrialPrisoner:explain(pPlayer, pNpc)
 	local spawned = SpawnMobiles.getSpawnedMobiles(pPlayer, self.taskName)
@@ -345,7 +350,7 @@ function FbTrialSpirit:onEncounterSpawned(pPlayer, spawned)
 end
 function FbTrialSpirit:settle(pPlayer)
 	if pPlayer == nil then return end
-	settleBeside(pPlayer, SpawnMobiles.getSpawnedMobiles(pPlayer, self.taskName))
+	FbTrials.settleBeside(pPlayer, SpawnMobiles.getSpawnedMobiles(pPlayer, self.taskName))   -- defined below; a bare name here is a nil global
 end
 -- having reached the player, a visitor stands where it is: a follower whose target logs out wanders off
 local function standStill(spawned)
@@ -383,11 +388,17 @@ local function settleBeside(pPlayer, spawned)
 	standStill(spawned)
 end
 FbTrials.settleBeside = settleBeside
+FbTrialSpirit.explain = FbTrialPrisoner.explain
 
 function FbTrialSpirit:onEncounterInRange(pPlayer, spawned)
 	if spawned ~= nil and spawned[1] ~= nil then standStill(spawned); spatialChat(spawned[1], "@fb_force:spirit_greeting") end
 end
-function FbTrialSpirit:belongsTo(pPlayer, pNpc) return pPlayer ~= nil and pNpc ~= nil and SpawnMobiles.isFromSpawn(pPlayer, self.taskName, pNpc) end
+function FbTrialSpirit:belongsTo(pPlayer, pNpc)
+	if pPlayer == nil or pNpc == nil then return false end
+	if SpawnMobiles.isFromSpawn(pPlayer, self.taskName, pNpc) then return true end
+	-- the spawn list is per player and task; the visitor's own note of whom it came for is the fallback
+	return tonumber(readData(SceneObject(pNpc):getObjectID() .. ":fbTrialFor")) == SceneObject(pPlayer):getObjectID()
+end
 function FbTrialSpirit:scheduleDespawn(pPlayer) FbAttunement.visitScheduleDespawn(self, pPlayer, 8000) end
 function FbTrialSpirit:doDespawn(pPlayer) unfollowAndDespawn(self, pPlayer) end
 

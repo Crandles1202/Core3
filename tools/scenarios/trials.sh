@@ -107,6 +107,7 @@ check "insight_done" "$(grep -q 'done=stillness,restraint,strength,mercy,farwalk
 sleep 8
 bot_bg --wait 80
 wait_online || die "$CHAR never came back online"
+CASH0=$(lab_kv "cash:$CHAR" cash)   # restored at the end: later scenarios buy things with it
 lab "cashSet:$CHAR:12000" >/dev/null
 T=$(lab "trialTick:$CHAR")
 check "word_sacrifice" "$(grep -q 'current=sacrifice' <<<"$T" && echo 1 || echo 0)" "$T"
@@ -145,4 +146,5 @@ wait "$BOT_PID"
 check "client_got_the_end" "$(grep -aq 'fb_force:trials_complete' "$BOTLOG" && grep -aq 'fb_force:trials_light' "$BOTLOG" && echo 1 || echo 0)" "$(grep -a 'fb_force:trial' "$BOTLOG" | tail -n3 | tr '\n' ' ')"
 lab "attunementSit:$CHAR:stand" >/dev/null
 lab "attunementReset:$CHAR" >/dev/null
+[ -n "${CASH0:-}" ] && lab "cashSet:$CHAR:$CASH0" >/dev/null
 finish

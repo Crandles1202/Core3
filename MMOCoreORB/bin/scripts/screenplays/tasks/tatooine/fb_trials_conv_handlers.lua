@@ -37,6 +37,7 @@ function fbTrialSpiritConvoHandler:getInitialScreen(pPlayer, pNpc, pConvTemplate
 		if current == "insight" then return convoTemplate:getScreen("riddle_" .. FbTrials:riddleOf(pPlayer)) end
 		if current == "sacrifice" then return convoTemplate:getScreen("sacrifice") end
 	end
+	if FbTrialSpirit ~= nil and FbTrialSpirit.explain ~= nil then FbTrialSpirit:explain(pPlayer, pNpc) end
 	return convoTemplate:getScreen("nothing")
 end
 
