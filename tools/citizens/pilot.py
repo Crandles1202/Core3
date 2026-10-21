@@ -193,6 +193,20 @@ class Senses:
                 return line[5:].strip()
         return None
 
+    def progress(self):
+        """XP by type as 'amount/cap' (lab progress oracle); {} when the oracle is missing or the lab is unreachable"""
+        try:
+            line = next((l for l in load_seat_module().lab(f"progress:{self.character_name}", 8).splitlines()
+                         if l.startswith("INFO progress")), "")
+        except Exception:
+            return {}
+        xp = {}
+        for part in line.split(" xp=", 1)[1].split(",") if " xp=" in line else []:
+            if "=" in part:
+                k, v = part.split("=", 1)
+                xp[k] = v
+        return xp
+
     def _new_lines(self, path, key):
         reply = self.seat.request({"op": "vars", "path": path})
         lines = reply.get("vars") or []
@@ -222,6 +236,7 @@ class Senses:
             near.sort(key=lambda n: n["distance"])
         planet = self.seat.request({"op": "vars", "path": "/Scene/terrain"}).get("vars")
         return {
+            "xp": self.progress(),
             "you": self.character_name,
             "now": self.current_milestone(),
             "character": ping.get("character"),
@@ -497,7 +512,11 @@ announce your own name unless asked who you are; people see your name over your 
 doing (your "now"), not "on my way somewhere".
 Your life plan is a commitment: work its milestones in order and do not abandon it on a whim; change_plan only for a
 reason your character would give out loud, and expect it to be reviewed. Keep your memory honest and short.
-When nothing needs you, call rest. One wake is a few actions at most; the world keeps running between wakes."""
+When nothing needs you, work your current milestone ("now") before resting: a combat skill grows by hunting creatures
+you can take near where you are (creatures_near, then hunt; "xp" in the perception shows amount/cap per type, so you
+can see whether it pays), a gatherer tends harvesters, a crafter samples and keeps resources, and anyone with nothing
+to do walks somewhere people are. Then call rest. One wake is a few actions at most; the world keeps running between
+wakes."""
 
 
 class ModelDecider:
@@ -528,6 +547,9 @@ class ModelDecider:
             if response.stop_reason == "refusal":
                 log({"refusal": getattr(response.stop_details, "category", None) if response.stop_details else None})
                 break
+            for b in response.content:
+                if b.type == "text" and b.text.strip():
+                    log({"text": b.text.strip()[:400]})
             tool_uses = [b for b in response.content if b.type == "tool_use"]
             if not tool_uses:
                 break

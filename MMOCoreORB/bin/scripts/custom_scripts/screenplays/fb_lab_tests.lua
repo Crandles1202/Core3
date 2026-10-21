@@ -860,6 +860,23 @@ function FbLabTests:ham(charName)
 	return hamLine(charName, pPlayer)
 end
 
+-- progress:<char> → every XP type the character has, amount/cap (the pilot's view of whether its work pays)
+function FbLabTests:progress(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pGhost = CreatureObject(pPlayer):getPlayerObject()
+	if pGhost == nil then print("ERROR " .. charName .. " has no player object"); return "none" end
+	local parts = {}
+	for _, xpType in ipairs(PlayerObject(pGhost):getExperienceList()) do
+		local amount = PlayerObject(pGhost):getExperience(xpType)
+		local cap = PlayerObject(pGhost):getExperienceCap(xpType)
+		table.insert(parts, string.format("%s=%d/%d", xpType, amount, cap))
+	end
+	table.sort(parts)
+	print(string.format("INFO progress char=%s xp=%s", charName, table.concat(parts, ",")))
+	return "ok"
+end
+
 -- inventory:<char> → one line per item
 function FbLabTests:inventory(charName)
 	local pPlayer = loadedPlayer(charName)
