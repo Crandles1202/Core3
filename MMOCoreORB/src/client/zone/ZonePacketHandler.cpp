@@ -200,7 +200,7 @@ void ZonePacketHandler::handleMessage(Message* pack) {
 			break;
 		}
 		break;
-	case 9:
+	case 8:   // UpdateTransformMessage / UpdateTransformWithParentMessage: insertShort(0x08) on the server
 		switch (opcode) {
 		case 0x1B24F808: { // UpdateTransformMessage: another object moved outdoors (oid, x/z/y as shorts ×4, moveCount, speed, yaw)
 			what = "UpdateTransformMessage";
@@ -221,6 +221,10 @@ void ZonePacketHandler::handleMessage(Message* pack) {
 			handleObjectMoved(objectID, parentID, x, z, y, moveCount, speed);
 			break;
 		}
+		}
+		break;
+	case 9:
+		switch (opcode) {
 		CASE_OPCODE("CmdStartScene");
 			handleCmdStartScene(pack);
 			break;
