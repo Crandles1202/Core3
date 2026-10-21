@@ -535,6 +535,7 @@ void DirectorManager::initializeLuaEngine(Lua* luaEngine) {
 	luaEngine->registerFunction("getOwnedStructures", getOwnedStructures);
 	luaEngine->registerFunction("harvesterAddToHopper", harvesterAddToHopper);
 	luaEngine->registerFunction("dumpTemplates", dumpTemplates);
+	luaEngine->registerFunction("isBuildingPermittedAt", isBuildingPermittedAt);
 	luaEngine->registerFunction("getZoneWeather", getZoneWeather);
 	luaEngine->registerFunction("setZoneWeather", setZoneWeather);
 	luaEngine->registerFunction("awardSkill", awardSkill);
@@ -4316,6 +4317,30 @@ int DirectorManager::dumpTemplates(lua_State* L) {
 	}
 	writer.close();
 	lua_pushinteger(L, n);
+	return 1;
+}
+
+// Final Boss (7.6a): isBuildingPermittedAt(zoneName, x, y) -> true when a structure may stand there (no-build areas,
+// client city regions and the footprint check of PlanetManager::isBuildingPermittedAt), nil for an unknown zone.
+int DirectorManager::isBuildingPermittedAt(lua_State* L) {
+	if (checkArgumentCount(L, 3) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::isBuildingPermittedAt";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	float y = lua_tonumber(L, -1);
+	float x = lua_tonumber(L, -2);
+	String zoneName = lua_tostring(L, -3);
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	Zone* zone = zoneServer != nullptr ? zoneServer->getZone(zoneName) : nullptr;
+	PlanetManager* planetManager = zone != nullptr ? zone->getPlanetManager() : nullptr;
+	if (planetManager == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+	lua_pushboolean(L, planetManager->isBuildingPermittedAt(x, y, nullptr));
 	return 1;
 }
 

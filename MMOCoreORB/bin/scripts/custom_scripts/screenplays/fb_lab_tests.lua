@@ -2200,6 +2200,14 @@ function FbLabTests:queueSize(charName)
 	return tostring(n)
 end
 
+-- canBuild:<planet>:<x>:<y> → whether a structure may be placed there (no-build areas, client cities, footprint).
+function FbLabTests:canBuild(planet, x, y)
+	local ok = isBuildingPermittedAt(planet, tonumber(x), tonumber(y))
+	if ok == nil then print("ERROR canBuild: no zone " .. tostring(planet)); return "none" end
+	print(string.format("INFO canBuild planet=%s x=%s y=%s permitted=%s", planet, x, y, tostring(ok)))
+	return tostring(ok)
+end
+
 -- structureDestroy:<oid> → tear a structure down the proper way (DestroyStructureTask: lot refunded, owner list
 -- updated), for scenario cleanup.
 function FbLabTests:structureDestroy(oid)

@@ -8,8 +8,16 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 SEAT="$REPO/tools/seat"
 NAME="labharv-$$"
-X0=4100; Y0=-4700           # open desert, well east of the Mos Eisley no-build region
+Y0=-4700
 [ -n "$CHAR" ] || die "no Lab* character on account $BOT_USER (run: swg test bot)"
+
+# a buildable spot east of Mos Eisley: the city's no-build region reaches far out, so ask the oracle
+X0=""
+for X in 4100 4400 4800 5200 5600 6000; do
+  if lab "canBuild:tatooine:$X:$Y0" 8 | grep -aq 'permitted=true'; then X0=$X; break; fi
+done
+check "buildable_spot_found" "$( [ -n "$X0" ] && echo 1 || echo 0 )" "x=${X0:-none} y=$Y0 (canBuild oracle)"
+[ -n "$X0" ] || die "no buildable spot east of Mos Eisley"
 
 HOID=""
 cleanup() {
