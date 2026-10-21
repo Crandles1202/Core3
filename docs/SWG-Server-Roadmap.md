@@ -382,7 +382,7 @@ and Chuck checks each one off; the API key comes from Chuck's Max plan credits.
 - **7.3 \[L\] Pilot v1 — one citizen.** ⏳ skeleton 2026-10-20 (loop, files, tools, dry decider tested; model decider waits for the key). Persona, memory, life plan, event loop, tool set = seat primitives + playbooks.
   First citizen: a combat character who answers a `/tell`, groups with Chuck, follows, assists, loots, remembers the
   session. Runtime decided by the subscription question (below).
-- **7.4 \[M\] Combat playbook.** Missions from terminals (the 1.4 hints are its map), lairs, heal and rest, repair,
+- **7.4 ⏳ 2026-10-21: `seat fight` + the pilot's `hunt` tool on the bench (scenario `seat-fight`); grouping, assist, follow next. \[M\] Combat playbook.** Missions from terminals (the 1.4 hints are its map), lairs, heal and rest, repair,
   sell loot, bank, train at a trainer when XP allows.
 - **7.5 \[M\] Entertainer playbook.** Cantina sets (dance / music, flourishes), buffs for groupmates, tips, the 1.10
   XP rule applies.

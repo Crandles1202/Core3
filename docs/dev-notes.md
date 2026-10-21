@@ -186,6 +186,21 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-21 (small hours) — Teyla's first wakes, the cast online, fighting on a seat.** Chuck's Console key arrived
+  (`sk-ant-usr-…` works with the SDK; stored in `~/.env`, read by the pilot). First live `/tell` exchange: she answered
+  in character but opened with her own name; the perception now carries `you` and `now` (first open milestone) and
+  the rules say answer the sender by name. Haiku 5.5 cost per wake: ~3.3k cached prefix once, ~1k input + ~50 output
+  per round. **Bench/seat lessons:** a `swg build` or `bench use` by another lane restarts the server and drops every
+  seat (coordinate before deploys; the trials lane and I now message each other); `pkill -f "<pattern>"` matched my
+  own shell; a stopped pilot's seat died of SIGPIPE on the reply write (ignored now). **Cast:** eleven citizens created
+  in four minutes with `citizen new`; Wookiees may not have a surname (`name_declined_racially_inappropriate`,
+  NameManager species rules 0/0) — Brakk is "Brakk". All veteran skill names were checked against
+  `string/en/skl_n.stf` (1481 keys, in `/tre/patch_12_00.tre` and others) before creation. **Combat on a seat:**
+  `attack` once starts combat; a player repeating `defaultattack` gets INVALIDLOCOMOTION (error 2 in the
+  CommandQueueRemove) — repeat `attack` instead; unarmed the server wants the target within ~5 m
+  (`max(10, weapon range)` is the check, `@error_message:target_out_of_range` otherwise); a womp rat is level 10 and
+  took a fresh character to a tenth of its health in 20 s, a kreetle is level 1–3; `loot all` on the corpse sends no
+  CommandQueueRemove at all; equipping from Lua is `transferObject(item, 4, true)` with the hand freed first.
 - **2026-10-20 (night) — 7.6a travel on a seat.** Chuck: "get started on the seats", key to follow. Built the trip:
   ticket terminal → `purchaseTicket` → shuttle → `boardShuttle` → the new scene. **Where the terminals are:** not
   in the `.ws` snapshot (`lotsurvey near` finds none) — they are `childObjects` of the port building's Lua template,

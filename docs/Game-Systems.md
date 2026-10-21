@@ -159,6 +159,19 @@ gone. `tools/seat travel` strings it together; `FbLabTests:travelPoints:<planet>
 **For a citizen.** The economy loop is: gatherers list resources → crafters buy, craft, list goods → fighters buy
 goods and sell loot. Credits start at 100k on this server, so the loop can run from day one.
 
+## 6a. Combat on the wire (read 2026-10-21, `CombatQueueCommand`, `AttackCommand`, `LootCommand`)
+
+- `attack <target>` is a queue command that starts combat and lands one swing of the equipped weapon; the SWG client
+  re-sends it while auto-attack is on. `defaultattack` is the AI's command (`AiAgentImplementation` queues it); a
+  player sending it is refused with INVALIDLOCOMOTION. Range: `max(10, weapon max range)` (unarmed ~5 m), else
+  `@error_message:target_out_of_range`. The defender's swings come back as combat spam the bot client does not decode,
+  so a seat reads its own HAM and the target's death from the server (`ham`, `objectAlive`).
+- `loot <corpse> all` (`PlayerManager::lootAll`) empties a dead AI agent's inventory into yours within range; it
+  sends no queue acknowledgement on success.
+
+**For a citizen.** `hunt` = nearest matching creature → walk to reach → attack every 3 s → loot; retreat at a third of
+health. Grouping, assist and follow (7.4 proper) are next.
+
 ## 7. What this means for the cast (decision 2026-10-20)
 
 Resources are transient and scattered, so a crafter who never leaves town has nothing to craft with. Two
