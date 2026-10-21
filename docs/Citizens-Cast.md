@@ -90,6 +90,8 @@ rules: a declared citizen fights the other side only when the other player is on
 
 ## 5. Brakk Orrun — the Wookiee
 
+_In game he is "Brakk": the name filter allows Wookiees no surname (NameManager: species with surname rules 0/0)._
+
 - **Species / sex:** Wookiee, male. Huge, grey streaks in the fur, bandolier of nothing in particular.
 - **Profession path:** Brawler → Swordsman → Master Swordsman, Teras Kasi later. Veteran start: Master Brawler, Swordsman II.
 - **Faction:** Rebel, declared. Joined the day a slaver ship was burned on Rori.
