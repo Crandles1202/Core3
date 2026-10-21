@@ -374,11 +374,13 @@ FbTrials.standStill = standStill
 -- a visitor the ground kept away appears beside the player (2 m, on the terrain), then stands still
 local function settleBeside(pPlayer, spawned)
 	if pPlayer == nil then return end
-	local ps = SceneObject(pPlayer)
+	-- plain numbers first: SceneObject(pNpc) below re-points the one shared wrapper (the gotcha), so a kept
+	-- SceneObject(pPlayer) would read the visitor's own position and the distance would always be 0
+	local zone, parent = SceneObject(pPlayer):getZoneName(), SceneObject(pPlayer):getParentID()
+	local px, py = SceneObject(pPlayer):getWorldPositionX(), SceneObject(pPlayer):getWorldPositionY()
 	for _, pNpc in ipairs(spawned or {}) do
-		if SpawnMobiles.isValidMobile(pNpc) and ps:getZoneName() ~= "" and ps:getParentID() == 0 then
+		if SpawnMobiles.isValidMobile(pNpc) and zone ~= "" and parent == 0 then
 			local so = SceneObject(pNpc)
-			local px, py = ps:getWorldPositionX(), ps:getWorldPositionY()
 			local dx, dy = so:getWorldPositionX() - px, so:getWorldPositionY() - py
 			local d = math.sqrt(dx * dx + dy * dy)
 			-- a follower stops ~6 m out, past the 5 m conversation rule: bring it to 2.5 m on the same bearing.
@@ -386,8 +388,8 @@ local function settleBeside(pPlayer, spawned)
 			if d > 4 then
 				local f = 2.5 / math.max(d, 0.1)
 				local x, y = px + dx * f, py + dy * f
-				local z = getTerrainHeightAt(ps:getZoneName(), x, y)
-				so:switchZone(ps:getZoneName(), x, z, y, 0)
+				local z = getTerrainHeightAt(zone, x, y)
+				so:switchZone(zone, x, z, y, 0)
 				AiAgent(pNpc):setHomeLocation(x, z, y, nil)
 				printf("FbTrials: %s moved beside %s (was %.1f m out)\n", so:getObjectName() ~= "" and so:getObjectName() or tostring(so:getObjectID()), CreatureObject(pPlayer):getFirstName(), d)
 			end
