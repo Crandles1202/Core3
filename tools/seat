@@ -36,6 +36,8 @@ control channel on a unix socket (SeatAction, Phase 7.0). A pilot (7.3) sits on 
   seat sample <name> <resource> [rounds]               sample where the character stands (3 s, then 25 s per extra round)
   seat resources <planet> [class]                      the resource oracle (FbLabTests:resources over swg cmd --shared)
   seat log <name> [lines]                              tail of the client log
+  seat templates                                       (re)write ~/.swg-lab/templates.jsonl, the client's object type/name table, from the
+                                                        server's loaded templates (FbLabTests:templateDump); start does it when the file is missing
 
 State per seat lives in ~/.swg-lab/seats/<name>/: sock, pid, client.log.
 """
@@ -131,20 +133,48 @@ def travel_points(planet):
         if not line.startswith("INFO travelpoint"):
             continue
         f = lab_fields(line)
-        pt = {"name": f["name"], "x": float(f["x"]), "y": float(f["y"]), "interplanetary": f.get("interplanetary") == "1",
+        pt = {"name": f["name"], "x": float(f["x"]), "y": float(f["y"]), "z": float(f.get("z", 0)), "interplanetary": f.get("interplanetary") == "1",
               "terminal": int(f.get("terminal", 0)), "shuttle": int(f.get("shuttle", 0))}
         if pt["terminal"]:
-            pt.update(tx=float(f["tx"]), ty=float(f["ty"]), tcell=int(f["tcell"]), tlx=float(f["tlx"]), tly=float(f["tly"]), tcellName=f.get("tcellName", "-"))
+            pt.update(tx=float(f["tx"]), ty=float(f["ty"]), tz=float(f.get("tz", 0)), tcell=int(f["tcell"]), tlx=float(f["tlx"]), tly=float(f["tly"]), tcellName=f.get("tcellName", "-"))
         if pt["shuttle"]:
             pt.update(sx=float(f["sx"]), sy=float(f["sy"]))
         points.append(pt)
     return points
 
 
-def walk_seat(s, char, x, y, cell=0, speed=4.5):
-    points = path_from_server(char, x, y, cell)
+def action_error(reply):
+    """the seat's action reply carries the action's own error under result"""
+    return reply.get("error") or (reply.get("result") or {}).get("error") or "failed"
+
+
+def path_within(char, x, y, within, cell=0, z=None):
+    """A path that ends within `within` m of x,y (outdoors). The AI navmesh leaves out a port's whole pad (and other
+    structure footprints), so the pathfinder's route stops at the mesh edge; players are not bound by the mesh
+    (the server checks speed, not collision), so the route is finished with a straight final leg to a spot
+    `within`·0.6 m short of the target, at height z (the target's, when known)."""
+    import math
+    direct = path_from_server(char, x, y, cell)
+    if cell or not direct:
+        return direct
+    def end_distance(path):
+        return math.hypot(path[-1][0] - x, path[-1][2] - y)
+    if end_distance(direct) <= within:
+        return direct
+    last = direct[-1]
+    dx, dy = x - last[0], y - last[2]
+    dist = math.hypot(dx, dy)
+    stop = max(0.0, dist - within * 0.6)
+    ex, ey = last[0] + dx / dist * stop, last[2] + dy / dist * stop
+    ez = z if z is not None else last[1]
+    print(f"route stops {dist:.0f} m short of the target (off the navmesh): straight final leg of {stop:.0f} m")
+    return direct + [[round(ex, 2), round(ez, 2), round(ey, 2), 0]]
+
+
+def walk_seat(s, char, x, y, cell=0, speed=4.5, within=None, z=None):
+    points = path_within(char, x, y, within, cell, z) if within else path_from_server(char, x, y, cell)
     if not points:
-        return {"ok": False, "error": f"no path for {char} to {x},{y}" + (f" in cell {cell}" if cell else "")}
+        return {"ok": False, "error": f"no path for {char} to {x},{y}" + (f" in cell {cell}" if cell else "") + (f" (within {within} m)" if within else "")}
     print(f"path: {len(points)} points, {path_length(points):.0f} m" + (" (ends indoors)" if points[-1][3] else ""))
     return s.action("walk", points=points, speed=speed)
 
@@ -168,30 +198,31 @@ def travel_seat(s, name, to_planet, to_point, from_point=None, round_trip=False,
     dep = min(candidates, key=lambda p: (p["x"] - here["x"]) ** 2 + (p["y"] - here["y"]) ** 2)
     print(f"departure: {dep['name']} (terminal {'in ' + dep['tcellName'] if dep['tcell'] else 'outdoors'}, shuttle at {dep['sx']:.0f},{dep['sy']:.0f})")
 
-    # 1. the ticket terminal (indoors for starports: the path enters the building)
+    # 1. the ticket terminal (indoors for starports: the path enters the building; purchaseTicket wants 8 m)
     if dep["tcell"]:
         reply = walk_seat(s, char, round(dep["tlx"], 2), round(dep["tly"], 2), dep["tcell"])
     else:
-        reply = walk_seat(s, char, round(dep["tx"], 1), round(dep["ty"], 1))
+        reply = walk_seat(s, char, round(dep["tx"], 1), round(dep["ty"], 1), within=6, z=dep["tz"])
     if not reply.get("ok"):
-        return {"ok": False, "error": "walk to the terminal failed: " + str(reply.get("error")), "step": "walk_terminal", "reply": reply}
+        return {"ok": False, "error": "walk to the terminal failed: " + action_error(reply), "step": "walk_terminal", "reply": reply}
 
     # 2. the ticket
     reply = s.action("ticket", fromPlanet=planet, fromPoint=dep["name"], toPlanet=to_planet, toPoint=to_point, roundTrip=round_trip)
     if not reply.get("ok"):
-        return {"ok": False, "error": "ticket: " + str(reply.get("error")), "step": "ticket", "reply": reply}
-    ticket = reply.get("ticket", 0)
-    print(f"ticket {ticket}: {reply.get('serverSaid', '')}")
+        return {"ok": False, "error": "ticket: " + action_error(reply), "step": "ticket", "reply": reply}
+    ticket = (reply.get("result") or {}).get("ticket", 0)
+    print(f"ticket {ticket}: {(reply.get('result') or {}).get('serverSaid', '')}")
 
-    # 3. the shuttle (outdoors, from wherever the terminal left us)
-    reply = walk_seat(s, char, round(dep["sx"], 1), round(dep["sy"], 1))
+    # 3. the shuttle (outdoors, from wherever the terminal left us; boardShuttle wants 25 m)
+    reply = walk_seat(s, char, round(dep["sx"], 1), round(dep["sy"], 1), within=14, z=dep["z"])
     if not reply.get("ok"):
-        return {"ok": False, "error": "walk to the shuttle failed: " + str(reply.get("error")), "step": "walk_shuttle", "reply": reply}
+        return {"ok": False, "error": "walk to the shuttle failed: " + action_error(reply), "step": "walk_shuttle", "reply": reply}
 
     # 4. board, waiting for the shuttle to land
     reply = s.request({"op": "action", "action": {"action": "board", "ticket": ticket, "maxWaitS": max_wait}}, timeout=max_wait + 60)
     if not reply.get("ok"):
-        return {"ok": False, "error": "board: " + str(reply.get("error")), "step": "board", "reply": reply}
+        return {"ok": False, "error": "board: " + action_error(reply), "step": "board", "reply": reply}
+    reply.update({k: v for k, v in (reply.get("result") or {}).items() if k in ("terrain", "x", "y", "waitedS", "attempts")})
     arrived = where(char) or {}
     reply["arrived"] = arrived
     reply["departure"] = dep["name"]
@@ -272,7 +303,24 @@ def parse_kv(args):
     return out
 
 
+TEMPLATES = os.path.join(LABDIR, "templates.jsonl")
+
+
+def write_templates():
+    """The bot client's Lua templates carry only file names; types and names come from this dump of the
+    server's template table (one JSON line per template), read by core3client at start."""
+    out = lab(f"templateDump:{TEMPLATES}", 120)
+    m = re.search(r"INFO templateDump path=\S+ n=(\d+)", out)
+    if not m:
+        print("seat: the server did not write the template table: " + (re.search(r"ERROR[^\n]*", out) or re.search(r"Exception[^\n]*", out) or re.search(r"$", out)).group(0), file=sys.stderr)
+        return 0
+    print(f"templates: {m.group(1)} written to {TEMPLATES}")
+    return int(m.group(1))
+
+
 def cmd_start(args):
+    if not os.path.exists(TEMPLATES):
+        write_templates()
     if len(args) < 2:
         die("start <user> <char> [--timeout S] [--name N]")
     user, char = args[0], args[1]
@@ -386,6 +434,8 @@ def main(argv):
         return cmd_stop(args)
     if cmd == "list":
         return cmd_list(args)
+    if cmd == "templates":
+        return 0 if write_templates() else 1
     if cmd == "points":
         if not args:
             die("points <planet>")
@@ -477,14 +527,15 @@ def main(argv):
         reply = s.action("sample", **fields)
     elif cmd == "walk":
         if len(rest) < 2:
-            die("walk <name> <x> <y> [--cell OID] [--speed M/S]")
+            die("walk <name> <x> <y> [--cell OID] [--speed M/S] [--within M]")
         x, y = float(rest[0]), float(rest[1])
         speed = 4.5
         if "--speed" in rest:
             speed = float(rest[rest.index("--speed") + 1])
         cell = int(rest[rest.index("--cell") + 1]) if "--cell" in rest else 0
+        within = float(rest[rest.index("--within") + 1]) if "--within" in rest else None
         char = s.request({"op": "ping"}).get("characterName") or seat_character_name(name)
-        reply = walk_seat(s, char, x, y, cell, speed)
+        reply = walk_seat(s, char, x, y, cell, speed, within)
     elif cmd == "where":
         char = s.request({"op": "ping"}).get("characterName") or seat_character_name(name)
         reply = where(char) or {}

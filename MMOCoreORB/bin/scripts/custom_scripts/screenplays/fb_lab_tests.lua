@@ -2182,6 +2182,15 @@ function FbLabTests:harvesterFill(oid, units)
 	return tostring(added)
 end
 
+-- templateDump:<path> → every loaded object template as JSON lines (crc, serverCrc, type, name, file) at path: the
+-- bot client's type/name table (tools/seat templates writes ~/.swg-lab/templates.jsonl with it).
+function FbLabTests:templateDump(path)
+	local n = dumpTemplates(path or "/tmp/templates.jsonl")
+	if n == nil then print("ERROR templateDump: no template manager"); return "none" end
+	print(string.format("INFO templateDump path=%s n=%d", path, n))
+	return tostring(n)
+end
+
 -- structureDestroy:<oid> → tear a structure down the proper way (DestroyStructureTask: lot refunded, owner list
 -- updated), for scenario cleanup.
 function FbLabTests:structureDestroy(oid)

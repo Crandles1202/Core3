@@ -6,6 +6,7 @@
  */
 
 #include "ObjectManager.h"
+#include <fstream>
 #include "client/zone/objects/scene/SceneObject.h"
 #include "client/zone/objects/ObjectMap.h"
 
@@ -34,6 +35,39 @@ ObjectManager::ObjectManager() : Mutex("ObjectManager"), Logger("ObjectManager")
 	objectMap = new ObjectMap();
 
 	zone = nullptr;
+
+	loadTemplateTable();
+}
+
+// ~/.swg-lab/templates.jsonl (or $SWG_TEMPLATE_TABLE): one {"crc","type","name",…} per line, written by the
+// server (FbLabTests:templateDump / tools/seat templates). Without it every object is typeless and nameless.
+void ObjectManager::loadTemplateTable() {
+	const char* env = getenv("SWG_TEMPLATE_TABLE");
+	String path = env != nullptr ? String(env) : String(getenv("HOME") != nullptr ? getenv("HOME") : "") + "/.swg-lab/templates.jsonl";
+	std::ifstream in(path.toCharArray());
+	if (!in.is_open()) {
+		warning() << "no template table at " << path << " (tools/seat templates writes it): objects will be typeless";
+		return;
+	}
+	std::string line;
+	int n = 0;
+	while (std::getline(in, line)) {
+		if (line.empty())
+			continue;
+		try {
+			JSONSerializationType json = JSONSerializationType::parse(line);
+			uint32 crc = json.value("crc", 0u);
+			if (crc == 0)
+				continue;
+			TemplateInfo* info = new TemplateInfo();
+			info->type = json.value("type", 0u);
+			info->name = String(json.value("name", std::string("")).c_str());
+			templateTable.put(crc, info);
+			n++;
+		} catch (...) {
+		}
+	}
+	info(true) << "template table: " << n << " templates from " << path;
 }
 
 ObjectManager::~ObjectManager() {
@@ -92,16 +126,12 @@ SceneObject* ObjectManager::createObject(uint32 objectCRC, uint64 objectID) {
 		LuaObject result(luaInstance->getLuaState());
 
 		if (!result.isValidTable()) {
+			lua_pop(luaInstance->getLuaState(), 1);
 			luaMutex.unlock();
 			return nullptr;
 		}
 
 		uint32 gameObjectType = result.getIntField("gameObjectType");
-
-		static int diagnosed = 0;
-		if (diagnosed++ < 12)
-			info(true) << "createObject diag crc=0x" << hex << objectCRC << dec << " top=" << lua_gettop(luaInstance->getLuaState()) << " table=" << result.isValidTable()
-				<< " type=" << gameObjectType << " name=" << result.getStringField("objectName") << " client=" << result.getStringField("clientTemplateFileName");
 
 		object = objectFactory.createObject(gameObjectType, &result);
 
@@ -111,6 +141,17 @@ SceneObject* ObjectManager::createObject(uint32 objectCRC, uint64 objectID) {
 		if (object == nullptr)
 			object = new SceneObject(&result);
 
+		// the Lua templates carry only clientTemplateFileName ("data below here is deprecated and loaded
+		// from the tres"), so type and name come from the server's template dump (Final Boss 7.0)
+		if (object != nullptr && object->getGameObjectType() == 0) {
+			const TemplateInfo* known = templateTable.get(objectCRC);
+			if (known != nullptr) {
+				object->setGameObjectType(known->type);
+				object->setObjectName(known->name);
+			}
+		}
+
+		lua_pop(luaInstance->getLuaState(), 1);   // the template table getTemplate() returned
 		luaMutex.unlock();
 
 		if (object == nullptr)

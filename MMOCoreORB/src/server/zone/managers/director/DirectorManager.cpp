@@ -9,6 +9,8 @@
 #include "server/zone/objects/cell/CellObject.h"
 #include "server/zone/objects/installation/InstallationObject.h"
 #include "server/zone/objects/installation/HopperList.h"
+#include "templates/manager/TemplateManager.h"
+#include "templates/manager/TemplateCRCMap.h"
 #include "server/zone/objects/resource/ResourceContainer.h"
 #include "server/zone/objects/structure/StructureObject.h"
 #include "server/zone/objects/creature/LuaCreatureObject.h"
@@ -532,6 +534,7 @@ void DirectorManager::initializeLuaEngine(Lua* luaEngine) {
 	luaEngine->registerFunction("getStructureStatus", getStructureStatus);
 	luaEngine->registerFunction("getOwnedStructures", getOwnedStructures);
 	luaEngine->registerFunction("harvesterAddToHopper", harvesterAddToHopper);
+	luaEngine->registerFunction("dumpTemplates", dumpTemplates);
 	luaEngine->registerFunction("getZoneWeather", getZoneWeather);
 	luaEngine->registerFunction("setZoneWeather", setZoneWeather);
 	luaEngine->registerFunction("awardSkill", awardSkill);
@@ -4271,6 +4274,48 @@ int DirectorManager::getObjectsInRange(lua_State* L) {
 		}
 		lua_rawseti(L, -2, ++n);
 	}
+	return 1;
+}
+
+// Final Boss (7.0, the seat): dumpTemplates(path) writes every loaded object template as one JSON line
+// {"crc":<client crc>,"serverCrc":<server crc>,"type":<gameObjectType>,"name":"<objectName>","file":"<server path>"}.
+// The bot client's Lua templates carry only the file name (the data "is deprecated and loaded from the tres"),
+// so without this table it knows no object's type or name. Returns the number of lines, or nil.
+int DirectorManager::dumpTemplates(lua_State* L) {
+	if (checkArgumentCount(L, 1) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::dumpTemplates";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	String path = lua_tostring(L, -1);
+	TemplateManager* templateManager = TemplateManager::instance();
+	if (templateManager == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	File file(path);
+	FileWriter writer(&file);
+	int n = 0;
+	TemplateCRCMap& map = templateManager->getTemplateCRCMap();
+	HashTableIterator<uint32, TemplateReference<SharedObjectTemplate*> > iterator = map.iterator();
+	while (iterator.hasNext()) {
+		SharedObjectTemplate* tmpl = iterator.getNextValue();
+		if (tmpl == nullptr)
+			continue;
+		JSONSerializationType line;
+		line["crc"] = tmpl->getClientObjectCRC();
+		line["serverCrc"] = tmpl->getServerObjectCRC();
+		line["type"] = tmpl->getGameObjectType();
+		line["name"] = tmpl->getObjectName().toCharArray();
+		line["file"] = tmpl->getFullTemplateString().toCharArray();
+		writer << line.dump().c_str() << "\n";
+		n++;
+	}
+	writer.close();
+	lua_pushinteger(L, n);
 	return 1;
 }
 
