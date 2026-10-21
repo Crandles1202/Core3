@@ -73,7 +73,7 @@ function FbVisions:skipAll(pPlayer)
 end
 function FbVisions:reset(pPlayer)
 	if self:active(pPlayer) ~= nil then self:finish(pPlayer, true) end
-	for _, k in ipairs({ "seen", "active", "home", "gen", "line" }) do self:clear(pPlayer, k) end
+	for _, k in ipairs({ "seen", "active", "home", "gen", "line", "cast" }) do self:clear(pPlayer, k) end
 end
 
 -- ---------------------------------------------------------------- what is due
@@ -190,11 +190,12 @@ function FbVisions:appear(pPlayer, args)
 			if FbLabTests ~= nil and FbLabTests.registryAdd ~= nil then
 				FbLabTests.registryAdd({ oid = n:getObjectID(), zone = self.zone, cell = 0, x = spots[i][1], y = spots[i][2], z = 0, template = f.template, src = "fb_visions", name = n:getObjectName() })
 			end
-			-- the figure sweeps itself if the dreamer never wakes (server hiccup, logout)
-			createEvent(180000, "FbVisions", "sweepFigure", pNpc, "")
+			-- the figure sweeps itself if the dreamer never wakes (server hiccup, logout); by oid, the pointer may be dead
+			createEvent(180000, "FbVisions", "sweepFigure", nil, tostring(n:getObjectID()))
 		end
 	end
-	writeData(oid .. ":fbVisionCast", first .. "," .. second)
+	-- writeData holds numbers only (a string reads back as 0): the cast goes into the screenplay data
+	self:set(pPlayer, "cast", first .. "," .. second)
 	createEvent(2000, "FbVisions", "speak", pPlayer, args)
 end
 
@@ -204,7 +205,7 @@ function FbVisions:speak(pPlayer, args)
 	local v = self:byId(self:active(pPlayer))
 	if v == nil then return end
 	local oid = SceneObject(pPlayer):getObjectID()
-	local cast = tostring(readData(oid .. ":fbVisionCast") or "")
+	local cast = tostring(self:get(pPlayer, "cast") or "")
 	local first, second = cast:match("^([%w_]+),([%w_]+)$")
 	if first == nil then self:fade(pPlayer, args); return end
 	local n = tonumber(self:get(pPlayer, "line") or 0) or 0
@@ -242,33 +243,35 @@ end
 function FbVisions:finish(pPlayer, aborted)
 	if pPlayer == nil then return end
 	local id = self:active(pPlayer)
-	local so = SceneObject(pPlayer)
-	local oid = so:getObjectID()
+	-- plain values first: sweeping a figure wraps another object in the one shared SceneObject wrapper
+	local oid, here = SceneObject(pPlayer):getObjectID(), SceneObject(pPlayer):getZoneName()
 	for i = 1, 2 do
 		local foid = readData(oid .. ":fbVisionFigure:" .. i)
 		if foid ~= nil and foid ~= 0 then
-			local pNpc = getSceneObject(foid)
-			if pNpc ~= nil then FbVisions.sweepFigure(pNpc) end
+			FbVisions.sweepFigure(nil, tostring(foid))
 			deleteData(oid .. ":fbVisionFigure:" .. i)
 		end
 	end
-	deleteData(oid .. ":fbVisionCast")
 	local home = self:get(pPlayer, "home")
 	if home ~= nil then
 		local zone, x, z, y = home:match("^([^;]+);([^;]+);([^;]+);([^;]+)$")
-		if zone ~= nil and so:getZoneName() == self.zone then so:switchZone(zone, tonumber(x), tonumber(z), tonumber(y), 0) end
+		if zone ~= nil and here == self.zone then SceneObject(pPlayer):switchZone(zone, tonumber(x), tonumber(z), tonumber(y), 0) end
 	end
 	if id ~= nil and not aborted then self:markSeen(pPlayer, id) end
-	for _, k in ipairs({ "active", "home", "gen", "line" }) do self:clear(pPlayer, k) end
+	for _, k in ipairs({ "active", "home", "gen", "line", "cast" }) do self:clear(pPlayer, k) end
 	if FbAttunement ~= nil then removeQuestStatus("FbAttunement.visit." .. oid) end
 	if id ~= nil then printf("FbVisions: %s %s the vision '%s'\n", CreatureObject(pPlayer):getFirstName(), aborted and "leaves" or "wakes from", id) end
 end
 
-function FbVisions.sweepFigure(pNpc)
+-- sweepFigure(nil, "<oid>"): an event's object pointer may be dead by the time it fires (a swept figure panicked
+-- the Lua state the first time), so the figure is looked up by its id
+function FbVisions.sweepFigure(_, args)
+	local oid = tonumber(args)
+	if oid == nil or oid == 0 then return end
+	local pNpc = getSceneObject(oid)
 	if pNpc == nil then return end
 	local so = SceneObject(pNpc)
 	if so:getZoneName() == "" then return end
-	local oid = so:getObjectID()
 	deleteData(oid .. ":fbVisionFor")
 	so:destroyObjectFromWorld(true)
 	so:destroyObjectFromDatabase()
