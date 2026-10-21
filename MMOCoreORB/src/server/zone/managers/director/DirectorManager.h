@@ -191,7 +191,8 @@ namespace server {
 		static int getGCWDiscount(lua_State* L);
 		static int getTerrainHeight(lua_State* L);
 		static int getTerrainHeightAt(lua_State* L);   // Final Boss: (zoneName, x, y) variant, no creature needed
-		static int findPath(lua_State* L);             // Final Boss (7.1): (zoneName, x1, y1, x2, y2) -> {{x,z,y},...} outdoor path, or nil
+		static int findPath(lua_State* L);             // Final Boss (7.1/7.6a): (zoneName, x1, y1, x2, y2 [, cell1, cell2]) -> {{x,z,y,cell},...} path (cell-local rows inside buildings), or nil
+		static int getObjectsInRange(lua_State* L);    // Final Boss (7.6a): (zoneName, x, y, range [, gameObjectType]) -> objects near a point, cell contents of buildings included
 		static int getResourceSpawns(lua_State* L);    // Final Boss (7.6a): (zoneName) -> the live spawns on that planet with attributes and best spots
 		static int getResourceDensityAt(lua_State* L); // Final Boss (7.6a): (spawnName, zoneName, x, y) -> 0..1
 		static int getZoneWeather(lua_State* L);       // Final Boss: (zoneName) -> base weather 0..4, -1 if no manager

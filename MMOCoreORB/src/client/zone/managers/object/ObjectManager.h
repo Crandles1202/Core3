@@ -36,6 +36,7 @@ public:
 	SceneObject* getObject(uint64 objectID);
 
 	void destroyObject(uint64 objectID);   // SceneDestroyObject: it left our view
+	void clear();                          // a new scene (zone switch): everything of the old one is gone
 
 	SceneObject* getObject(const UnicodeString& customName);
 

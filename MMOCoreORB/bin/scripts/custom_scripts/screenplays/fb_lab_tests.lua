@@ -998,10 +998,10 @@ end
 function FbLabTests:where(charName)
 	local pPlayer = loadedPlayer(charName)
 	if pPlayer == nil then return "offline" end
-	local line = string.format("INFO where char=%s oid=%d zone=%s x=%.1f z=%.1f y=%.1f cell=%d posture=%d combat=%s incap=%s dead=%s", charName,
+	local line = string.format("INFO where char=%s oid=%d zone=%s x=%.1f z=%.1f y=%.1f cell=%d lx=%.2f ly=%.2f posture=%d combat=%s incap=%s dead=%s", charName,
 		SceneObject(pPlayer):getObjectID(), SceneObject(pPlayer):getZoneName(),
 		SceneObject(pPlayer):getWorldPositionX(), SceneObject(pPlayer):getWorldPositionZ(), SceneObject(pPlayer):getWorldPositionY(),
-		SceneObject(pPlayer):getParentID(), CreatureObject(pPlayer):getPosture(),
+		SceneObject(pPlayer):getParentID(), SceneObject(pPlayer):getPositionX(), SceneObject(pPlayer):getPositionY(), CreatureObject(pPlayer):getPosture(),
 		tostring(CreatureObject(pPlayer):isInCombat()), tostring(CreatureObject(pPlayer):isIncapacitated()), tostring(CreatureObject(pPlayer):isDead()))
 	print(line)
 	return line
@@ -2086,28 +2086,100 @@ end
 
 -- pathTo:<planet>:<x1>:<y1>:<x2>:<y2> → the AI pathfinder's outdoor route as "x,z,y;x,z,y;…" (7.1: a seat walks it)
 -- pathTo:<char>:<x2>:<y2> → the same from where that character stands
-function FbLabTests:pathTo(a, b, c, d, e)
-	local planet, x1, y1, x2, y2
+-- pathTo:<char>:<x>:<y>[:<cellOid>]  or  pathTo:<planet>:<x1>:<y1>:<x2>:<y2>[:<cell1>:<cell2>]
+-- A cell oid makes that end's coordinates cell-local (what a creature inside a building reports); the character
+-- form starts from where the character stands, indoors or out. Rows come back as x,z,y,cell (cell 0 = outdoors,
+-- world coordinates; otherwise cell-local, for a DataTransformWithParent) — what tools/seat walk sends.
+function FbLabTests:pathTo(a, b, c, d, e, f, g)
+	local planet, x1, y1, x2, y2, cell1, cell2
 	if e ~= nil then
 		planet, x1, y1, x2, y2 = a, tonumber(b), tonumber(c), tonumber(d), tonumber(e)
+		cell1, cell2 = tonumber(f) or 0, tonumber(g) or 0
 	else
 		local pPlayer = getPlayerByName(a)
 		if pPlayer == nil then print("ERROR pathTo: no player " .. tostring(a)); return "none" end
 		planet = SceneObject(pPlayer):getZoneName()
-		x1, y1 = SceneObject(pPlayer):getWorldPositionX(), SceneObject(pPlayer):getWorldPositionY()
-		x2, y2 = tonumber(b), tonumber(c)
+		cell1 = SceneObject(pPlayer):getParentID()
+		if cell1 ~= 0 then
+			x1, y1 = SceneObject(pPlayer):getPositionX(), SceneObject(pPlayer):getPositionY()
+		else
+			x1, y1 = SceneObject(pPlayer):getWorldPositionX(), SceneObject(pPlayer):getWorldPositionY()
+		end
+		x2, y2, cell2 = tonumber(b), tonumber(c), tonumber(d) or 0
 	end
-	if planet == nil or x1 == nil or y1 == nil or x2 == nil or y2 == nil then print("ERROR pathTo: planet x1 y1 x2 y2 (or char x y)"); return "none" end
-	local path = findPath(planet, x1, y1, x2, y2)
-	if path == nil then print(string.format("ERROR pathTo: no path on %s from %.1f,%.1f to %.1f,%.1f", planet, x1, y1, x2, y2)); return "none" end
-	local parts, length, px, py = {}, 0, x1, y1
+	if planet == nil or x1 == nil or y1 == nil or x2 == nil or y2 == nil then print("ERROR pathTo: planet x1 y1 x2 y2 [cell1 cell2] (or char x y [cell])"); return "none" end
+	local path
+	if cell1 ~= 0 or cell2 ~= 0 then
+		path = findPath(planet, x1, y1, x2, y2, cell1, cell2)
+	else
+		path = findPath(planet, x1, y1, x2, y2)
+	end
+	if path == nil then print(string.format("ERROR pathTo: no path on %s from %.1f,%.1f (cell %d) to %.1f,%.1f (cell %d)", planet, x1, y1, cell1, x2, y2, cell2)); return "none" end
+	local parts, length, px, py, pc = {}, 0, x1, y1, cell1
 	for i, pt in ipairs(path) do
-		parts[#parts + 1] = string.format("%.2f,%.2f,%.2f", pt[1], pt[2], pt[3])
-		length = length + math.sqrt((pt[1] - px) ^ 2 + (pt[3] - py) ^ 2)
-		px, py = pt[1], pt[3]
+		local cell = pt[4] or 0
+		parts[#parts + 1] = string.format("%.2f,%.2f,%.2f,%d", pt[1], pt[2], pt[3], cell)
+		if cell == pc then length = length + math.sqrt((pt[1] - px) ^ 2 + (pt[3] - py) ^ 2) end
+		px, py, pc = pt[1], pt[3], cell
 	end
 	print(string.format("INFO path planet=%s n=%d length=%.1f pts=%s", planet, #path, length, table.concat(parts, ";")))
 	return tostring(#path)
+end
+
+-- objectsNear:<planet>:<x>:<y>:<range>[:<type>] → every object within range of a point, the contents of buildings'
+-- cells included (getObjectsInRange binding); type is a SceneObjectType number (travel terminal 16402 = 0x4012).
+function FbLabTests:objectsNear(planet, x, y, range, otype)
+	x, y, range, otype = tonumber(x), tonumber(y), tonumber(range), tonumber(otype)
+	if planet == nil or x == nil or y == nil or range == nil then print("ERROR objectsNear: planet x y range [type]"); return "none" end
+	local objects = otype and getObjectsInRange(planet, x, y, range, otype) or getObjectsInRange(planet, x, y, range)
+	if objects == nil then print("ERROR objectsNear: no zone " .. tostring(planet)); return "none" end
+	for _, o in ipairs(objects) do
+		print(string.format("INFO object oid=%d type=0x%x template=%s name=%s x=%.1f y=%.1f z=%.1f cell=%d cellName=%s building=%d localX=%.2f localY=%.2f localZ=%.2f",
+			o.oid, o.type, o.template, (o.name or ""):gsub("%s", "_"), o.x, o.y, o.z, o.cell, o.cellName ~= "" and o.cellName or "-", o.building,
+			o.localX or 0, o.localY or 0, o.localZ or 0))
+	end
+	return tostring(#objects)
+end
+
+-- travelPoints:<planet> → the planet's travel points (planet_manager.lua data) with, for each, the nearest travel
+-- terminal (where purchaseTicket must be sent from: within 8 m; starport terminals stand inside the starport
+-- building, cell given) and the shuttle creature (boardShuttle within 25 m). Names carry underscores for
+-- spaces, the way purchaseTicket wants them.
+function FbLabTests:travelPoints(planet)
+	local env, err = loadIsolated("scripts/managers/planet/planet_manager.lua")
+	if env == nil then print("ERROR travelPoints: planet_manager.lua: " .. tostring(err)); return "none" end
+	local cfg = env[planet]
+	if cfg == nil or cfg.planetTravelPoints == nil then print("ERROR travelPoints: no travel points for " .. tostring(planet)); return "none" end
+	local n = 0
+	for _, pt in ipairs(cfg.planetTravelPoints) do
+		local terminal, shuttle, tdist = nil, nil, 1e9
+		local objects = getObjectsInRange(planet, pt.x, pt.y, 120) or {}
+		for _, o in ipairs(objects) do
+			if o.type == 16402 then
+				local d = math.sqrt((o.x - pt.x) ^ 2 + (o.y - pt.y) ^ 2)
+				if d < tdist then terminal, tdist = o, d end
+			elseif o.template:find("player_shuttle") or o.template:find("player_transport") then
+				shuttle = o
+			end
+		end
+		local line = string.format("INFO travelpoint planet=%s name=%s x=%.1f y=%.1f z=%.1f interplanetary=%d incoming=%d",
+			planet, pt.name:gsub("%s", "_"), pt.x, pt.y, pt.z or 0, pt.interplanetaryTravelAllowed or 0, pt.incomingTravelAllowed or 0)
+		if terminal ~= nil then
+			line = line .. string.format(" terminal=%d tx=%.2f ty=%.2f tz=%.2f tcell=%d tcellName=%s tbuilding=%d tlx=%.2f tly=%.2f tlz=%.2f",
+				terminal.oid, terminal.x, terminal.y, terminal.z, terminal.cell, terminal.cellName ~= "" and terminal.cellName or "-", terminal.building,
+				terminal.localX or 0, terminal.localY or 0, terminal.localZ or 0)
+		else
+			line = line .. " terminal=0"
+		end
+		if shuttle ~= nil then
+			line = line .. string.format(" shuttle=%d sx=%.1f sy=%.1f", shuttle.oid, shuttle.x, shuttle.y)
+		else
+			line = line .. " shuttle=0"
+		end
+		print(line)
+		n = n + 1
+	end
+	return tostring(n)
 end
 
 -- ---------------------------------------------------------------- site preview (2.12d: the planner's game loop)

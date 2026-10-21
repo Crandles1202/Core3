@@ -15,8 +15,17 @@ control channel on a unix socket (SeatAction, Phase 7.0). A pilot (7.3) sits on 
   seat vars <name> [path]                              the client's var store (SpatialChat, SystemMessages, Tells, Sui, …)
   seat objects <name> [--near]                         what the client has in view (creation positions)
   seat wait <name> <signal> [timeoutMs]                block until that packet arrives (SpatialChat, Tell, SuiCreatePage, …)
-  seat walk <name> <x> <y> [--speed M/S]              ask the server for a path from where the character stands and walk it
-                                                        (real movement packets; the route comes from FbLabTests:pathTo over swg cmd --shared)
+  seat walk <name> <x> <y> [--cell OID] [--speed M/S] ask the server for a path from where the character stands and walk it
+                                                        (real movement packets; the route comes from FbLabTests:pathTo over swg cmd --shared;
+                                                        --cell makes x,y cell-local: a spot inside a building, e.g. a starport's ticket terminal)
+  seat where <name>                                    the character's server-side position (FbLabTests:where)
+  seat points <planet>                                 the planet's travel points with their ticket terminal and shuttle (FbLabTests:travelPoints)
+  seat travel <name> <planet> <point> [--from POINT] [--round-trip] [--wait S]
+                                                        a whole trip: walk to the nearest (or --from) travel point's terminal, buy the ticket,
+                                                        walk to the shuttle, board it (waiting for it to land, up to --wait s, default 240),
+                                                        and report where the character arrived. Point names take underscores for spaces.
+  seat ticket <name> <fromPlanet> <fromPoint> <toPlanet> <toPoint> [--round-trip]   the purchase alone (stand by a terminal)
+  seat board <name> [ticket oid] [--wait S]            the boarding alone (stand by the shuttle)
   seat survey <name> <tool oid> <resource> [range]    use the survey tool, survey that resource, print the grid's best point
   seat sample <name> <resource> [rounds]               sample where the character stands (3 s, then 25 s per extra round)
   seat resources <planet> [class]                      the resource oracle (FbLabTests:resources over swg cmd --shared)
@@ -71,18 +80,116 @@ def seat_character_name(name):
         die(f"seat '{name}' has no recorded character name")
 
 
-def path_from_server(char, x, y):
-    """FbLabTests:pathTo:<char>:<x>:<y> through the console (read-only, no bench lock) -> [[x,z,y],…]."""
+def lab(fn, timeout=15):
+    """runLuaFunction FbLabTests:<fn> through the console (read-only, no bench lock) -> its output lines."""
     swg = os.path.join(HERE, "swg")
-    out = subprocess.run([swg, "cmd", "--shared", f"runLuaFunction FbLabTests:pathTo:{char}:{x}:{y}", "--timeout", "15"],
-                         capture_output=True, text=True).stdout
+    return subprocess.run([swg, "cmd", "--shared", f"runLuaFunction FbLabTests:{fn}", "--timeout", str(timeout)],
+                          capture_output=True, text=True).stdout
+
+
+def lab_fields(line):
+    """'INFO kind a=1 b=x' -> {'a': '1', 'b': 'x'}"""
+    return dict(re.findall(r"(\w+)=(\S+)", line))
+
+
+def path_from_server(char, x, y, cell=0):
+    """FbLabTests:pathTo:<char>:<x>:<y>[:<cell>] -> [[x,z,y,cell],…] (cell 0 = outdoors, world coordinates;
+    otherwise cell-local, the way the walk action sends a DataTransformWithParent)."""
+    out = lab(f"pathTo:{char}:{x}:{y}" + (f":{cell}" if cell else ""))
     m = re.search(r"INFO path .* pts=(\S+)", out)
     if not m:
         err = re.search(r"ERROR pathTo[^\n]*", out)
         if err:
             print(err.group(0), file=sys.stderr)
         return []
-    return [[float(v) for v in pt.split(",")] for pt in m.group(1).split(";")]
+    points = []
+    for pt in m.group(1).split(";"):
+        v = pt.split(",")
+        points.append([float(v[0]), float(v[1]), float(v[2]), int(v[3]) if len(v) > 3 else 0])
+    return points
+
+
+def where(char):
+    """FbLabTests:where -> {'zone','x','y','z','cell'} or None"""
+    line = next((l for l in lab(f"where:{char}", 8).splitlines() if l.startswith("INFO where")), None)
+    if not line:
+        return None
+    f = lab_fields(line)
+    return {"zone": f["zone"], "x": float(f["x"]), "y": float(f["y"]), "z": float(f["z"]), "cell": int(f["cell"])}
+
+
+def travel_points(planet):
+    """FbLabTests:travelPoints:<planet> -> [{name, x, y, interplanetary, terminal, tx, ty, tcell, tlx, tly, shuttle, sx, sy}]"""
+    points = []
+    for line in lab(f"travelPoints:{planet}", 30).splitlines():
+        if not line.startswith("INFO travelpoint"):
+            continue
+        f = lab_fields(line)
+        pt = {"name": f["name"], "x": float(f["x"]), "y": float(f["y"]), "interplanetary": f.get("interplanetary") == "1",
+              "terminal": int(f.get("terminal", 0)), "shuttle": int(f.get("shuttle", 0))}
+        if pt["terminal"]:
+            pt.update(tx=float(f["tx"]), ty=float(f["ty"]), tcell=int(f["tcell"]), tlx=float(f["tlx"]), tly=float(f["tly"]), tcellName=f.get("tcellName", "-"))
+        if pt["shuttle"]:
+            pt.update(sx=float(f["sx"]), sy=float(f["sy"]))
+        points.append(pt)
+    return points
+
+
+def walk_seat(s, char, x, y, cell=0, speed=4.5):
+    points = path_from_server(char, x, y, cell)
+    if not points:
+        return {"ok": False, "error": f"no path for {char} to {x},{y}" + (f" in cell {cell}" if cell else "")}
+    print(f"path: {len(points)} points, {path_length(points):.0f} m" + (" (ends indoors)" if points[-1][3] else ""))
+    return s.action("walk", points=points, speed=speed)
+
+
+def travel_seat(s, name, to_planet, to_point, from_point=None, round_trip=False, max_wait=240):
+    """The whole trip on a seat: terminal, ticket, shuttle, board, arrival."""
+    char = s.request({"op": "ping"}).get("characterName") or seat_character_name(name)
+    here = where(char)
+    if not here:
+        return {"ok": False, "error": f"{char} is not online on the server"}
+    planet = here["zone"]
+    to_point = to_point.replace(" ", "_")
+    points = travel_points(planet)
+    if not points:
+        return {"ok": False, "error": f"no travel points on {planet}"}
+    candidates = [p for p in points if p["terminal"] and p["shuttle"] and (planet == to_planet or p["interplanetary"])]
+    if from_point:
+        candidates = [p for p in candidates if p["name"].lower() == from_point.replace(" ", "_").lower()]
+    if not candidates:
+        return {"ok": False, "error": f"no usable departure point on {planet} for {to_planet} ({from_point or 'nearest'})"}
+    dep = min(candidates, key=lambda p: (p["x"] - here["x"]) ** 2 + (p["y"] - here["y"]) ** 2)
+    print(f"departure: {dep['name']} (terminal {'in ' + dep['tcellName'] if dep['tcell'] else 'outdoors'}, shuttle at {dep['sx']:.0f},{dep['sy']:.0f})")
+
+    # 1. the ticket terminal (indoors for starports: the path enters the building)
+    if dep["tcell"]:
+        reply = walk_seat(s, char, round(dep["tlx"], 2), round(dep["tly"], 2), dep["tcell"])
+    else:
+        reply = walk_seat(s, char, round(dep["tx"], 1), round(dep["ty"], 1))
+    if not reply.get("ok"):
+        return {"ok": False, "error": "walk to the terminal failed: " + str(reply.get("error")), "step": "walk_terminal", "reply": reply}
+
+    # 2. the ticket
+    reply = s.action("ticket", fromPlanet=planet, fromPoint=dep["name"], toPlanet=to_planet, toPoint=to_point, roundTrip=round_trip)
+    if not reply.get("ok"):
+        return {"ok": False, "error": "ticket: " + str(reply.get("error")), "step": "ticket", "reply": reply}
+    ticket = reply.get("ticket", 0)
+    print(f"ticket {ticket}: {reply.get('serverSaid', '')}")
+
+    # 3. the shuttle (outdoors, from wherever the terminal left us)
+    reply = walk_seat(s, char, round(dep["sx"], 1), round(dep["sy"], 1))
+    if not reply.get("ok"):
+        return {"ok": False, "error": "walk to the shuttle failed: " + str(reply.get("error")), "step": "walk_shuttle", "reply": reply}
+
+    # 4. board, waiting for the shuttle to land
+    reply = s.request({"op": "action", "action": {"action": "board", "ticket": ticket, "maxWaitS": max_wait}}, timeout=max_wait + 60)
+    if not reply.get("ok"):
+        return {"ok": False, "error": "board: " + str(reply.get("error")), "step": "board", "reply": reply}
+    arrived = where(char) or {}
+    reply["arrived"] = arrived
+    reply["departure"] = dep["name"]
+    return reply
 
 
 def path_length(points):
@@ -273,6 +380,14 @@ def main(argv):
         return cmd_stop(args)
     if cmd == "list":
         return cmd_list(args)
+    if cmd == "points":
+        if not args:
+            die("points <planet>")
+        for p in travel_points(args[0]):
+            term = f"terminal {p['terminal']} " + (f"in {p['tcellName']} (local {p['tlx']:.1f},{p['tly']:.1f})" if p.get("tcell") else f"outdoors at {p.get('tx', 0):.0f},{p.get('ty', 0):.0f}") if p["terminal"] else "NO TERMINAL"
+            shut = f"shuttle {p['shuttle']} at {p['sx']:.0f},{p['sy']:.0f}" if p["shuttle"] else "NO SHUTTLE"
+            print(f"{p['name']:<34} {p['x']:8.0f} {p['y']:8.0f}  {'starport' if p['interplanetary'] else 'shuttleport':<11} {term}; {shut}")
+        return 0
     if cmd == "resources":
         if not args:
             die("resources <planet> [class]")
@@ -356,17 +471,32 @@ def main(argv):
         reply = s.action("sample", **fields)
     elif cmd == "walk":
         if len(rest) < 2:
-            die("walk <name> <x> <y> [--speed M/S]")
+            die("walk <name> <x> <y> [--cell OID] [--speed M/S]")
         x, y = float(rest[0]), float(rest[1])
         speed = 4.5
         if "--speed" in rest:
             speed = float(rest[rest.index("--speed") + 1])
+        cell = int(rest[rest.index("--cell") + 1]) if "--cell" in rest else 0
         char = s.request({"op": "ping"}).get("characterName") or seat_character_name(name)
-        points = path_from_server(char, x, y)
-        if not points:
-            die(f"no path for {char} to {x},{y}")
-        print(f"path: {len(points)} points, {path_length(points):.0f} m")
-        reply = s.action("walk", points=points, speed=speed)
+        reply = walk_seat(s, char, x, y, cell, speed)
+    elif cmd == "where":
+        char = s.request({"op": "ping"}).get("characterName") or seat_character_name(name)
+        reply = where(char) or {}
+        reply["ok"] = bool(reply)
+    elif cmd == "ticket":
+        if len(rest) < 4:
+            die("ticket <name> <fromPlanet> <fromPoint> <toPlanet> <toPoint> [--round-trip]")
+        reply = s.action("ticket", fromPlanet=rest[0], fromPoint=rest[1], toPlanet=rest[2], toPoint=rest[3], roundTrip="--round-trip" in rest)
+    elif cmd == "board":
+        ticket = int(rest[0]) if rest and rest[0].isdigit() else 0
+        wait = int(rest[rest.index("--wait") + 1]) if "--wait" in rest else 240
+        reply = s.request({"op": "action", "action": {"action": "board", "ticket": ticket, "maxWaitS": wait}}, timeout=wait + 60)
+    elif cmd == "travel":
+        if len(rest) < 2:
+            die("travel <name> <planet> <point> [--from POINT] [--round-trip] [--wait S]")
+        from_point = rest[rest.index("--from") + 1] if "--from" in rest else None
+        wait = int(rest[rest.index("--wait") + 1]) if "--wait" in rest else 240
+        reply = travel_seat(s, name, rest[0], rest[1], from_point, "--round-trip" in rest, wait)
     elif cmd == "log":
         n = int(rest[0]) if rest else 40
         subprocess.run(["tail", "-n", str(n), os.path.join(seat_dir(name), "client.log")])

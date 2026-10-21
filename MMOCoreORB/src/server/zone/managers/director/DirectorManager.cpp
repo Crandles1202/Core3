@@ -524,6 +524,7 @@ void DirectorManager::initializeLuaEngine(Lua* luaEngine) {
 	luaEngine->registerFunction("findPath", findPath);
 	luaEngine->registerFunction("getResourceSpawns", getResourceSpawns);
 	luaEngine->registerFunction("getResourceDensityAt", getResourceDensityAt);
+	luaEngine->registerFunction("getObjectsInRange", getObjectsInRange);
 	luaEngine->registerFunction("getZoneWeather", getZoneWeather);
 	luaEngine->registerFunction("setZoneWeather", setZoneWeather);
 	luaEngine->registerFunction("awardSkill", awardSkill);
@@ -4102,13 +4103,22 @@ int DirectorManager::getTerrainHeightAt(lua_State* L) {
 // {x, z, y} waypoints from the first point to the second over the terrain (no cells: outdoor to outdoor),
 // each z the terrain height there, or nil when the zone is unknown or no path exists. A seat walks it.
 int DirectorManager::findPath(lua_State* L) {
-	if (checkArgumentCount(L, 5) == 1) {
+	int argc = lua_gettop(L);
+	if (argc != 5 && argc != 7) {
 		String err = "incorrect number of arguments passed to DirectorManager::findPath";
 		printTraceError(L, err);
 		ERROR_CODE = INCORRECT_ARGUMENTS;
 		return 0;
 	}
 
+	// findPath(zone, x1, y1, x2, y2 [, cell1, cell2]): a cell oid (0 = outdoors) makes that end's coordinates
+	// cell-local, the way a creature inside a building reports its position
+	uint64 cell1 = 0, cell2 = 0;
+	if (argc == 7) {
+		cell2 = lua_tointeger(L, -1);
+		cell1 = lua_tointeger(L, -2);
+		lua_pop(L, 2);
+	}
 	float y2 = lua_tonumber(L, -1);
 	float x2 = lua_tonumber(L, -2);
 	float y1 = lua_tonumber(L, -3);
@@ -4123,8 +4133,15 @@ int DirectorManager::findPath(lua_State* L) {
 		return 1;
 	}
 
-	WorldCoordinates start(Vector3(x1, y1, zone->getHeight(x1, y1)), nullptr);
-	WorldCoordinates end(Vector3(x2, y2, zone->getHeight(x2, y2)), nullptr);
+	ManagedReference<CellObject*> startCell = cell1 != 0 ? zoneServer->getObject(cell1).castTo<CellObject*>() : nullptr;
+	ManagedReference<CellObject*> endCell = cell2 != 0 ? zoneServer->getObject(cell2).castTo<CellObject*>() : nullptr;
+	if ((cell1 != 0 && startCell == nullptr) || (cell2 != 0 && endCell == nullptr)) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	WorldCoordinates start(Vector3(x1, y1, startCell != nullptr ? 0.f : zone->getHeight(x1, y1)), startCell);
+	WorldCoordinates end(Vector3(x2, y2, endCell != nullptr ? 0.f : zone->getHeight(x2, y2)), endCell);
 
 	Vector<WorldCoordinates>* path = PathFinderManager::instance()->findPath(start, end, zone);
 
@@ -4135,20 +4152,118 @@ int DirectorManager::findPath(lua_State* L) {
 		return 1;
 	}
 
+	// rows are {x, z, y, cell}: cell-local x/z/y when cell is a cell oid, world (terrain height) when it is 0
 	lua_newtable(L);
 	for (int i = 0; i < path->size(); ++i) {
-		const Vector3& p = path->get(i).getPoint();
+		const WorldCoordinates& wc = path->get(i);
+		const Vector3& p = wc.getPoint();
+		CellObject* cell = wc.getCell();
 		lua_newtable(L);
 		lua_pushnumber(L, p.getX());
 		lua_rawseti(L, -2, 1);
-		lua_pushnumber(L, zone->getHeight(p.getX(), p.getY()));
+		lua_pushnumber(L, cell != nullptr ? p.getZ() : zone->getHeight(p.getX(), p.getY()));
 		lua_rawseti(L, -2, 2);
 		lua_pushnumber(L, p.getY());
 		lua_rawseti(L, -2, 3);
+		lua_pushinteger(L, cell != nullptr ? (lua_Integer) cell->getObjectID() : 0);
+		lua_rawseti(L, -2, 4);
 		lua_rawseti(L, -2, i + 1);
 	}
 
 	delete path;
+	return 1;
+}
+
+// Final Boss (Phase 7.6a, travel): getObjectsInRange(zoneName, x, y, range [, gameObjectType]) -> the objects
+// within range of a point — top-level ones from the zone tree and, for buildings in range, everything inside
+// their cells (terminals, vendors, NPCs). Each row: {oid, template, name, type, x, z, y (world), cell (oid or 0),
+// cellName, building (oid or 0)}. The optional type filter is a SceneObjectType value (travel terminal 0x4012).
+int DirectorManager::getObjectsInRange(lua_State* L) {
+	int argc = lua_gettop(L);
+	if (argc != 4 && argc != 5) {
+		String err = "incorrect number of arguments passed to DirectorManager::getObjectsInRange";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	uint32 typeFilter = 0;
+	if (argc == 5) {
+		typeFilter = lua_tointeger(L, -1);
+		lua_pop(L, 1);
+	}
+	float range = lua_tonumber(L, -1);
+	float y = lua_tonumber(L, -2);
+	float x = lua_tonumber(L, -3);
+	String zoneName = lua_tostring(L, -4);
+
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	Zone* zone = zoneServer != nullptr ? zoneServer->getZone(zoneName) : nullptr;
+	if (zone == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	SortedVector<ManagedReference<TreeEntry*> > entries;
+	zone->getInRangeObjects(x, zone->getHeight(x, y), y, range, &entries, true, true);
+
+	Vector<ManagedReference<SceneObject*> > found;
+	for (int i = 0; i < entries.size(); ++i) {
+		SceneObject* object = cast<SceneObject*>(entries.get(i).get());
+		if (object == nullptr)
+			continue;
+		found.add(object);
+		if (!object->isBuildingObject())
+			continue;
+		BuildingObject* building = object->asBuildingObject();
+		if (building == nullptr)
+			continue;
+		for (int c = 1; c <= building->getTotalCellNumber(); ++c) {
+			CellObject* cell = building->getCell(c);
+			if (cell == nullptr)
+				continue;
+			for (int j = 0; j < cell->getContainerObjectsSize(); ++j) {
+				SceneObject* child = cell->getContainerObject(j);
+				if (child != nullptr)
+					found.add(child);
+			}
+		}
+	}
+
+	lua_newtable(L);
+	int n = 0;
+	for (int i = 0; i < found.size(); ++i) {
+		SceneObject* object = found.get(i);
+		if (typeFilter != 0 && object->getGameObjectType() != typeFilter)
+			continue;
+		Vector3 world = object->getWorldPosition();
+		float dx = world.getX() - x, dy = world.getY() - y;
+		if (dx * dx + dy * dy > range * range)
+			continue;
+		ManagedReference<SceneObject*> parent = object->getParent().get();
+		CellObject* cell = parent != nullptr && parent->isCellObject() ? cast<CellObject*>(parent.get()) : nullptr;
+		ManagedReference<SceneObject*> root = object->getRootParent();
+		BuildingObject* rootBuilding = root != nullptr && root->isBuildingObject() ? root->asBuildingObject() : nullptr;
+
+		lua_newtable(L);
+		lua_pushinteger(L, (lua_Integer) object->getObjectID()); lua_setfield(L, -2, "oid");
+		lua_pushstring(L, object->getObjectTemplate() != nullptr ? object->getObjectTemplate()->getFullTemplateString().toCharArray() : ""); lua_setfield(L, -2, "template");
+		lua_pushstring(L, object->getDisplayedName().toCharArray()); lua_setfield(L, -2, "name");
+		lua_pushinteger(L, object->getGameObjectType()); lua_setfield(L, -2, "type");
+		lua_pushnumber(L, world.getX()); lua_setfield(L, -2, "x");
+		lua_pushnumber(L, world.getZ()); lua_setfield(L, -2, "z");
+		lua_pushnumber(L, world.getY()); lua_setfield(L, -2, "y");
+		lua_pushinteger(L, cell != nullptr ? (lua_Integer) cell->getObjectID() : 0); lua_setfield(L, -2, "cell");
+		lua_pushstring(L, cell != nullptr && rootBuilding != nullptr ? rootBuilding->getCellName(cell->getObjectID()).toCharArray() : ""); lua_setfield(L, -2, "cellName");
+		lua_pushinteger(L, cell != nullptr && root != nullptr ? (lua_Integer) root->getObjectID() : 0); lua_setfield(L, -2, "building");
+		if (cell != nullptr) {
+			// the local position too: what a DataTransformWithParent must carry to stand next to it
+			lua_pushnumber(L, object->getPositionX()); lua_setfield(L, -2, "localX");
+			lua_pushnumber(L, object->getPositionZ()); lua_setfield(L, -2, "localZ");
+			lua_pushnumber(L, object->getPositionY()); lua_setfield(L, -2, "localY");
+		}
+		lua_rawseti(L, -2, ++n);
+	}
 	return 1;
 }
 

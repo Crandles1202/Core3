@@ -136,6 +136,12 @@ void ObjectManager::destroyObject(uint64 objectID) {
 	objectMap->remove(objectID);
 }
 
+void ObjectManager::clear() {
+	Locker _locker(this);
+
+	objectMap->removeAll();
+}
+
 SceneObject* ObjectManager::getObject(uint64 objectID) {
 	Locker _locker(this);
 

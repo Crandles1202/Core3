@@ -6,8 +6,14 @@
  * along the polyline at `speed` m/s, heading turned toward the next point, then a final packet with
  * speed 0. Nothing is teleported; the server validates every step as it would for a human.
  *
- *   --walk-points "x,z,y;x,z,y;…" [--walk-speed <m/s>] [--walk-interval <ms>]
- *   JSON: {"action":"walk","points":[[x,z,y],…],"speed":4.5,"interval":450}
+ *   --walk-points "x,z,y[,cell];x,z,y[,cell];…" [--walk-speed <m/s>] [--walk-interval <ms>]
+ *   JSON: {"action":"walk","points":[[x,z,y],[x,z,y,cellOid],…],"speed":4.5,"interval":450}
+ *
+ * A fourth number on a point is the oid of the building cell the point lies in: its coordinates are then
+ * cell-local and the step goes out as a DataTransformWithParent (0xF1) carrying that parent — how the real
+ * client walks through a door and across rooms. Between two points in different spaces (outdoors → the
+ * first cell point, or cell → cell) there is no interpolation: the path from FbLabTests:pathTo puts the
+ * door node on both sides, so the jump is one short step the server accepts as a parent change.
  *
  * Server rules this obeys (packets/object/DataTransform.h, transform/Transform.h, PlayerManager):
  *   - at least MIN_DELTA 200 ms between packets, and under MID_DELTA 400 ms a packet must be an
@@ -32,16 +38,20 @@
 
 // ObjController 0x71 as the client sends it (parsed by Transform::parseDataTransform):
 // int timeStamp, int moveCount, direction x y z w, position x z y, float speed
+// With a parent (cell oid) it is ObjController 0xF1 (Transform::parseDataTransformWithParent): the parent oid
+// follows moveCount and the position is cell-local.
 class ClientDataTransform : public BaseMessage {
 public:
-	ClientDataTransform(uint64 playerOid, uint32 timeStamp, uint32 moveCount, float yawRadians, float x, float z, float y, float speed) {
+	ClientDataTransform(uint64 playerOid, uint32 timeStamp, uint32 moveCount, float yawRadians, float x, float z, float y, float speed, uint64 parentOid = 0) {
 		insertShort(0x05);
 		insertInt(0x80CE5E46);   // ObjControllerMessage
 		insertInt(0x1B);         // priority
-		insertInt(0x71);         // DataTransform
+		insertInt(parentOid != 0 ? 0xF1 : 0x71);   // DataTransform / DataTransformWithParent
 		insertLong(playerOid);   // ObjectControllerMessageCallback::parse reads priority, type, oid — then the payload at once
 		insertInt(timeStamp);
 		insertInt(moveCount);
+		if (parentOid != 0)
+			insertLong(parentOid);
 		insertFloat(0.f);                       // direction: yaw about y
 		insertFloat(sinf(yawRadians / 2.f));
 		insertFloat(0.f);
@@ -71,6 +81,7 @@ uint32 nextMoveCount() {
 
 class WalkAction : public ActionBase {
 	Vector<Vector3> points;   // x, z, y as the server orders them (Vector3 = x, y, z here: we keep x, z, y in that order)
+	Vector<uint64> cells;     // per point: the cell oid its coordinates are local to, 0 outdoors
 	float speed;
 	int intervalMs;
 
@@ -90,7 +101,7 @@ public:
 	bool needsTarget() const override { return true; }
 	bool needsCharacter() const override { return true; }
 
-	static bool parsePoints(const String& spec, Vector<Vector3>& out) {
+	static bool parsePoints(const String& spec, Vector<Vector3>& out, Vector<uint64>& outCells) {
 		StringTokenizer pts(spec);
 		pts.setDelimeter(";");
 		while (pts.hasMoreTokens()) {
@@ -103,7 +114,14 @@ public:
 				if (!nums.hasMoreTokens()) return false;
 				v[i] = nums.getFloatToken();
 			}
+			uint64 cell = 0;
+			if (nums.hasMoreTokens()) {
+				String c;
+				nums.getStringToken(c);
+				cell = UnsignedLong::valueOf(c);
+			}
 			out.add(Vector3(v[0], v[1], v[2]));
+			outCells.add(cell);
 		}
 		return out.size() > 0;
 	}
@@ -119,7 +137,7 @@ public:
 			if (args.get(i) == "--walk-points" && i + 1 < args.size()) {
 				if (me != nullptr) break;
 				me = new WalkAction();
-				parsePoints(args.get(i + 1), me->points);
+				parsePoints(args.get(i + 1), me->points, me->cells);
 				consumed += 2; i += 2;
 			} else if (me != nullptr && args.get(i) == "--walk-speed" && i + 1 < args.size()) {
 				me->speed = Float::valueOf(args.get(i + 1));
@@ -139,11 +157,13 @@ public:
 		WalkAction* me = new WalkAction();
 		if (config.contains("points") && config["points"].is_array()) {
 			for (const auto& pt : config["points"]) {
-				if (pt.is_array() && pt.size() >= 3)
+				if (pt.is_array() && pt.size() >= 3) {
 					me->points.add(Vector3(pt[0].get<float>(), pt[1].get<float>(), pt[2].get<float>()));
+					me->cells.add(pt.size() >= 4 && pt[3].is_number() ? pt[3].get<uint64>() : (uint64) 0);
+				}
 			}
 		} else if (config.contains("points") && config["points"].is_string()) {
-			parsePoints(String(config["points"].get<std::string>().c_str()), me->points);
+			parsePoints(String(config["points"].get<std::string>().c_str()), me->points, me->cells);
 		}
 		if (config.contains("speed")) me->speed = config["speed"].get<float>();
 		if (config.contains("interval")) me->intervalMs = config["interval"].get<int>();
@@ -156,15 +176,20 @@ public:
 		return sqrtf(dx * dx + dy * dy);
 	}
 
-	void sendStep(ClientCore& core, const Vector3& p, float yaw, float stepSpeed) {
-		core.zone->getZoneClient()->sendMessage(new ClientDataTransform(core.selectedCharacterOid, walkClockMs(), nextMoveCount(), yaw, p.getX(), p.getY(), p.getZ(), stepSpeed));
+	void sendStep(ClientCore& core, const Vector3& p, float yaw, float stepSpeed, uint64 cell) {
+		core.zone->getZoneClient()->sendMessage(new ClientDataTransform(core.selectedCharacterOid, walkClockMs(), nextMoveCount(), yaw, p.getX(), p.getY(), p.getZ(), stepSpeed, cell));
 		packets++;
 
 		SceneObject* self = core.zone->getObject(core.selectedCharacterOid);
 		if (self != nullptr) {
 			Locker lock(self);
 			self->setPosition(p.getX(), p.getY(), p.getZ());
+			// keep the client's own parent truthful (the server does not echo our moves back)
+			self->setParent(cell != 0 ? core.zone->getObject(cell) : nullptr);
 		}
+		core.setVar("Walk/cell", cell);
+		core.setVar("Walk/x", p.getX());
+		core.setVar("Walk/y", p.getZ());
 	}
 
 	void run(ClientCore& core) override {
@@ -185,14 +210,29 @@ public:
 			return;
 		}
 
+		while (cells.size() < points.size())
+			cells.add(0);
+
 		float stepLength = speed * intervalMs / 1000.f;
 		Vector3 current = points.get(0);
+		uint64 currentCell = cells.get(0);
 		float yaw = 0.f;
 
 		info() << "walking " << points.size() << " point(s) at " << speed << " m/s, " << stepLength << " m every " << intervalMs << " ms";
 
 		for (int i = 1; i < points.size(); ++i) {
 			const Vector3& target = points.get(i);
+			uint64 targetCell = cells.get(i);
+
+			if (targetCell != currentCell) {
+				// a change of space (door or room boundary): one step straight to the point in its own frame
+				current = target;
+				currentCell = targetCell;
+				sendStep(core, current, yaw, speed, currentCell);
+				Thread::sleep(intervalMs);
+				continue;
+			}
+
 			float length = planar(current, target);
 			if (length < 0.01f)
 				continue;
@@ -204,7 +244,7 @@ public:
 				Vector3 next(current.getX() + (target.getX() - current.getX()) * t,
 				             current.getY() + (target.getY() - current.getY()) * t,
 				             current.getZ() + (target.getZ() - current.getZ()) * t);
-				sendStep(core, next, yaw, speed);
+				sendStep(core, next, yaw, speed, currentCell);
 				walked += planar(current, next);
 				current = next;
 				length = planar(current, target);
@@ -219,12 +259,12 @@ public:
 			// the leg's end point itself
 			walked += planar(current, target);
 			current = target;
-			sendStep(core, current, yaw, speed);
+			sendStep(core, current, yaw, speed, currentCell);
 			Thread::sleep(intervalMs);
 		}
 
 		// come to a stop where we are
-		sendStep(core, current, yaw, 0.f);
+		sendStep(core, current, yaw, 0.f, currentCell);
 		Thread::sleep(intervalMs);
 
 		info() << "walked " << walked << " m in " << packets << " packet(s), now at " << current.getX() << ", " << current.getZ();
@@ -248,6 +288,7 @@ public:
 			const Vector3& last = points.get(points.size() - 1);
 			json["endX"] = last.getX();
 			json["endY"] = last.getZ();
+			json["endCell"] = cells.size() == points.size() ? cells.get(points.size() - 1) : (uint64) 0;
 		}
 		if (skipped) {
 			json["status"] = "skipped";
@@ -262,7 +303,7 @@ public:
 	}
 
 	String getHelpText() const override {
-		return "--walk-points \"x,z,y;x,z,y;…\" [--walk-speed <m/s>] [--walk-interval <ms>]  Walk a route with real movement packets (route from FbLabTests:pathTo)";
+		return "--walk-points \"x,z,y[,cell];x,z,y[,cell];…\" [--walk-speed <m/s>] [--walk-interval <ms>]  Walk a route with real movement packets (route from FbLabTests:pathTo; a cell oid makes the point indoor, cell-local)";
 	}
 
 	static ActionBase* factory() { return new WalkAction(); }

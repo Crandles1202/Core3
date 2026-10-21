@@ -19,8 +19,10 @@ Per-citizen files:
   ~/.swg-lab/citizens/<citizen>/log.jsonl  every decision with the model's usage, for the cost dial
 
 Runtime: the Anthropic Python SDK with an API key from the environment (ANTHROPIC_API_KEY — Chuck's Max
-plan credits through a Console workspace). --dry runs a scripted decider instead (no model, no key) so the
-loop, the seat and the files can be exercised in the lab.
+plan credits through a Console workspace; read from ~/.env when the environment lacks it). The SDK lives in
+the venv ~/.swg-lab/venv (python3 -m venv ~/.swg-lab/venv && ~/.swg-lab/venv/bin/pip install anthropic);
+the pilot re-executes itself there when the system python has no `anthropic`. --dry runs a scripted decider
+instead (no model, no key) so the loop, the seat and the files can be exercised in the lab.
 """
 import argparse
 import importlib.machinery
@@ -37,10 +39,37 @@ TOOLS = os.path.dirname(HERE)
 LABDIR = os.environ.get("SWG_LABDIR", os.path.expanduser("~/.swg-lab"))
 CAST_DIR = os.path.join(HERE, "cast")
 
+VENV_PYTHON = os.path.join(LABDIR, "venv", "bin", "python")
+ENV_FILE = os.path.expanduser("~/.env")
+
 DEFAULT_MODEL = "claude-haiku-5-5"   # Chuck 2026-10-20: cheapest by default; a persona may set "model:" in its ## Character section
 DEFAULT_EFFORT = "low"        # a game character's next move is a chat-sized decision
 MAX_ROUNDS_PER_WAKE = 6       # tool rounds the model may take before the wake ends
 MAX_TOKENS = 2048
+
+
+def ensure_runtime(dry):
+    """A model run needs the SDK (from the lab venv) and the key (from the environment or ~/.env)."""
+    if dry:
+        return
+    if "ANTHROPIC_API_KEY" not in os.environ and os.path.exists(ENV_FILE):
+        with open(ENV_FILE) as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("export "):
+                    line = line[7:]
+                if line.startswith("ANTHROPIC_API_KEY=") :
+                    os.environ["ANTHROPIC_API_KEY"] = line.split("=", 1)[1].strip().strip('"').strip("'")
+    if "ANTHROPIC_API_KEY" not in os.environ:
+        sys.exit("pilot: no ANTHROPIC_API_KEY in the environment or ~/.env (Chuck's Console key); use --dry for the scripted decider")
+    try:
+        import anthropic  # noqa: F401
+    except ImportError:
+        # (compare prefixes, not executables: the venv's python is a symlink to the system one)
+        in_venv = os.path.abspath(sys.prefix) == os.path.abspath(os.path.dirname(os.path.dirname(VENV_PYTHON)))
+        if os.path.exists(VENV_PYTHON) and not in_venv:
+            os.execv(VENV_PYTHON, [VENV_PYTHON] + sys.argv)
+        sys.exit(f"pilot: the anthropic SDK is not installed (python3 -m venv {os.path.dirname(os.path.dirname(VENV_PYTHON))} && {os.path.dirname(VENV_PYTHON)}/pip install anthropic)")
 
 
 def load_seat_module():
@@ -180,8 +209,10 @@ class Senses:
                 if d < 40:
                     near.append({"oid": o["oid"], "name": o["name"], "player": o["type"] == 0x409, "distance": round(d, 1)})
             near.sort(key=lambda n: n["distance"])
+        planet = self.seat.request({"op": "vars", "path": "/Scene/terrain"}).get("vars")
         return {
             "character": ping.get("character"),
+            "planet": planet if isinstance(planet, str) else None,
             "position": {"x": round(me["x"], 1), "y": round(me["y"], 1)} if me else None,
             "heard": chat[-12:],
             "tells": tells[-12:],
@@ -190,7 +221,7 @@ class Senses:
         }
 
 
-def seat_tools(seat, files, character_name):
+def seat_tools(seat, files, character_name, seat_name):
     """The pilot's tools: thin wrappers over seat primitives and the citizen's files."""
 
     def say(text):
@@ -211,10 +242,16 @@ def seat_tools(seat, files, character_name):
 
     def walk_to(x, y):
         seat_mod = load_seat_module()
-        points = seat_mod.path_from_server(character_name, float(x), float(y))
-        if not points:
-            return {"ok": False, "error": "no path there"}
-        return seat.action("walk", points=points, speed=4.5)
+        return seat_mod.walk_seat(seat, character_name, float(x), float(y))
+
+    def travel_to(planet, point):
+        seat_mod = load_seat_module()
+        reply = seat_mod.travel_seat(seat, seat_name, planet, point)
+        if reply.get("ok"):
+            arrived = reply.get("arrived") or {}
+            return {"ok": True, "planet": arrived.get("zone", planet), "x": arrived.get("x"), "y": arrived.get("y"),
+                    "departure": reply.get("departure"), "waitedS": reply.get("waitedS")}
+        return {"ok": False, "error": reply.get("error"), "step": reply.get("step")}
 
     def remember(note):
         files.remember(note)
@@ -233,7 +270,7 @@ def seat_tools(seat, files, character_name):
         return {"ok": True, "rest": max(30, min(int(seconds), 1800))}
 
     impl = {
-        "say": say, "tell": tell, "emote": emote, "walk_to": walk_to,
+        "say": say, "tell": tell, "emote": emote, "walk_to": walk_to, "travel_to": travel_to,
         "remember": remember, "complete_milestone": complete_milestone, "change_plan": change_plan, "rest": rest,
     }
     schema = [
@@ -245,6 +282,8 @@ def seat_tools(seat, files, character_name):
          "input_schema": {"type": "object", "properties": {"name": {"type": "string"}, "target": {"type": "integer"}}, "required": ["name", "target"], "additionalProperties": False}, "strict": True},
         {"name": "walk_to", "description": "Walk to a world position on this planet (takes real time: 4.5 m/s).",
          "input_schema": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "required": ["x", "y"], "additionalProperties": False}, "strict": True},
+        {"name": "travel_to", "description": "Take the shuttle to a travel point: walk to the nearest terminal, buy a ticket (a few hundred credits), board when the shuttle lands. Points are named like Mos_Eisley_Starport, Coronet_Starport, Theed_Starport, Bestine_Shuttleport; another planet needs a starport on both ends. Takes minutes.",
+         "input_schema": {"type": "object", "properties": {"planet": {"type": "string"}, "point": {"type": "string"}}, "required": ["planet", "point"], "additionalProperties": False}, "strict": True},
         {"name": "remember", "description": "Write a note into your long-term memory (people met, promises, what happened).",
          "input_schema": {"type": "object", "properties": {"note": {"type": "string"}}, "required": ["note"], "additionalProperties": False}, "strict": True},
         {"name": "complete_milestone", "description": "Tick a milestone of your life plan, quoting its text exactly.",
@@ -337,6 +376,7 @@ class DryDecider:
 def run(args):
     files = CitizenFiles(args.citizen)
     persona = files.persona()
+    ensure_runtime(args.dry)
     seat_mod = load_seat_module()
     seat_name = args.seat or files.state().get("seat") or args.citizen
     seat = seat_mod.Seat(seat_name, timeout=60)
@@ -345,7 +385,7 @@ def run(args):
     state = files.state()
     state["seat"] = seat_name
     senses = Senses(seat, state)
-    impl, schema = seat_tools(seat, files, character)
+    impl, schema = seat_tools(seat, files, character, seat_name)
 
     def run_tool(name, inputs):
         fn = impl.get(name)

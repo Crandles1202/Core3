@@ -268,7 +268,21 @@ void ZonePacketHandler::handleCmdStartScene(Message* pack) {
 		return;
 	}
 
-	info(true) << "Scene Starting for character OID: " << selfPlayerObjectID;
+	info(true) << "Scene Starting for character OID: " << selfPlayerObjectID << " on " << terrain << " at " << x << ", " << y;
+
+	// A second CmdStartScene is a zone switch (shuttle, teleport to another planet): the server destroyed
+	// us from the old world and sends the new one from scratch, so forget every object of the old scene.
+	int sceneCount = core->getVar<int>("Scene/count", 0) + 1;
+	if (sceneCount > 1) {
+		ObjectManager* objectManager = zone->getObjectManager();
+		if (objectManager != nullptr)
+			objectManager->clear();
+	}
+	core->setVar("Scene/count", sceneCount);
+	core->setVar("Scene/terrain", terrain);
+	core->setVar("Scene/x", x);
+	core->setVar("Scene/y", y);
+	core->setVar("Scene/z", z);
 
 	BaseMessage* msg = new CmdSceneReady();
 	client->sendPacket(msg);
@@ -615,6 +629,7 @@ void ZonePacketHandler::sendTeleportAck(BaseClient* client, uint64 objectID, uin
 void ZonePacketHandler::handleCmdSceneReady(Message* pack) {
 	info(true) << __FUNCTION__;
 
+	core->setVar("Scene/readyCount", core->getVar<int>("Scene/readyCount", 0) + 1);
 	zone->setSceneReady();
 
 	// the login counts as a teleport (SelectCharacterCallback sets teleporting): ack it or we can never move
