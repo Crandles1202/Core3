@@ -74,6 +74,7 @@ class ConverseAction : public ActionBase {
 		screensSeen++;
 		info() << "screen " << screensSeen << ": " << core.getVar("Conversation/message", String("<no text>"));
 		int count = core.getVar<int>("Conversation/optionCount", 0);
+		if (count < 0) count = 0;   // the option list never came (a screen that closes at once)
 		for (int i = 0; i < count; ++i) {
 			info() << "   [" << i << "] " << core.getVar("Conversation/options/" + String::valueOf(i), String(""));
 		}
@@ -163,8 +164,9 @@ public:
 			result.setError("NPC " + String::valueOf(npc) + " did not start a conversation within " + String::valueOf(timeoutSeconds) + "s (out of range? not conversable?)", 3);
 			return;
 		}
-		// options usually trail the start packet by a few ms
-		Thread::sleep(300);
+		// waitForScreen returned on the option list (optionCount left -1 by the start packet until the StringList
+		// lands) or on the close; a short pause lets the message text settle too
+		Thread::sleep(100);
 		logScreen(core);
 
 		for (int i = 0; i < options.size(); ++i) {
@@ -175,6 +177,7 @@ public:
 
 			int pick = options.get(i);
 			int count = core.getVar<int>("Conversation/optionCount", 0);
+			if (count < 0) count = 0;
 			if (pick < 0 || pick >= count) {
 				result.setError("Option " + String::valueOf(pick) + " out of range (screen has " + String::valueOf(count) + ")", 5);
 				return;

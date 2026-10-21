@@ -979,3 +979,8 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 - Scenarios share one character within the hour (the server's one-creation-per-hour rule): a scenario that
   sets the cash (`cashSet`) must put it back, or the purchase scenarios after it fail with `no_credits`.
 - `rebase` conflicts in CLAUDE.md / BOARD.md / dev-notes.md between two agents' lanes: keep both sides.
+- **Bot client conversation race.** `StartNpcConversation` (0xDD) arrives first, the option list (`StringList`
+  0xE0) on its own packet a little later; `ConverseAction` waited a fixed 300 ms and then read 0 options on a
+  slow server (`Option 0 out of range (screen has 0)`, intermittent across the gate: riddle, prisoner, sacrifice).
+  The start packet now leaves `Conversation/optionCount` at -1 and the action waits for the list or the close.
+  Not a server-side recognition failure, which is what three rounds of visitor fixes assumed.

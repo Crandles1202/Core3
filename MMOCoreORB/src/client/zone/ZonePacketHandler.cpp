@@ -528,7 +528,10 @@ void ZonePacketHandler::handleObjectControllerMessage(Message* pack) {
 
 			core->setVar("Conversation/npc", npcID);
 			core->setVar("Conversation/active", true);
-			core->setVar("Conversation/optionCount", 0);
+			// -1 = not known yet: the StringList with the options follows on its own packet, and under load it can
+			// trail the start by more than the 300 ms ConverseAction used to allow ("Option 0 out of range (screen
+			// has 0)" in the trials gate, 2026-10-21). ConverseAction waits for it (or for the close).
+			core->setVar("Conversation/optionCount", -1);
 			core->vars[JSONSerializationType::json_pointer("/Conversation/options")] = JSONSerializationType::array();
 
 			info(true) << "StartNpcConversation npc=" << npcID << " starter=" << (int) starter;
