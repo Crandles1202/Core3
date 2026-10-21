@@ -84,7 +84,7 @@ check "word_insight" "$(grep -q 'current=insight' <<<"$T" && echo 1 || echo 0)" 
 RIDDLE=$(sed -n 's/.*riddle=\([1-3]\).*/\1/p' <<<"$T" | head -n1)
 # reaching the far shrine was itself a trigger, so the word (and often the spirit) may already have come
 lab "trialTick:$CHAR" >/dev/null
-sleep 14
+sleep 35
 SPIRIT=$(shrine_oid_of fb_trial_spirit)
 check "spirit_stands" "$( [ -n "$SPIRIT" ] && echo 1 || echo 0 )"
 lab "gotoNpc:$CHAR:fb_trial_spirit" >/dev/null
@@ -98,20 +98,21 @@ check "insight_done" "$(grep -q 'done=stillness,restraint,strength,mercy,farwalk
 
 # --- 7 sacrifice: the spirit again; 10 000 credits change hands -----------------------------------------------------
 sleep 8
-bot_bg --wait 60
+bot_bg --wait 80
 wait_online || die "$CHAR never came back online"
 lab "cashSet:$CHAR:12000" >/dev/null
 T=$(lab "trialTick:$CHAR")
 check "word_sacrifice" "$(grep -q 'current=sacrifice' <<<"$T" && echo 1 || echo 0)" "$T"
 T=$(lab "trialTick:$CHAR")
 check "spirit_sent_again" "$(grep -q 'sent=true' <<<"$T" && echo 1 || echo 0)" "$T"
-sleep 14
+sleep 35                                         # arrive (or settle at 30 s) before the character leaves
 SPIRIT=$(shrine_oid_of fb_trial_spirit)
 lab "gotoNpc:$CHAR:fb_trial_spirit" >/dev/null
+SP_BEFORE=$(lab "objectPos:$SPIRIT" | sed 's/.*zone=/zone=/' | cut -c1-70)
 wait "$BOT_PID"
 sleep 8
 bot --wait 4 --converse "$SPIRIT" --options 0 --wait 3 >/dev/null 2>&1 || true
-check_eq "sacrifice_converse_ok" "$(bot_action_status converse)" "ok"
+check_eq "sacrifice_converse_ok" "$(bot_action_status converse)" "ok" "spirit before: $SP_BEFORE; $(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tail -n1); spirit: $(lab "objectPos:$SPIRIT" | sed 's/.*zone=/zone=/' | cut -c1-70); char: $(lab "where:$CHAR" | sed 's/.*zone=/zone=/' | cut -c1-60)"
 T=$(lab "trials:$CHAR")
 check "sacrifice_done_and_paid" "$(grep -q 'done=stillness,restraint,strength,mercy,farwalk,insight,sacrifice' <<<"$T" && grep -q 'cash=2000' <<<"$T" && echo 1 || echo 0)" "$T"
 
