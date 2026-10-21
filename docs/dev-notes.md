@@ -996,4 +996,5 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   held the manager. `JediManager.cpp` now runs `custom_scripts/managers/jedi/fb_jedi_hooks.lua` after the stock
   files; Jedi-manager wrappers live there (Phase 4b will add more).
 - Bot client sessions log `handleNetStatusRequest … StreamIndexOutOfBoundsException at 8` every 5 s in core3.log
-  (not the console): the client's NetStatusRequest packet is short. Alice's lane (the client); harmless so far.
+  (not the console): the client's 4-byte NetStatusRequestMessage and the server's handler are both engine3 (the
+  submodule), so there is no Core3 fix; known noise (alice, CLAUDE.md).
