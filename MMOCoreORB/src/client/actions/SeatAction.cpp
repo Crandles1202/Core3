@@ -46,7 +46,6 @@
 #include <errno.h>
 #include <string.h>
 #include <string>
-#include <thread>
 #include <mutex>
 #include <atomic>
 #include <vector>
@@ -64,11 +63,27 @@ class SeatAction : public ActionBase {
 
 	// every driver gets its own thread (a pilot holds its connection for life and spends most of it in 30 s waits;
 	// with one driver at a time every other seat command queued behind it until it timed out): requests other than
-	// wait are serialized by handleLock, a wait blocks only on the zone's condition
+	// wait are serialized by handleLock, a wait blocks only on the zone's condition.
+	// The threads are engine3 Threads, never std::thread: engine3's Locker skips the lock when the holder equals
+	// Thread::getCurrentThread(), and on a foreign thread both are null — a std::thread driver left the zone mutex
+	// locked after Zone::waitFor and the client deadlocked at shutdown.
+	class DriverThread : public Thread {
+		SeatAction* seat;
+		ClientCore* core;
+		int fd;
+
+	public:
+		DriverThread(SeatAction* seat, ClientCore* core, int fd) : Thread("SeatDriver"), seat(seat), core(core), fd(fd) {}
+
+		void run() override {
+			seat->driver(*core, fd);
+		}
+	};
+
 	std::mutex handleLock;
 	std::mutex driversLock;
 	std::set<int> driverFds;
-	std::vector<std::thread> driverThreads;
+	std::vector<DriverThread*> driverThreads;
 	std::atomic<bool> stopping;
 
 public:
@@ -267,6 +282,19 @@ public:
 		return reply;
 	}
 
+	// One driver's thread: serve it, close it, and stop the seat when it asked for quit.
+	void driver(ClientCore& core, int fd) {
+		bool done = serve(core, fd);
+		::close(fd);
+		{
+			std::lock_guard<std::mutex> guard(driversLock);
+			driverFds.erase(fd);
+			info(true) << "driver disconnected (" << (int) driverFds.size() << " left)";
+		}
+		if (done)
+			stopping = true;
+	}
+
 	// Serve one driver connection. Returns true when the seat should end (quit, timeout, zone lost).
 	bool serve(ClientCore& core, int fd) {
 		std::string buffer;
@@ -349,6 +377,12 @@ public:
 			return;
 		}
 
+		struct sockaddr_un addr;
+		if ((size_t) socketPath.length() >= sizeof(addr.sun_path)) {
+			result.setError(String("--seat path longer than ") + String::valueOf((int) sizeof(addr.sun_path) - 1) + " bytes: " + socketPath, 2);
+			return;
+		}
+
 		int listenFd = ::socket(AF_UNIX, SOCK_STREAM, 0);
 		if (listenFd < 0) {
 			result.setError(String("socket(): ") + strerror(errno), 3);
@@ -357,7 +391,6 @@ public:
 
 		::unlink(socketPath.toCharArray());
 
-		struct sockaddr_un addr;
 		memset(&addr, 0, sizeof(addr));
 		addr.sun_family = AF_UNIX;
 		strncpy(addr.sun_path, socketPath.toCharArray(), sizeof(addr.sun_path) - 1);
@@ -408,17 +441,9 @@ public:
 			std::lock_guard<std::mutex> guard(driversLock);
 			driverFds.insert(fd);
 			info(true) << "driver connected (" << (int) driverFds.size() << " now)";
-			driverThreads.emplace_back([this, &core, fd]() {
-				bool done = serve(core, fd);
-				::close(fd);
-				{
-					std::lock_guard<std::mutex> guard(driversLock);
-					driverFds.erase(fd);
-					info(true) << "driver disconnected (" << (int) driverFds.size() << " left)";
-				}
-				if (done)
-					stopping = true;
-			});
+			DriverThread* t = new DriverThread(this, &core, fd);
+			driverThreads.push_back(t);
+			t->start();
 		}
 
 		stopping = true;
@@ -431,8 +456,11 @@ public:
 			for (int fd : driverFds)
 				::shutdown(fd, SHUT_RDWR);
 		}
-		for (std::thread& t : driverThreads)
-			t.join();
+		for (DriverThread* t : driverThreads) {
+			t->join();
+			delete t;
+		}
+		driverThreads.clear();
 
 		if (!failed)
 			result.setSuccess();
