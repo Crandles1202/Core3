@@ -17,6 +17,7 @@ lab "attunementSit:$CHAR:stand" >/dev/null
 sleep 4
 lab "attunementReset:$CHAR" >/dev/null
 lab "attunementFlag:$CHAR:padawan:1" >/dev/null
+lab "skill:$CHAR:force_title_jedi_novice" >/dev/null       # the Padawan box itself: the enclave's cells admit it, a flag alone is ejected at the door
 lab "attunementFlag:$CHAR:alignment:dark" >/dev/null
 check_eq "dark_padawan_screen" "$(lab "jediMaster:$CHAR" | sed -n 's/.*screen=\([a-z_]*\).*/\1/p')" "dark" "$(lab "jediMaster:$CHAR" | tail -n1)"
 # --- B: the light Padawan is taken: council, novice box, first task ----------------------------------------------

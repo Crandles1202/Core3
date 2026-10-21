@@ -969,6 +969,9 @@ function FbLabTests:skill(charName, skillName)
 	local pPlayer = onlinePlayer(charName)
 	if pPlayer == nil then return "offline" end
 	awardSkill(pPlayer, skillName)
+	-- a box with prerequisites the character lacks (the Jedi titles want the Jedi state, the rank boxes a Knight):
+	-- the lab wants the box, not the path to it
+	if not CreatureObject(pPlayer):hasSkill(skillName) and awardSkillUnchecked ~= nil then awardSkillUnchecked(pPlayer, skillName) end
 	print("INFO skill char=" .. charName .. " awarded=" .. skillName .. " has=" .. tostring(CreatureObject(pPlayer):hasSkill(skillName)))
 	return tostring(CreatureObject(pPlayer):hasSkill(skillName))
 end
