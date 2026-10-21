@@ -49,6 +49,11 @@ bool EnclaveContainerComponent::checkBuildingPermission(SceneObject* sceneObject
 	if (ghost->hasGodMode())
 		return true;
 
+	// Final Boss (Phase 4b.1): the doors open to anyone on the path — the Padawan box from the trials admits a
+	// character to either enclave (the Masters sort light from dark inside). Stock admits council members only.
+	if (creature->hasSkill("force_title_jedi_novice"))
+		return true;
+
 	int enclaveType = 0;
 
 	if (sceneObject->getServerObjectCRC() == STRING_HASHCODE("object/building/yavin/light_enclave.iff"))
@@ -106,7 +111,9 @@ bool EnclaveContainerComponent::checkCellPermission(SceneObject* sceneObject, Cr
 	if (frsData == nullptr)
 		return false;
 
-	if (frsData->getCouncilType() != enclaveType)
+	// Final Boss (Phase 4b.1): a character with the Padawan box may walk the common cells of either enclave before it
+	// belongs to a council; the tier rooms keep their rank groups below
+	if (frsData->getCouncilType() != enclaveType && !creature->hasSkill("force_title_jedi_novice"))
 		return false;
 
 	SortedVector<String>* groups = ghost->getPermissionGroups();

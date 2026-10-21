@@ -165,6 +165,17 @@ void FrsManagerImplementation::loadLuaConfig() {
 
 	auto zoneServer = this->zoneServer.get();
 
+	// Final Boss: custom overrides after the stock frs_manager.lua (Phase 4b.1 turns the FRS politics off:
+	// frsEnabled = 0 — no voting, no rank maintenance, no forced Rebel/Imperial overt faction at login; the
+	// rank boxes stay as the Jedi ladder, handed out by the Masters through awardSkillUnchecked)
+	{
+		const char* hooks = "scripts/custom_scripts/managers/jedi/fb_frs_hooks.lua";
+		if (FILE* f = fopen(hooks, "r")) {
+			fclose(f);
+			lua->runFile(hooks);
+		}
+	}
+
 	frsEnabled = lua->getGlobalInt("frsEnabled");
 	petitionInterval = lua->getGlobalLong("petitionInterval");
 	votingInterval = lua->getGlobalLong("votingInterval");

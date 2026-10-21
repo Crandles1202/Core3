@@ -78,7 +78,9 @@ public:
 	void addDroidCommands(PlayerObject* ghost, const Vector<String>& abilityNames, bool notifyClient = true);
 	void removeDroidCommands(PlayerObject* ghost);
 
-	bool awardSkill(const String& skillName, CreatureObject* creature, bool notifyClient = true, bool awardRequiredSkills = false, bool noXpRequired = false);
+	// ignorePrerequisites (Final Boss, Phase 4b.1): grant a box whose required skills / Jedi state the character lacks —
+	// the FRS rank boxes are the visible Jedi ladder here and are given by a Master, not earned as a Knight
+	bool awardSkill(const String& skillName, CreatureObject* creature, bool notifyClient = true, bool awardRequiredSkills = false, bool noXpRequired = false, bool ignorePrerequisites = false);
 	void awardDraftSchematics(Skill* skill, PlayerObject* ghost, bool notifyClient = true);
 
 	bool surrenderSkill(const String& skillName, CreatureObject* creature, bool notifyClient = true, bool verifyFrs = true, bool allowPilot = false);
@@ -92,7 +94,7 @@ public:
 	 * grant skill command).
 	 * @return true if the player fulfills the requirements.
 	 */
-	bool canLearnSkill(const String& skillName, CreatureObject* creature, bool noXpRequired);
+	bool canLearnSkill(const String& skillName, CreatureObject* creature, bool noXpRequired, bool ignorePrerequisites = false);
 
 	/**
 	 * Checks if the player fulfills the skill prerequisites and has enough XP for the skill.

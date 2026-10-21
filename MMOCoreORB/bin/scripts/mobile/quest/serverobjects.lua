@@ -887,6 +887,7 @@ includeFile("quest/tatooine/fb_vision_kenobi.lua")   -- Phase 4a.4
 includeFile("quest/tatooine/fb_vision_luke.lua")   -- Phase 4a.4
 includeFile("quest/tatooine/fb_vision_vader.lua")   -- Phase 4a.4
 includeFile("quest/tatooine/fb_vision_exar_kun.lua")   -- Phase 4a.4
+includeFile("quest/tatooine/fb_jedi_master.lua")   -- Phase 4b.1
 includeFile("quest/tatooine/fb_smuggler_goods.lua")
 includeFile("quest/tatooine/fb_schematic_broker.lua")   -- Phase 2.2
 includeFile("quest/tatooine/fb_parts_dealer.lua")   -- Phase 2.3
