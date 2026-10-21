@@ -982,5 +982,9 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 - **Bot client conversation race.** `StartNpcConversation` (0xDD) arrives first, the option list (`StringList`
   0xE0) on its own packet a little later; `ConverseAction` waited a fixed 300 ms and then read 0 options on a
   slow server (`Option 0 out of range (screen has 0)`, intermittent across the gate: riddle, prisoner, sacrifice).
-  The start packet now leaves `Conversation/optionCount` at -1 and the action waits for the list or the close.
-  Not a server-side recognition failure, which is what three rounds of visitor fixes assumed.
+  Worse, the client can process the screen (message + `StringList`) *before* the `StartNpcConversation` packet,
+  so a start handler that resets the options wipes a list already received (the first fix did, and every
+  conversation then timed out). Now `ConverseAction` clears the conversation state and sets `optionCount = -1`
+  before it asks, the start packet only marks the conversation active, and the action waits for the list (or the
+  close) and then for the start. Not a server-side recognition failure, which is what three rounds of visitor
+  fixes assumed.
