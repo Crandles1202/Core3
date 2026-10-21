@@ -87,10 +87,12 @@ def now_iso():
 
 # ------------------------------------------------------------------ the citizen's files
 class CitizenFiles:
-    def __init__(self, name):
+    def __init__(self, name, home=None):
         self.name = name
         self.persona_path = os.path.join(CAST_DIR, f"{name}.md")
-        self.dir = os.path.join(LABDIR, "citizens", name)
+        # the live state lives in ~/.swg-lab/citizens/<name>; a scenario passes its own --home so a test wake as a
+        # persona never touches (or deletes) the real citizen's memory and plan
+        self.dir = home or os.path.join(LABDIR, "citizens", name)
         os.makedirs(self.dir, exist_ok=True)
         self.plan_path = os.path.join(self.dir, "plan.md")
         self.memory_path = os.path.join(self.dir, "memory.md")
@@ -591,7 +593,7 @@ class DryDecider:
 
 # ------------------------------------------------------------------ the loop
 def run(args):
-    files = CitizenFiles(args.citizen)
+    files = CitizenFiles(args.citizen, args.home)
     persona = files.persona()
     ensure_runtime(args.dry)
     seat_mod = load_seat_module()
@@ -664,6 +666,7 @@ def main():
     r = sub.add_parser("run")
     r.add_argument("citizen")
     r.add_argument("--seat")
+    r.add_argument("--home", default=None, help="state directory (default ~/.swg-lab/citizens/<citizen>; scenarios use their own)")
     r.add_argument("--model", default=None, help=f"model id (default: the persona's model:, else {DEFAULT_MODEL})")
     r.add_argument("--effort", default=DEFAULT_EFFORT, choices=["low", "medium", "high"])
     r.add_argument("--idle", type=int, default=300, help="seconds between wakes when nothing happens")
