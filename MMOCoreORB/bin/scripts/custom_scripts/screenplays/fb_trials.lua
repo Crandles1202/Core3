@@ -378,10 +378,18 @@ local function settleBeside(pPlayer, spawned)
 	for _, pNpc in ipairs(spawned or {}) do
 		if SpawnMobiles.isValidMobile(pNpc) and ps:getZoneName() ~= "" and ps:getParentID() == 0 then
 			local so = SceneObject(pNpc)
-			local dx, dy = so:getWorldPositionX() - ps:getWorldPositionX(), so:getWorldPositionY() - ps:getWorldPositionY()
-			if math.sqrt(dx * dx + dy * dy) > 6 then
-				local x, y = ps:getWorldPositionX() + 2, ps:getWorldPositionY() + 2
-				so:teleport(x, getTerrainHeightAt(ps:getZoneName(), x, y), y, 0)
+			local px, py = ps:getWorldPositionX(), ps:getWorldPositionY()
+			local dx, dy = so:getWorldPositionX() - px, so:getWorldPositionY() - py
+			local d = math.sqrt(dx * dx + dy * dy)
+			-- a follower stops ~6 m out, past the 5 m conversation rule: bring it to 2.5 m on the same bearing.
+			-- switchZone, not teleport: SceneObject:teleport left an agent where it was (probe 2026-10-21)
+			if d > 4 then
+				local f = 2.5 / math.max(d, 0.1)
+				local x, y = px + dx * f, py + dy * f
+				local z = getTerrainHeightAt(ps:getZoneName(), x, y)
+				so:switchZone(ps:getZoneName(), x, z, y, 0)
+				AiAgent(pNpc):setHomeLocation(x, z, y, nil)
+				printf("FbTrials: %s moved beside %s (was %.1f m out)\n", so:getObjectName() ~= "" and so:getObjectName() or tostring(so:getObjectID()), CreatureObject(pPlayer):getFirstName(), d)
 			end
 		end
 	end
