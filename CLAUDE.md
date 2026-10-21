@@ -314,6 +314,10 @@ Persisted object fields (`containerVolumeLimit`, …) are only read from the tem
   scenarios park characters; `swg test all` and `lib.sh` clear the sky first. A CommandQueueRemove with `error=1
   state=N` names the *locomotion* that refused the command (20 = dead, 19 = incapacitated, 14 = sitting). A scenario's
   `trap - EXIT` before `finish` skips its cleanup on success: call `cleanup` explicitly.
+- **Which `tools/swg` you run is who you are:** the lock identity comes from the `.swg-agent` next to the copy you
+  invoke. `~/workspace/Core3/tools/swg bench use …` from a worktree takes the lock as "bench", and the worktree's own
+  tools (`tools/seat`, `citizen`, the pilot's lab calls) are then refused as "alice" — silently, for anything that reads
+  lab lines. Always run the worktree's `tools/swg` (CLAUDE.md's `tools/swg …` means that one).
 - gtest's `<<` cannot print an engine3 `String`; use `.toCharArray()` in assertion messages.
 - **Threads in engine3 code must be engine3 `Thread`s** (subclass, `run()`, `start()`, `join()`), never `std::thread`:
   `Locker` skips the lock when the lock's holder equals `Thread::getCurrentThread()`, and on a foreign thread both are
