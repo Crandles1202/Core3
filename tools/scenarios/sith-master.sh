@@ -79,6 +79,6 @@ check_eq "prey_paid" "$(( ${XP2:-0} - ${XP1:-0} ))" "5000" "jedi_general $XP1 ->
 M=$(lab "sithMaster:$CHAR" | head -n1)
 check "training_complete" "$(grep -q 'done=patience,prey' <<<"$M" && grep -q 'current=rank1' <<<"$M" && echo 1 || echo 0)" "$M"
 check_eq "ladder_offers_rank1" "$(lab "sithMaster:$CHAR" | sed -n 's/.*screen=\([a-z_0-9]*\).*/\1/p')" "train_rank1"   # 10000 Jedi XP from the two tasks clears the 5000 of rank 1
-check "client_got_second_reward" "$(grep -aq 'fb_force:sith_reward_prey' "$BOTLOG" && echo 1 || echo 0)" "$(grep -a 'sith_reward' "$BOTLOG" | cut -c1-90 | tail -n1)"
+check "client_was_offered_rank1" "$(grep -aq 'option\[0\] I will\.' "$BOTLOG" && echo 1 || echo 0)" "$(grep -a 'option\[' "$BOTLOG" | tail -n2 | cut -c1-80 | tr '\n' ' ')"   # the second talk shows the rank task's screen (its text is a StringId the client does not decode)
 lab "attunementReset:$CHAR" >/dev/null
 finish

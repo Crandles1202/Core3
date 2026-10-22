@@ -51,7 +51,9 @@ lab "trainingSet:$CHAR:rank1:done" >/dev/null
 M=$(lab "jediMaster:$CHAR" | head -n1)
 check "promoted_to_rank1" "$(grep -q 'frsRank=1' <<<"$M" && lab "jediMaster:$CHAR" | grep -q 'current=rank2' && echo 1 || echo 0)" "$M"
 check "rank1_skill_box" "$(grep -q 'rank=true' <<<"$M" && echo 1 || echo 0)" "$M"
-check_eq "rank2_waits_for_xp" "$(lab "jediMaster:$CHAR" | sed -n 's/.*screen=\([a-z_0-9]*\).*/\1/p')" "rank_wait_xp" "15000 Jedi XP wanted; $(lab "xp:$CHAR:jedi_general" | tail -n1)"
+XPJ=$(lab "xp:$CHAR:jedi_general" | sed -n 's/.*amount=\([0-9-]*\).*/\1/p' | head -n1)
+WANT=$( [ "${XPJ:-0}" -ge 15000 ] && echo train_rank2 || echo rank_wait_xp )     # a reused character may already carry the 15000
+check_eq "rank2_gated_on_xp" "$(lab "jediMaster:$CHAR" | sed -n 's/.*screen=\([a-z_0-9]*\).*/\1/p')" "$WANT" "jedi_general=$XPJ"
 wait "$BOT_PID"
 check "client_got_promoted" "$(grep -aq 'fb_force:master_promoted' "$BOTLOG" && echo 1 || echo 0)" "$(grep -a 'promoted\|rank1_done' "$BOTLOG" | cut -c1-90 | tail -n1)"
 

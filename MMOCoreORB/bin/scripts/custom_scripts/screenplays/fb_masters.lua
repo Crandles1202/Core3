@@ -189,9 +189,11 @@ function FbMasterBase:turn(pPlayer)
 	if oldSide == nil or oldSide == self.side then return false end
 	local old = nil
 	for _, m in ipairs(FbMasters) do if m.side == oldSide then old = m end end
-	for rank = 0, 11 do
+	-- removeSkill, highest first: surrenderSkill refuses a box whose children are held and any force_ box the
+	-- Village manager would keep (the FrsManager removes its rank boxes the same way)
+	for rank = 11, 0, -1 do
 		local box = rank == 0 and ("force_rank_" .. oldSide .. "_novice") or (old ~= nil and old:rankSkillFor(rank) or nil)
-		if box ~= nil and CreatureObject(pPlayer):hasSkill(box) then CreatureObject(pPlayer):surrenderSkill(box) end
+		if box ~= nil and CreatureObject(pPlayer):hasSkill(box) then CreatureObject(pPlayer):removeSkill(box) end
 	end
 	if old ~= nil then old:reset(pPlayer) end
 	self:reset(pPlayer)
