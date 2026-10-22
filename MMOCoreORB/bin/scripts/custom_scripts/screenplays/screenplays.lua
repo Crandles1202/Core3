@@ -6,4 +6,7 @@ includeFile("../custom_scripts/screenplays/fb_lab_remote.lua")   -- Phase 2.12: 
 includeFile("../custom_scripts/screenplays/fb_site_builder.lua")  -- Phase 2.12b: architect mode on the remote
 includeFile("../custom_scripts/screenplays/fb_attunement.lua")   -- Phase 4a.1: Force attunement, ghosts, the Old Man
 includeFile("../custom_scripts/screenplays/fb_trials.lua")       -- Phase 4a.3: the Padawan trials
+includeFile("../custom_scripts/screenplays/fb_visions.lua")      -- Phase 4a.4: Force visions at the milestones
+includeFile("../custom_scripts/screenplays/fb_alignment.lua")    -- Phase 4b.3: the alignment score
+includeFile("../custom_scripts/screenplays/fb_masters.lua")      -- Phase 4b.1/4b.2: the Jedi and Sith Masters in the Yavin 4 enclaves
 includeFile("../custom_scripts/screenplays/fb_player_login.lua")   -- wraps PlayerTriggers:playerLoggedIn

@@ -1044,3 +1044,70 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 - Bot client sessions log `handleNetStatusRequest … StreamIndexOutOfBoundsException at 8` every 5 s in core3.log
   (not the console): the client's 4-byte NetStatusRequestMessage and the server's handler are both engine3 (the
   submodule), so there is no Core3 fix; known noise (alice, CLAUDE.md).
+
+### 2026-10-21 — 4a.4 visions
+
+- **A private place without instancing:** the `dungeon1` zone is a flat plane at z = 0 (its `.trn` is under 1 KB)
+  holding the Corellian Corvette instances at x 1250–2700, y 600–1900 and nothing else; `switchZone("dungeon1",
+  x, 0, y, 0)` puts a character there and back. `FbVisions` uses a row of slots at (−1500 + 80·(oid mod 12),
+  −1500): dreamers never see each other. `lotsurvey near dungeon1` finds nothing (no snapshot); `objectsNear`
+  on the live server is what listed the ships.
+- Canon figures with real models in this client: `darth_vader.iff`, `dressed_luke_skywalker.iff`; Obi-Wan uses
+  the old Jedi trainer, Exar Kun a dark Jedi. No Yoda, no Emperor (only his Hands and herald).
+- A vision holds the shared `FbAttunement.visit.<oid>` slot while it runs so a visitor and a vision never
+  overlap; the lab's shortcuts (`attunementAccept`, `trialsUnlock`) mark every vision seen, or the
+  attunement / shrines / trials scenarios' trigger order would change under them.
+- **`writeData` / `readData` hold numbers only** (uint64): a string written there reads back as 0 without any
+  error. The visions' cast went that way and every vision ended at once. Strings go into screenplay data
+  (`writeScreenPlayData`) or quest status. An event scheduled with an object pointer (`createEvent(ms, play,
+  fn, pObj, "")`) panics the Lua state if the object is gone by then: pass the oid as the string argument and
+  `getSceneObject` it.
+
+### 2026-10-21 — 4b.1 the Jedi Master
+
+- **Stock enclave facts.** Light Jedi Enclave = snapshot building `8525417` at (−5513.7, 4911.8, h 270), entrance
+  at (−5575, 4910); 27 cells (`lotsurvey cells yavin4 -5575 4910`, `rooms object/building/yavin/shared_light_enclave.iff`),
+  the training room (cell 24) is flat at −24.1 with no furniture, the lobby (22) is a ramp, the auditorium's
+  centre is a throne. Snapshot cell ids are stable across boots (stock city scripts rely on that), but
+  `BuildingObject:getNamedCell("trainingroom")` is the readable way. The door is `EnclaveContainerComponent::
+  checkBuildingPermission` (god mode, then FRS council match); cells have their own rule for the tier rooms.
+  The `light_jedi_sentinel`s outside (`customAiMap = "enclaveSentinel"`) only attack a player for whom
+  `CheckProspectJediTrial` holds, i.e. mid stock Knight trial — a Padawan walks past them.
+- **FRS as the ladder.** `frs_manager.lua` keeps `frsEnabled = 1`; the rank skills are `force_rank_light_novice`,
+  `force_rank_light_rank_01..10`, `force_rank_light_master` (dark likewise), the robes are certified on them.
+  Enrolment = `PlayerObject:setFrsCouncil(1)` (COUNCIL_LIGHT; 2 = dark), `setFrsRank(0)`, `awardSkill` of the
+  novice box. Jedi XP type is `jedi_general` (`CreatureObject:awardExperience(type, amount, true)`).
+- **The FRS rank boxes cannot be awarded the normal way:** `skills.iff` requires a Jedi Knight (required skills +
+  Jedi state) behind `force_rank_light_novice`, and `SkillManager::awardSkill` checks that even with
+  `noXpRequired`. New `awardSkill(..., ignorePrerequisites)` + the Lua global `awardSkillUnchecked(pPlayer,
+  skill)` grant a box regardless (skill mods, titles and schematics still applied). **The stock FRS manager is
+  now off** (`custom_scripts/managers/jedi/fb_frs_hooks.lua`, run by `FrsManagerImplementation::loadLuaConfig`
+  before it reads `frsEnabled`): enabled, its login validation forced light-council characters to Rebel overt
+  and dark to Imperial overt, which would have set every patrol in Phase 3 on a fresh Padawan; it also ran votes,
+  petitions and XP debt. The enclave doors and the Masters only need the council in the player's FRS data.
+- **A visitor must be seen, not just near.** The conversation rule is ≤ 5 m *and* line of sight; a follower
+  that stops behind a shrine's stone 3 m away fails it. `FbTrials.settleBeside` now places the visitor at 2.5 m
+  on its own bearing and walks the compass until `AiAgent:checkLineOfSight(pPlayer)` holds (gate 2026-10-21,
+  the Old Man at Tatooine shrine 02).
+- **The enclave admits the Padawan *box*, not the flag.** A lab character given only `FbAttunement` flag
+  `padawan` was ejected from the enclave's cells at login (the door rule reads `force_title_jedi_novice`);
+  the jedi-master scenario grants the skill as the trials do, and the lab's `skill` oracle falls back to
+  `awardSkillUnchecked` for boxes with prerequisites.
+
+### 2026-10-21 — 4b.2 the Sith Master
+
+- Dark Jedi Enclave = snapshot building `3435626` at (5070.1, 310.2, h 90), entrance (5068, 310); 27 cells, a long
+  descent (ramps → foyer → antechamber → main room → chamber ramp → *chamber*, cell 16, flat at −43.3, two chairs
+  at its far end: (0, −150) is clear, (0, −155) is in a chair). `fb_jedi_master.lua` became `fb_masters.lua`:
+  `FbMasterBase:new{…}` carries everything, the two Masters are data (side, council, rank box, room, tasks,
+  string prefix). The `master` flag on the character says whose student it is; the other Master turns it away.
+
+### 2026-10-21 — 4b.3 alignment, the ladder, the turn
+
+- Murder detection uses the AI bindings: a victim that `isAiAgent()` and not `isCreature()` (a humanoid NPC), with
+  `AiAgent:isKiller()` false and `AiAgent:isAggressiveTo(pPlayer)` false. Animals never count; hostile NPCs
+  never count.
+- The ladder reuses the Masters' task engine: rank tasks are ordinary entries with `rank` and `xp`; `screenFor`
+  gates the offer on `PlayerObject:getExperience("jedi_general")`, `reward` promotes. The stock FRS XP thresholds
+  (5000, 15000, 25000, …) are the numbers used. Surrendering the old side's boxes on the turn is
+  `CreatureObject:surrenderSkill(name)` (the binding passes verify/notify/… = true).

@@ -206,6 +206,7 @@ namespace server {
 		static int setZoneWeather(lua_State* L);       // Final Boss: (zoneName, weather) keeps the automatic pattern running
 		static int checkArgumentCount(lua_State*L, int args);
 		static int awardSkill(lua_State* L);
+		static int awardSkillUnchecked(lua_State* L);
 		static int getCityRegionAt(lua_State* L);
 		static int setDungeonTicketAttributes(lua_State* L);
 		static int setQuestStatus(lua_State* L);

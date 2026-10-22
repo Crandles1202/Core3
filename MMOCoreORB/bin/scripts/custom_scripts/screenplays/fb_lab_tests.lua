@@ -303,6 +303,10 @@ FbLabTests.eventNpcs = {
 	fb_old_man = { spawnedAtBoot = false },                             -- Phase 4a.1
 	fb_prisoner = { spawnedAtBoot = false },                            -- Phase 4a.3
 	fb_trial_spirit = { spawnedAtBoot = false },                        -- Phase 4a.3
+	fb_vision_kenobi = { conversation = false, spawnedAtBoot = false }, -- Phase 4a.4
+	fb_vision_luke = { conversation = false, spawnedAtBoot = false },   -- Phase 4a.4
+	fb_vision_vader = { conversation = false, spawnedAtBoot = false },  -- Phase 4a.4
+	fb_vision_exar_kun = { conversation = false, spawnedAtBoot = false }, -- Phase 4a.4
 }
 
 function FbLabTests.checkNpc(npc)
@@ -797,6 +801,10 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkWorldEdits()
 		FbLabTests.checkAttunement()
 		FbLabTests.checkTrials()
+		FbLabTests.checkVisions()
+		FbLabTests.checkJediMaster()
+		FbLabTests.checkSithMaster()
+		FbLabTests.checkAlignment()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)
@@ -980,6 +988,9 @@ function FbLabTests:skill(charName, skillName)
 	local pPlayer = onlinePlayer(charName)
 	if pPlayer == nil then return "offline" end
 	awardSkill(pPlayer, skillName)
+	-- a box with prerequisites the character lacks (the Jedi titles want the Jedi state, the rank boxes a Knight):
+	-- the lab wants the box, not the path to it
+	if not CreatureObject(pPlayer):hasSkill(skillName) and awardSkillUnchecked ~= nil then awardSkillUnchecked(pPlayer, skillName) end
 	print("INFO skill char=" .. charName .. " awarded=" .. skillName .. " has=" .. tostring(CreatureObject(pPlayer):hasSkill(skillName)))
 	return tostring(CreatureObject(pPlayer):hasSkill(skillName))
 end
@@ -2587,6 +2598,7 @@ function FbLabTests:attunementAccept(charName)
 	local pPlayer = loadedPlayer(charName)
 	if pPlayer == nil then return "offline" end
 	FbAttunement:accept(pPlayer)
+	if FbVisions ~= nil then FbVisions:skipAll(pPlayer) end   -- 4a.4: the shortcut past the path skips its visions too
 	attunementLine(charName, pPlayer)
 	return "ok"
 end
@@ -2635,6 +2647,7 @@ function FbLabTests:trialsUnlock(charName)
 	local pPlayer = loadedPlayer(charName)
 	if pPlayer == nil then return "offline" end
 	FbAttunement:trialsUnlocked(pPlayer)
+	if FbVisions ~= nil then FbVisions:skipAll(pPlayer) end   -- 4a.4: the trials scenario is about the trials
 	-- the lab's unlock skips the Old Man's return, so the hunters he warned of are marked as already come:
 	-- the due ambush takes the trigger before a trial word and would interrupt a trials run (gate 2026-10-21)
 	FbAttunement:setFlag(pPlayer, "ambushDone", os.time())
@@ -2707,6 +2720,220 @@ function FbLabTests:cashSet(charName, amount)
 end
 
 -- Lab check: the trials are wired and every trial has its word and done line in the string source
+-- ---------------------------------------------------------------- Phase 4a.4: visions
+
+local function visionsLine(charName, pPlayer)
+	print("INFO visions char=" .. charName .. " " .. FbVisions:status(pPlayer) .. " zone=" .. SceneObject(pPlayer):getZoneName() .. " alignment=" .. tostring(FbAttunement:flag(pPlayer, "alignment") or "-"))
+end
+
+-- visions:<char> → seen / due / active and where the character is
+function FbLabTests:visions(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	visionsLine(charName, pPlayer)
+	return "ok"
+end
+
+-- visionBegin:<char>:<id> → start that vision now (eligibility not checked; the character must be outdoors)
+function FbLabTests:visionBegin(charName, id)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local ok = FbVisions:begin(pPlayer, id)
+	print("INFO visionBegin id=" .. tostring(id) .. " began=" .. tostring(ok))
+	visionsLine(charName, pPlayer)
+	return tostring(ok)
+end
+
+-- visionEnd:<char> → wake now (the fade), as if the lines were over
+function FbLabTests:visionEnd(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local active = FbVisions:active(pPlayer)
+	if active ~= nil then FbVisions:finish(pPlayer, false) end
+	print("INFO visionEnd ended=" .. tostring(active or "-"))
+	visionsLine(charName, pPlayer)
+	return "ok"
+end
+
+-- visionsReset:<char> → forget every vision seen (the lab shortcuts mark them all seen)
+function FbLabTests:visionsReset(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	FbVisions:reset(pPlayer)
+	visionsLine(charName, pPlayer)
+	return "ok"
+end
+
+-- attunementFlag:<char>:<flag>[:<value>] → set (or clear) one FbAttunement flag, e.g. alignment light
+function FbLabTests:attunementFlag(charName, flag, value)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	if value == nil or value == "" or value == "-" then deleteScreenPlayData(pPlayer, FbAttunement.DATA, "flag:" .. flag) else FbAttunement:setFlag(pPlayer, flag, value) end
+	print("INFO attunementFlag " .. tostring(flag) .. "=" .. tostring(FbAttunement:flag(pPlayer, flag) or "-"))
+	return "ok"
+end
+
+function FbLabTests.checkVisions()
+	check("visions.loaded", FbVisions ~= nil and FbVisions.list ~= nil)
+	if FbVisions == nil then return end
+	check("visions.six", #FbVisions.list == 6)
+	check("visions.zone_enabled", isZoneEnabled(FbVisions.zone), FbVisions.zone)
+	local f = io.open("../../tre-src/string/en/fb_force.stf.txt", "r")
+	if f ~= nil then
+		local text = f:read("a"); f:close()
+		local missing = {}
+		local function need(k) if not text:find("\n" .. k .. " = ", 1, true) then missing[#missing + 1] = k end end
+		need("vision_enter"); need("vision_fade")
+		for _, v in ipairs(FbVisions.list) do
+			for _, who in ipairs({ v.light, v.dark }) do
+				for n = 1, v.lines do need(string.format("vision_%s_%s_%d", v.id, who, n)) end
+				need(string.format("vision_%s_%s_whisper", v.id, who))
+			end
+			-- after the alignment is set both figures of a side speak: their lines must exist for every vision
+			for key, fig in pairs(FbVisions.figures) do
+				for n = 1, v.lines do need(string.format("vision_%s_%s_%d", v.id, key, n)) end
+			end
+		end
+		check("visions.strings", #missing == 0, #missing == 0 and "every line of every figure in every vision" or ("missing: " .. table.concat(missing, ", ")))
+	end
+	-- the figures' mobile files (checkNpc loads and audits them like every fb_* mobile; eventNpcs says they
+	-- never spawn at boot and never converse)
+	for key, fig in pairs(FbVisions.figures) do
+		local mf = io.open("scripts/mobile/quest/tatooine/" .. fig.template .. ".lua", "r")
+		check("visions.figure." .. key, mf ~= nil, fig.template)
+		if mf ~= nil then mf:close() end
+	end
+end
+
+-- ---------------------------------------------------------------- Phase 4b.1 / 4b.2: the Masters
+
+local function masterLine(charName, pPlayer, m)
+	print("INFO " .. (m.side == "light" and "jediMaster" or "sithMaster") .. " char=" .. charName .. " " .. m:status(pPlayer) .. " xp=" .. tostring(PlayerObject(CreatureObject(pPlayer):getPlayerObject()):getExperience("jedi_general")))
+end
+-- the Master a lab call means: the student's own, else the named side, else the light one
+local function masterFor(pPlayer, side)
+	if side == "dark" then return FbSithMaster elseif side == "light" then return FbJediMaster end
+	return FbMasters.of(pPlayer) or FbJediMaster
+end
+
+-- jediMaster:<char> / sithMaster:<char> → the student's state as that Master sees it, and her opening screen
+local function masterStatus(charName, m)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	masterLine(charName, pPlayer, m)
+	print("INFO " .. (m.side == "light" and "jediMaster" or "sithMaster") .. " screen=" .. m:screenFor(pPlayer) .. " npc=" .. tostring(m:npc() ~= nil))
+	return "ok"
+end
+function FbLabTests:jediMaster(charName) return masterStatus(charName, FbJediMaster) end
+function FbLabTests:sithMaster(charName) return masterStatus(charName, FbSithMaster) end
+
+-- jediMasterTake:<char> / sithMasterTake:<char> → be taken as that Master's student without the conversation
+local function masterTake(charName, m)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	print("INFO " .. (m.side == "light" and "jediMasterTake" or "sithMasterTake") .. " taken=" .. tostring(m:take(pPlayer)))
+	masterLine(charName, pPlayer, m)
+	return "ok"
+end
+function FbLabTests:jediMasterTake(charName) return masterTake(charName, FbJediMaster) end
+function FbLabTests:sithMasterTake(charName) return masterTake(charName, FbSithMaster) end
+
+-- trainingSet:<char>:<task>:told|ready|done[:light|dark] → push a task of the student's Master to that state
+function FbLabTests:trainingSet(charName, id, state, side)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local m = masterFor(pPlayer, side)
+	if state == "told" then m:told(pPlayer, id)
+	elseif state == "ready" then m:set(pPlayer, "told:" .. id, os.time()); m:complete(pPlayer, id)
+	elseif state == "done" then m:set(pPlayer, "told:" .. id, os.time()); m:set(pPlayer, "ready:" .. id, os.time()); m:reward(pPlayer, id) end
+	masterLine(charName, pPlayer, m)
+	return "ok"
+end
+
+-- trainingTick:<char>[:light|dark] → run the sit poll of the student's Master once, now
+function FbLabTests:trainingTick(charName, side)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local m = masterFor(pPlayer, side)
+	removeQuestStatus(m.name .. ".sit." .. SceneObject(pPlayer):getObjectID())   -- the poll chain restarts from here
+	m:pollSit(pPlayer)
+	masterLine(charName, pPlayer, m)
+	return "ok"
+end
+
+local function checkMaster(m, tag)
+	check(tag .. ".loaded", m ~= nil and m.tasks ~= nil)
+	if m == nil then return end
+	check(tag .. ".four_tasks", #m.tasks == 4, "two of training, two ranks")
+	if isZoneEnabled(m.zone) then
+		check(tag .. ".enclave_room", m:cell() ~= nil, m.room .. " of " .. m.buildingOid)
+		check(tag .. ".stands", m:npc() ~= nil, "spawned at boot into the " .. m.room)
+	end
+	local f = io.open("../../tre-src/string/en/fb_force.stf.txt", "r")
+	if f ~= nil then
+		local text = f:read("a"); f:close()
+		local missing = {}
+		local function need(k) if not text:find("\n" .. k .. " = ", 1, true) then missing[#missing + 1] = k end end
+		for _, k in ipairs({ "stranger", "otherdoor", "offer", "take", "later", "taken", "told", "trained", "trained_note", "rank_wait_xp", "turn", "turned", "promoted" }) do need(m.prefix .. k) end
+		for _, t in ipairs(m.tasks) do
+			for _, k in ipairs({ "train", "wait", "done", "reward" }) do need(m.prefix .. k .. "_" .. t.id) end
+			need(m.prefix .. t.id .. "_done")
+			if t.kind == "kill" then need(m.prefix .. t.id .. "_progress") end
+		end
+		check(tag .. ".strings", #missing == 0, #missing == 0 and "every screen and note" or ("missing: " .. table.concat(missing, ", ")))
+	end
+end
+function FbLabTests.checkJediMaster() checkMaster(FbJediMaster, "jedimaster") end
+
+-- masterTurn:<char>:light|dark → turn to that Master's side without the conversation (4b.3)
+function FbLabTests:masterTurn(charName, side)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local m = side == "dark" and FbSithMaster or FbJediMaster
+	print("INFO masterTurn side=" .. tostring(side) .. " turned=" .. tostring(m:turn(pPlayer)))
+	masterLine(charName, pPlayer, m)
+	return "ok"
+end
+
+-- alignment:<char> / alignmentShift:<char>:<delta> / alignmentSet:<char>:<score> → the 4b.3 score
+local function alignmentLine(charName, pPlayer)
+	print("INFO alignment char=" .. charName .. " " .. FbAlignment:status(pPlayer) .. " statusLine=" .. tostring(FbAlignment:statusLine(pPlayer) or "-"))
+end
+function FbLabTests:alignment(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	alignmentLine(charName, pPlayer)
+	return "ok"
+end
+function FbLabTests:alignmentShift(charName, delta)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	FbAlignment:shift(pPlayer, tonumber(delta) or 0, "lab")
+	alignmentLine(charName, pPlayer)
+	return "ok"
+end
+function FbLabTests:alignmentSet(charName, score)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	FbAlignment:set(pPlayer, tonumber(score) or 0)
+	alignmentLine(charName, pPlayer)
+	return "ok"
+end
+
+function FbLabTests.checkAlignment()
+	check("alignment.loaded", FbAlignment ~= nil and FbAlignment.killShifts ~= nil)
+	if FbAlignment == nil then return end
+	check("alignment.tiers", FbAlignment:tier(100) == 5 and FbAlignment:tier(0) == 3 and FbAlignment:tier(-100) == 1 and FbAlignment:tier(30) == 4 and FbAlignment:tier(-30) == 2)
+	local f = io.open("../../tre-src/string/en/fb_force.stf.txt", "r")
+	if f ~= nil then
+		local text = f:read("a"); f:close()
+		local missing = {}
+		for n = 1, 5 do if not text:find("\nalign_tier_" .. n .. " = ", 1, true) then missing[#missing + 1] = "align_tier_" .. n end end
+		check("alignment.strings", #missing == 0, #missing == 0 and "five tiers" or ("missing: " .. table.concat(missing, ", ")))
+	end
+end
+function FbLabTests.checkSithMaster() checkMaster(FbSithMaster, "sithmaster") end
+
 function FbLabTests.checkTrials()
 	check("trials.loaded", FbTrials ~= nil and FbTrialPrisoner ~= nil and FbTrialSpirit ~= nil and FbTrialDuel ~= nil)
 	if FbTrials == nil then return end
