@@ -90,7 +90,7 @@ wait_online() {
 		if lab "isOnline:$CHAR" 5 | grep -aq "^INFO online"; then
 			# the character is shared by every scenario of a gate: one left dead by an earlier one (the Knight trial's
 			# enemy, 2026-10-22) failed everything after it, so the first login of a scenario puts it back on its feet
-			if [ "$_revived" = 0 ]; then lab "revive:$CHAR" 5 >/dev/null 2>&1; _revived=1; fi
+			lab "revive:$CHAR" 5 >/dev/null 2>&1   # every login: a wandering raider can kill a parked character between sessions
 			return 0
 		fi
 		sleep 1

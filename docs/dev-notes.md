@@ -1020,6 +1020,12 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   `createServerEvent` is the object-less form, for persistent server-wide events. And the handler runs as
   `Play:fn(pObject, args)` — self first — so a dot-defined `function Play.fn(_, args)` reads the object as
   `args` and the id is lost (the spared enemy stayed a second time).
+- **A dead lab character looks alive and cannot talk.** The server reports a refused queued command to the client
+  as `CommandQueueRemove count=N error=E state=S`; `error=1` with `state=20` is the locomotion check (20 = DEAD,
+  19 = INCAPACITATED, `CreatureLocomotion.h`). Locomotion is recomputed only on a real posture change, so a revive
+  that sets an already-upright posture leaves it DEAD; the lab's `revive` toggles the posture. And the open desert
+  at (4100, −4700) east of Mos Eisley is Tusken ground: a level-one character parked there dies within a minute,
+  which is what every "did not start a conversation" of the Knight gate was. Scenarios park at a shrine.
 
 ### 2026-10-21 — 4b.1 the Jedi Master
 

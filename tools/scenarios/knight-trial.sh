@@ -14,7 +14,7 @@ wait_online || die "$CHAR never came online"
 lab "attunementSit:$CHAR:stand" >/dev/null
 sleep 4
 lab "attunementReset:$CHAR" >/dev/null
-lab "travel:$CHAR:tatooine:4100:-4700" >/dev/null
+lab "travel:$CHAR:tatooine:5264:113" >/dev/null     # a Force shrine: a no-spawn region. (4100, -4700) is Tusken ground and killed the character mid-scenario
 sleep 3
 
 # --- A: the light trial offered once the ladder's tasks are done --------------------------------------------------
