@@ -959,6 +959,10 @@ function FbLabTests:revive(charName)
 	local was = string.format("dead=%s incap=%s posture=%d", tostring(c:isDead()), tostring(c:isIncapacitated()), c:getPosture())
 	c:clearCombatState(true)
 	for _, pool in ipairs({ 0, 3, 6 }) do c:setHAM(pool, c:getMaxHAM(pool)) end
+	-- a real posture change: setPosture is a no-op when the posture already reads upright, and the locomotion
+	-- (what every queued command checks) is only recomputed on a change — a character that died kept
+	-- locomotion DEAD under an upright posture and could not start a talk (CommandQueueRemove error=1 state=20)
+	c:setPosture(1)
 	c:setPosture(0)
 	-- the transient states a character can be left in: a talk is refused with INVALIDSTATE while any is set
 	-- (SITTINGONCHAIR 0x80000 survived a stand and cost a gate, 2026-10-22; CreatureState.h)
