@@ -1111,3 +1111,16 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   gates the offer on `PlayerObject:getExperience("jedi_general")`, `reward` promotes. The stock FRS XP thresholds
   (5000, 15000, 25000, …) are the numbers used. Surrendering the old side's boxes on the turn is
   `CreatureObject:surrenderSkill(name)` (the binding passes verify/notify/… = true).
+
+## 2026-10-22 (alice) — rebased on the Phase 4b merges, two pilot lessons
+
+- `origin/unstable` took three Phase 4b lanes (master, sith, ranks) while `feature/alice` waited for its gate; the merge
+  into `feature/alice` auto-resolved (CLAUDE.md, `fb_lab_tests.lua`, the roadmap and dev-notes all changed on both
+  sides, no overlapping hunks).
+- **Teyla's real directory was wiped a second time** (2026-10-22 13:03 local): every other lane's gate ran the
+  `pilot-dry` scenario from `unstable`, which still lacks the `--home` fix from 6e19297a17, so `rm -rf
+  ~/.swg-lab/citizens/teyla` ran on each gate and left the dry run's memory in its place. Nothing to do but merge
+  this branch; until then, treat Teyla's memory as disposable.
+- Wex's pilot died on 2026-10-21 09:13 with a `TimeoutError` in `Senses.gather()`: its seat was still finishing a walk
+  that the previous pilot had started (the action lock was held, so `vars`/`objects` waited past the 60 s socket
+  timeout). The wake loop now catches a seat timeout, waits 30 s and tries again instead of exiting.

@@ -625,7 +625,14 @@ def run(args):
     ticks = 0
     while args.ticks == 0 or ticks < args.ticks:
         ticks += 1
-        perception = senses.gather()
+        try:
+            perception = senses.gather()
+        except (TimeoutError, OSError) as e:
+            # the seat is busy (a walk left over from an earlier pilot holds its action lock): wait, do not die
+            print(f"[{args.citizen}] seat not answering ({e}); trying again in 30 s", flush=True)
+            ticks -= 1
+            time.sleep(30)
+            continue
         # the stable prefix first (cached), the plan and memory after it (they change rarely)
         system_blocks = [
             {"type": "text", "text": SYSTEM_RULES + "\n\n# Persona\n" + persona, "cache_control": {"type": "ephemeral"}},
