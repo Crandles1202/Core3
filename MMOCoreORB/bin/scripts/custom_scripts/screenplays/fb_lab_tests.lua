@@ -960,6 +960,11 @@ function FbLabTests:revive(charName)
 	c:clearCombatState(true)
 	for _, pool in ipairs({ 0, 3, 6 }) do c:setHAM(pool, c:getMaxHAM(pool)) end
 	c:setPosture(0)
+	-- the transient states a character can be left in: a talk is refused with INVALIDSTATE while any is set
+	-- (SITTINGONCHAIR 0x80000 survived a stand and cost a gate, 2026-10-22; CreatureState.h)
+	for _, st in ipairs({ 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x400, 0x1000, 0x2000, 0x4000, 0x8000, 0x10000, 0x20000, 0x80000, 0x100000 }) do
+		if c:hasState(st) then c:clearState(st) end
+	end
 	print("INFO revive char=" .. charName .. " was " .. was .. " now dead=" .. tostring(c:isDead()) .. " posture=" .. c:getPosture())
 	return "ok"
 end
@@ -3035,7 +3040,8 @@ function FbLabTests:attunementSit(charName, stand)
 	local pPlayer = loadedPlayer(charName)
 	if pPlayer == nil then return "offline" end
 	CreatureObject(pPlayer):setPosture(stand == "stand" and 0 or 8)
-	print("INFO attunementSit posture=" .. CreatureObject(pPlayer):getPosture())
+	if stand == "stand" and CreatureObject(pPlayer):hasState(0x80000) then CreatureObject(pPlayer):clearState(0x80000) end   -- SITTINGONCHAIR outlives the posture
+	print("INFO attunementSit posture=" .. CreatureObject(pPlayer):getPosture() .. " onChair=" .. tostring(CreatureObject(pPlayer):hasState(0x80000)))
 	return tostring(CreatureObject(pPlayer):getPosture())
 end
 
