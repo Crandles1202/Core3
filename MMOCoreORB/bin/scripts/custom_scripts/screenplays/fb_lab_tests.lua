@@ -950,6 +950,20 @@ function FbLabTests:heal(charName, pool, amount)
 	return hamLine(charName, pPlayer)
 end
 
+-- revive:<char> → a dead or incapacitated lab character back on its feet with full pools (what a cloning would do,
+-- without the cloner); harmless on a healthy one
+function FbLabTests:revive(charName)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local c = CreatureObject(pPlayer)
+	local was = string.format("dead=%s incap=%s posture=%d", tostring(c:isDead()), tostring(c:isIncapacitated()), c:getPosture())
+	c:clearCombatState(true)
+	for _, pool in ipairs({ 0, 3, 6 }) do c:setHAM(pool, c:getMaxHAM(pool)) end
+	c:setPosture(0)
+	print("INFO revive char=" .. charName .. " was " .. was .. " now dead=" .. tostring(c:isDead()) .. " posture=" .. c:getPosture())
+	return "ok"
+end
+
 -- wound:<char>:<pool>:<amount> → set wounds on a pool, then print ham
 function FbLabTests:wound(charName, pool, amount)
 	local pPlayer = onlinePlayer(charName)
@@ -2933,6 +2947,9 @@ function FbLabTests:knightBossHere(charName)
 	if pPlayer == nil then return "offline" end
 	local pBoss = FbKnight:ensureBoss(pPlayer)
 	if pBoss == nil then print("ERROR no enemy"); return "none" end
+	-- harmless before it stands beside a lab character: a level-125 aggressive enemy two metres from a fresh
+	-- character killed it in two seconds (gate 2026-10-22), and a dead character failed every scenario after
+	if not FbKnight:yielded(pBoss) then FbKnight:yield(pBoss) end
 	local so = SceneObject(pPlayer)
 	local x, y, zone, cell = so:getWorldPositionX() + 2.5, so:getWorldPositionY(), so:getZoneName(), so:getParentID()
 	local z = cell == 0 and getTerrainHeightAt(zone, x, y) or so:getWorldPositionZ()
