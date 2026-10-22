@@ -307,6 +307,8 @@ FbLabTests.eventNpcs = {
 	fb_vision_luke = { conversation = false, spawnedAtBoot = false },   -- Phase 4a.4
 	fb_vision_vader = { conversation = false, spawnedAtBoot = false },  -- Phase 4a.4
 	fb_vision_exar_kun = { conversation = false, spawnedAtBoot = false }, -- Phase 4a.4
+	fb_hunter_chief = { spawnedAtBoot = false },                        -- Phase 4b.4
+	fb_nightsister_witch = { spawnedAtBoot = false },                   -- Phase 4b.4
 }
 
 function FbLabTests.checkNpc(npc)
@@ -805,6 +807,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkJediMaster()
 		FbLabTests.checkSithMaster()
 		FbLabTests.checkAlignment()
+		FbLabTests.checkKnight()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)
@@ -2899,6 +2902,96 @@ function FbLabTests.checkAlignment()
 	end
 end
 function FbLabTests.checkSithMaster() checkMaster(FbSithMaster, "sithmaster") end
+
+-- ---------------------------------------------------------------- Phase 4b.4: the Knight trial
+
+local function knightLine(charName, pPlayer)
+	print("INFO knight char=" .. charName .. " " .. FbKnight:status(pPlayer) .. " frsRank=" .. tostring(PlayerObject(CreatureObject(pPlayer):getPlayerObject()):getFrsRank()) .. " align=" .. tostring(FbAlignment ~= nil and FbAlignment:score(pPlayer) or 0))
+end
+function FbLabTests:knight(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	knightLine(charName, pPlayer)
+	local m = FbMasters.of(pPlayer)
+	print("INFO knight screen=" .. tostring(m ~= nil and m:screenFor(pPlayer) or "-"))
+	return "ok"
+end
+-- knightGive:<char> → the trial given without the conversation (the enemy spawns at its place)
+function FbLabTests:knightGive(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	print("INFO knightGive given=" .. tostring(FbKnight:give(pPlayer)))
+	knightLine(charName, pPlayer)
+	return "ok"
+end
+-- knightBossHere:<char> → the student's enemy moved beside the student (the bot does not walk a cave)
+function FbLabTests:knightBossHere(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pBoss = FbKnight:ensureBoss(pPlayer)
+	if pBoss == nil then print("ERROR no enemy"); return "none" end
+	local so = SceneObject(pPlayer)
+	local x, y, zone, cell = so:getWorldPositionX() + 2.5, so:getWorldPositionY(), so:getZoneName(), so:getParentID()
+	local z = cell == 0 and getTerrainHeightAt(zone, x, y) or so:getWorldPositionZ()
+	if cell == 0 then SceneObject(pBoss):switchZone(zone, x, z, y, 0) else SceneObject(pBoss):switchZone(zone, so:getPositionX() + 2.5, so:getPositionZ(), so:getPositionY(), cell) end
+	AiAgent(pBoss):setHomeLocation(x, z, y, nil)
+	print("INFO knightBossHere oid=" .. tostring(SceneObject(pBoss):getObjectID()) .. " los=" .. tostring(AiAgent(pBoss):checkLineOfSight(pPlayer)))
+	return "ok"
+end
+-- knightYield:<char> → the enemy yields now, as the damage observer would below a quarter of its health
+function FbLabTests:knightYield(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pBoss = FbKnight:bossOf(pPlayer)
+	if pBoss == nil then print("ERROR no enemy"); return "none" end
+	print("INFO knightYield yielded=" .. tostring(FbKnight:yield(pBoss)))
+	knightLine(charName, pPlayer)
+	return "ok"
+end
+-- knightChoose:<char>:spare|kill → the choice without the conversation
+function FbLabTests:knightChoose(charName, choice)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pBoss = FbKnight:bossOf(pPlayer)
+	if pBoss == nil then print("ERROR no enemy"); return "none" end
+	if not FbKnight:yielded(pBoss) then FbKnight:yield(pBoss) end
+	local ok = choice == "kill" and FbKnight:execute(pPlayer, pBoss) or FbKnight:spare(pPlayer, pBoss)
+	print("INFO knightChoose choice=" .. tostring(choice) .. " ok=" .. tostring(ok))
+	knightLine(charName, pPlayer)
+	return "ok"
+end
+-- knightGraduate:<char> → the report without the conversation
+function FbLabTests:knightGraduate(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	print("INFO knightGraduate ok=" .. tostring(FbKnight:graduate(pPlayer)))
+	knightLine(charName, pPlayer)
+	return "ok"
+end
+
+function FbLabTests.checkKnight()
+	check("knight.loaded", FbKnight ~= nil and FbKnight.sides ~= nil)
+	if FbKnight == nil then return end
+	for side, d in pairs(FbKnight.sides) do
+		local mf = io.open("scripts/mobile/quest/tatooine/" .. d.boss .. ".lua", "r")
+		check("knight." .. side .. ".enemy_file", mf ~= nil, d.boss); if mf ~= nil then mf:close() end
+		if isZoneEnabled(d.zone) and d.buildingOid ~= nil then
+			local pB = getSceneObject(d.buildingOid)
+			check("knight." .. side .. ".place", pB ~= nil and BuildingObject(pB):getNamedCell(d.room) ~= nil, d.room .. " of " .. d.buildingOid)
+		end
+	end
+	local f = io.open("../../tre-src/string/en/fb_force.stf.txt", "r")
+	if f ~= nil then
+		local text = f:read("a"); f:close()
+		local missing = {}
+		local function need(k) if not text:find("\n" .. k .. " = ", 1, true) then missing[#missing + 1] = k end end
+		for _, k in ipairs({ "boss_nothing", "boss_yield", "boss_spared", "boss_killed", "light_yield", "dark_yield" }) do need("knight_" .. k) end
+		for _, prefix in ipairs({ "master_", "sith_" }) do
+			for _, k in ipairs({ "offer", "go", "given", "wait", "report", "done", "spare", "kill", "graduated" }) do need(prefix .. "knight_" .. k) end
+		end
+		check("knight.strings", #missing == 0, #missing == 0 and "every line of the trial" or ("missing: " .. table.concat(missing, ", ")))
+	end
+end
 
 function FbLabTests.checkTrials()
 	check("trials.loaded", FbTrials ~= nil and FbTrialPrisoner ~= nil and FbTrialSpirit ~= nil and FbTrialDuel ~= nil)

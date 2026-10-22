@@ -1065,3 +1065,14 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   gates the offer on `PlayerObject:getExperience("jedi_general")`, `reward` promotes. The stock FRS XP thresholds
   (5000, 15000, 25000, …) are the numbers used. Surrendering the old side's boxes on the turn is
   `CreatureObject:surrenderSkill(name)` (the binding passes verify/notify/… = true).
+
+### 2026-10-22 — 4b.4 the Knight trial
+
+- Stock places with interiors and ids: the Dantooine crystal hunters' cave is building `8535482` (cells 1–9, oids
+  8535483…8535491; rooms r1–r9, `lotsurvey rooms object/building/general/shared_dantooine_force_crystal_hunter_sd_cave.iff`),
+  the stock spawns sit in r1–r4; the Nightsister stronghold is outdoors (every stock spawn cell 0) around
+  (−4052, −161) on Dathomir, open ground at (−4040, −100). A yielding enemy = `DAMAGERECEIVED` observer on the
+  mobile (`onBossHit(pBoss, pAttacker, damage)`, return 1 to drop the observer), then `clearCombatState(true)`,
+  `setPvpStatusBitmask(0)`, AI off, `setOptionBit(CONVERSABLE)` — the conversation template is on the mobile from
+  the start, the bit decides whether it talks. The stock Knight unlock (`JediTrials:unlockJediKnight`) sets the
+  Jedi state 4/8 and the Knight title but also forces faction overt; ours leaves faction alone.

@@ -58,6 +58,16 @@ screen("turn", "sith_turn", {
 })
 screen("turned", "sith_turned", {}, true)
 
+-- the Knight trial (4b.4): offered after the last rank task, waited for, reported
+screen("knight_offer", "sith_knight_offer", {
+	{"I am ready.", "knight_go"},
+	{"Not yet.", "later"},
+})
+screen("knight_go", "sith_knight_go", {}, true)
+screen("knight_wait", "sith_knight_wait", {}, true)
+screen("knight_report", "sith_knight_report", { {"It is done.", "knight_done"} })
+screen("knight_done", "sith_knight_done", {}, true)
+
 -- the ladder's end for now
 screen("trained", "sith_trained", {}, true)
 

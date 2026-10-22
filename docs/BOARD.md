@@ -11,6 +11,7 @@ borrowing with a lock; this file carries the intent.
 |---|---|---|---|---|---|
 | chuck | — | play-testing, design calls, merges by request | ongoing | as needed | 2026-10-20 |
 | alice | `feature/alice` | Phase 7 Citizens: 7.0 seat, 7.1 walk, 7.2 tooling, 7.3 pilot skeleton, 7.6a oracle/survey/sample/travel; next: harvesters, playbooks, Teyla's first model wake (needs Chuck's key) | queued for the bench, then gate + merge (Chuck runs the merge) | no | 2026-10-20 |
+| claude (main session) | `feature/knight` | 4b.4 the Knight trial | testing | holds while testing | 2026-10-22 |
 | _(add a row with `swg agent new <name>`)_ | | | | | |
 
 Status words: `planning`, `coding`, `testing` (holds the bench), `gate` (running `swg test all`), `ready to merge`,
