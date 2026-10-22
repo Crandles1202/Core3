@@ -18,7 +18,7 @@ PRICE=$(lab "merchant" | grep '^INFO merchant_item i=1 ' | sed -n 's/.*price=\([
 check "stock_listed" "$( [ -n "$FIRST_ITEM" ] && echo 1 || echo 0 )" "first item: $FIRST_ITEM ($PRICE cr)"
 
 OID=$(printf '%s\n' "$STATUS" | sed -n 's/.*[[:space:]]oid=\([0-9]*\).*/\1/p')
-LIVE=$(lab "npc:$NPC" | grep -c "oid=$OID ")
+LIVE=$(lab "objectAlive:$OID" | grep -c 'alive=1')     # the object itself; the spawn registry can lag a boot-time spawn
 check "merchant_spawned_in_world" "$( [ -n "$OID" ] && [ "$OID" != "0" ] && [ "$LIVE" = "1" ] && echo 1 || echo 0 )" "oid=$OID live=$LIVE"
 [ -n "$OID" ] || die "no $NPC spawn found"
 
@@ -30,7 +30,12 @@ CASH0=$(lab_kv "cash:$CHAR" cash)
 wait "$BOT_PID"
 
 # --- act: buy the first item through conversation + stock window ------------------------------
-bot --wait 3 --converse "$OID" --options 0 --wait 1 --sui "$FIRST_ITEM" --sui-match "Traveling Goods" --wait 2
+# step up to him inside the talking session (a logged-in character placed 2 m east can still lack line of sight
+# at a stop by a wall; gotoNpc puts it 1.5 m in front, facing him)
+bot_bg --wait 12 --converse "$OID" --options 0 --wait 1 --sui "$FIRST_ITEM" --sui-match "Traveling Goods" --wait 2
+wait_online || die "$CHAR never came back online"
+lab "gotoNpc:$CHAR:fb_traveling_merchant" >/dev/null
+wait "$BOT_PID"
 RC=$?
 check_eq "client_exit_0" "$RC" "0"
 [ "$RC" = 0 ] || bot_errors

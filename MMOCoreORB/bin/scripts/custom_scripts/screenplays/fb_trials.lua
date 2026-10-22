@@ -142,6 +142,7 @@ end
 -- the fourth trial's choice
 function FbTrials:choose(pPlayer, alignment)
 	FbAttunement:setFlag(pPlayer, "alignment", alignment)
+	if FbAlignment ~= nil then FbAlignment:onChoice(pPlayer, alignment) end   -- 4b.3: the first lean of the score
 	self:complete(pPlayer, "mercy")
 end
 

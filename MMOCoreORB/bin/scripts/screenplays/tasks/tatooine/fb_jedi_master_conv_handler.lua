@@ -17,6 +17,8 @@ function fbJediMasterConvoHandler:runScreenHandlers(pConvTemplate, pPlayer, pNpc
 	if FbJediMaster == nil then return pConvScreen end
 	if screenID == "take" then
 		FbJediMaster:take(pPlayer)
+	elseif screenID == "turned" then
+		FbJediMaster:turn(pPlayer)
 	elseif screenID:sub(1, 5) == "told_" then
 		FbJediMaster:told(pPlayer, screenID:sub(6))
 	elseif screenID:sub(1, 7) == "reward_" then

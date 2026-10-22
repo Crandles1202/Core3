@@ -17,6 +17,8 @@ function fbSithMasterConvoHandler:runScreenHandlers(pConvTemplate, pPlayer, pNpc
 	if FbSithMaster == nil then return pConvScreen end
 	if screenID == "take" then
 		FbSithMaster:take(pPlayer)
+	elseif screenID == "turned" then
+		FbSithMaster:turn(pPlayer)
 	elseif screenID:sub(1, 5) == "told_" then
 		FbSithMaster:told(pPlayer, screenID:sub(6))
 	elseif screenID:sub(1, 7) == "reward_" then

@@ -319,3 +319,42 @@ sith_trained_note = Your training with Darth Vhal is complete for now. She will 
 sith_patience_done = A minute of wanting, done. Tell Darth Vhal.
 sith_prey_done = Five lives. Tell Darth Vhal.
 sith_prey_progress = Lives taken: %DI of 5.
+
+# ---- Phase 4b.3: the alignment score (five vague lines), the ladder and the turn
+align_tier_5 = The light holds you the way deep water holds a swimmer: you have to work to sink.
+align_tier_4 = You lean toward the light. It is a lean, not a wall; you can feel the other way from here.
+align_tier_3 = You stand between. Both doors are open and both are watching.
+align_tier_2 = You lean toward the dark. It is quieter down there than they told you.
+align_tier_1 = The dark has you. You know it, and knowing it has stopped troubling you.
+
+master_rank_wait_xp = The Council asks what I have seen, and I have not seen enough yet. Go and live as a Jedi a while longer. Come back when the Force has had more of your hours.
+master_train_rank1 = The first rank. The Shadows still hunt this moon and the old enclave on Dantooine. Ten of them. Not for the count; for the people they would have found.
+master_wait_rank1 = Ten, I said. The Shadows are patient; be more so.
+master_done_rank1 = Ten. And none of them turned you. That is what the first rank means.
+master_reward_rank1 = Wear it. It changes nothing about you and everything about how they look at you. Come back when there is more of you to see.
+master_train_rank2 = The second rank is sat for, not fought for. Three minutes in this room. Not a minute of nothing this time: three minutes of everything, and let none of it move you.
+master_wait_rank2 = Three minutes. You have not sat them yet.
+master_done_rank2 = You sat, and I watched the galaxy go past your face, and you let it. The second rank is yours.
+master_reward_rank2 = That is as far as I take you today. The Council will want to meet you soon. Go slowly.
+master_rank1_done = Ten Shadows. Tell Master Venn.
+master_rank2_done = Three minutes of everything, done. Tell Master Venn.
+master_rank1_progress = Shadows ended: %DI of 10.
+master_promoted = You hold the %DI rank of the light.
+master_turn = You walked in through their door and you stand in mine, and I can see why. Whatever they fed you, it has made you hungry for something else. Say it and I will take you, and everything they gave you goes back to them.
+master_turned = Then it is done. What they taught you is gone and you begin again, at the beginning, as mine. The novice's rank of the light is yours. Sit down.
+
+sith_rank_wait_xp = Strength is not given for showing up. You have not done enough yet that I would notice. Go and be noticed. Then come down here again.
+sith_train_rank1 = The first rank. There are Maulers on Dathomir who call themselves dark. Five of them. Show them the difference between a word and a thing.
+sith_wait_rank1 = Five Maulers. You are not done.
+sith_done_rank1 = Five. And you did it without asking why. The first rank is yours; take it, I will not hand it to you.
+sith_reward_rank1 = Wear it where they can see it. Come back when you have done something that frightened you.
+sith_train_rank2 = The second rank is sat for. Three minutes in this chamber, wanting everything you have ever wanted, and not standing up.
+sith_wait_rank2 = Three minutes. Sit.
+sith_done_rank2 = You sat and the hunger did not stand you up. Good. The second rank is yours.
+sith_reward_rank2 = That is all I give today. There is more, and it costs more. Go.
+sith_rank1_done = Five Maulers. Tell Darth Vhal.
+sith_rank2_done = Three minutes of hunger, done. Tell Darth Vhal.
+sith_rank1_progress = Maulers ended: %DI of 5.
+sith_promoted = You hold the %DI rank of the dark.
+sith_turn = You wear their robe and you came down here anyway. I know why. They taught you to want nothing and you want. Say the word and you are mine, and what they gave you goes back up the stairs without you.
+sith_turned = Done. Their lessons are gone and you are at the bottom of my stairs, where you belong for now. The novice's rank of the dark is yours. Kneel.

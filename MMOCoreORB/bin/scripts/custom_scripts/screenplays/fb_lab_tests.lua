@@ -804,6 +804,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkVisions()
 		FbLabTests.checkJediMaster()
 		FbLabTests.checkSithMaster()
+		FbLabTests.checkAlignment()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)
@@ -2829,7 +2830,7 @@ end
 local function checkMaster(m, tag)
 	check(tag .. ".loaded", m ~= nil and m.tasks ~= nil)
 	if m == nil then return end
-	check(tag .. ".two_tasks", #m.tasks == 2)
+	check(tag .. ".four_tasks", #m.tasks == 4, "two of training, two ranks")
 	if isZoneEnabled(m.zone) then
 		check(tag .. ".enclave_room", m:cell() ~= nil, m.room .. " of " .. m.buildingOid)
 		check(tag .. ".stands", m:npc() ~= nil, "spawned at boot into the " .. m.room)
@@ -2839,7 +2840,7 @@ local function checkMaster(m, tag)
 		local text = f:read("a"); f:close()
 		local missing = {}
 		local function need(k) if not text:find("\n" .. k .. " = ", 1, true) then missing[#missing + 1] = k end end
-		for _, k in ipairs({ "stranger", "otherdoor", "offer", "take", "later", "taken", "told", "trained", "trained_note" }) do need(m.prefix .. k) end
+		for _, k in ipairs({ "stranger", "otherdoor", "offer", "take", "later", "taken", "told", "trained", "trained_note", "rank_wait_xp", "turn", "turned", "promoted" }) do need(m.prefix .. k) end
 		for _, t in ipairs(m.tasks) do
 			for _, k in ipairs({ "train", "wait", "done", "reward" }) do need(m.prefix .. k .. "_" .. t.id) end
 			need(m.prefix .. t.id .. "_done")
@@ -2849,6 +2850,54 @@ local function checkMaster(m, tag)
 	end
 end
 function FbLabTests.checkJediMaster() checkMaster(FbJediMaster, "jedimaster") end
+
+-- masterTurn:<char>:light|dark → turn to that Master's side without the conversation (4b.3)
+function FbLabTests:masterTurn(charName, side)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local m = side == "dark" and FbSithMaster or FbJediMaster
+	print("INFO masterTurn side=" .. tostring(side) .. " turned=" .. tostring(m:turn(pPlayer)))
+	masterLine(charName, pPlayer, m)
+	return "ok"
+end
+
+-- alignment:<char> / alignmentShift:<char>:<delta> / alignmentSet:<char>:<score> → the 4b.3 score
+local function alignmentLine(charName, pPlayer)
+	print("INFO alignment char=" .. charName .. " " .. FbAlignment:status(pPlayer) .. " statusLine=" .. tostring(FbAlignment:statusLine(pPlayer) or "-"))
+end
+function FbLabTests:alignment(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	alignmentLine(charName, pPlayer)
+	return "ok"
+end
+function FbLabTests:alignmentShift(charName, delta)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	FbAlignment:shift(pPlayer, tonumber(delta) or 0, "lab")
+	alignmentLine(charName, pPlayer)
+	return "ok"
+end
+function FbLabTests:alignmentSet(charName, score)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	FbAlignment:set(pPlayer, tonumber(score) or 0)
+	alignmentLine(charName, pPlayer)
+	return "ok"
+end
+
+function FbLabTests.checkAlignment()
+	check("alignment.loaded", FbAlignment ~= nil and FbAlignment.killShifts ~= nil)
+	if FbAlignment == nil then return end
+	check("alignment.tiers", FbAlignment:tier(100) == 5 and FbAlignment:tier(0) == 3 and FbAlignment:tier(-100) == 1 and FbAlignment:tier(30) == 4 and FbAlignment:tier(-30) == 2)
+	local f = io.open("../../tre-src/string/en/fb_force.stf.txt", "r")
+	if f ~= nil then
+		local text = f:read("a"); f:close()
+		local missing = {}
+		for n = 1, 5 do if not text:find("\nalign_tier_" .. n .. " = ", 1, true) then missing[#missing + 1] = "align_tier_" .. n end end
+		check("alignment.strings", #missing == 0, #missing == 0 and "five tiers" or ("missing: " .. table.concat(missing, ", ")))
+	end
+end
 function FbLabTests.checkSithMaster() checkMaster(FbSithMaster, "sithmaster") end
 
 function FbLabTests.checkTrials()
