@@ -42,7 +42,7 @@ bot_bg --wait 14 --converse "$CHIEF" --options 0 --wait 3
 wait_online || die "$CHAR never came back online"
 lab "knightBossHere:$CHAR" >/dev/null
 wait "$BOT_PID"
-check_eq "spared_in_conversation" "$(bot_action_status converse)" "ok" "$(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tail -n1 | cut -c1-200)"
+check_eq "spared_in_conversation" "$(bot_action_status converse)" "ok" "$(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tail -n1 | cut -c1-160); chief: $(lab "objectPos:$CHIEF" | sed 's/.*zone=/zone=/' | cut -c1-70); char: $(lab "where:$CHAR" | sed 's/.*zone=/zone=/' | cut -c1-70)"
 K=$(lab "knight:$CHAR" | head -n1)
 check "token_held_choice_spare" "$(grep -q 'state=token choice=spare' <<<"$K" && echo 1 || echo 0)" "$K"
 check "light_holocron_in_the_bag" "$(lab "findItem:$CHAR:holocron" | grep -qi 'holocron' && echo 1 || echo 0)" "$(lab "findItem:$CHAR:holocron" | head -n1 | cut -c1-120)"
@@ -57,7 +57,7 @@ bot_bg --wait 14 --converse "$MASTER" --options 0 --wait 3
 wait_online || die "$CHAR never came back online"
 lab "gotoNpc:$CHAR:fb_jedi_master" >/dev/null
 wait "$BOT_PID"
-check_eq "report_accepted" "$(bot_action_status converse)" "ok" "$(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tail -n1 | cut -c1-200)"
+check_eq "report_accepted" "$(bot_action_status converse)" "ok" "$(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tail -n1 | cut -c1-160); master: $(lab "objectPos:$MASTER" | sed 's/.*zone=/zone=/' | cut -c1-70); char: $(lab "where:$CHAR" | sed 's/.*zone=/zone=/' | cut -c1-70)"
 K=$(lab "knight:$CHAR" | head -n1)
 check "knight_of_the_light" "$(grep -q 'state=done' <<<"$K" && grep -q 'knightTitle=true' <<<"$K" && grep -q 'jediState=4' <<<"$K" && grep -q 'frsRank=3' <<<"$K" && echo 1 || echo 0)" "$K"
 check "rank3_box" "$(lab "jediMaster:$CHAR" | grep -q 'frsRank=3' && echo 1 || echo 0)"

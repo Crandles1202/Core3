@@ -254,7 +254,17 @@ function FbKnight:graduate(pPlayer)
 	if pGhost ~= nil then PlayerObject(pGhost):setJediState(d.jediState) end
 	m:promote(pPlayer, 3)
 	local pInventory = SceneObject(pPlayer):getSlottedObject("inventory")
-	if pInventory ~= nil then giveItem(pInventory, d.robe, -1) end
+	if pInventory ~= nil then
+		-- the holocron is handed over (it would also keep counting as an attunement item)
+		for i = SceneObject(pInventory):getContainerObjectsSize() - 1, 0, -1 do
+			local pItem = SceneObject(pInventory):getContainerObject(i)
+			if pItem ~= nil and SceneObject(pItem):getTemplateObjectPath() == d.token then
+				SceneObject(pItem):destroyObjectFromWorld(true)
+				SceneObject(pItem):destroyObjectFromDatabase()
+			end
+		end
+		giveItem(pInventory, d.robe, -1)
+	end
 	CreatureObject(pPlayer):playMusicMessage(d.music)
 	self:set(pPlayer, "state", "done")
 	FbAttunement:setFlag(pPlayer, "task", "knight_done")
