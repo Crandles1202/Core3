@@ -278,7 +278,7 @@ vision_padawan_exar_kun_whisper = A voice, not his: when their lessons bore you,
 
 # ---- Phase 4b.1: Master Ilara Venn, the Light Enclave on Yavin 4
 master_stranger = You have the look of someone who walked a long way to stand in the wrong room. The enclave is not a sight to see. Go well.
-master_dark = I can feel it on you like heat off a stone. You chose, and you chose the other door. It is on the far side of this moon. I will not pretend to wish you luck.
+master_otherdoor = I can feel it on you like heat off a stone. You chose, and you chose the other door. It is on the far side of this moon. I will not pretend to wish you luck.
 master_offer = So. The old man's Padawan. He sends me one every few years and keeps the rest for himself. I am Ilara Venn. If you want a teacher, I will teach. It will be slower than you want and harder than you think.
 master_take = Then we begin. You wear the novice's rank from today. It means you have promised to learn, nothing more. Sit with me first.
 master_later = Then go and be unsure somewhere else. The door stays open.
@@ -297,3 +297,25 @@ master_trained_note = Your training with Master Venn is complete for now. She wi
 master_stillness_done = A minute of nothing, done. Tell Master Venn.
 master_shadows_done = Five shadows. Tell Master Venn.
 master_shadows_progress = Shadows ended: %DI of 5.
+
+# ---- Phase 4b.2: Darth Ysanne Vhal, the Dark Enclave on Yavin 4
+sith_stranger = You walked a long way down to stand in front of someone who does not know your name. Walk back up.
+sith_otherdoor = No. You chose the other thing, and it is all over you. There is a door on the far side of this moon where they will tell you that was brave. Go and be told.
+sith_offer = The old man's stray. He sends the ones he cannot bend to me, and calls it losing them. I am Vhal. Darth, if you need the word. I will teach you what you are. It will cost you, and you will pay it gladly.
+sith_take = Then you are mine to teach. You wear the novice's rank from today. It means you have promised to take, nothing more. Kneel, since you were going to anyway.
+sith_later = Then go upstairs and be nothing a while longer. The chamber does not move.
+sith_taken = Darth Ysanne Vhal has taken you as her student. You hold the first rank of the dark.
+sith_train_patience = First: you will learn to wait. Not the Jedi way, with the eyes shut and the mind empty. Sit in this chamber a minute and want something the whole time. Then tell me what it was.
+sith_told = She turns back to the dark and lets you go.
+sith_wait_patience = A minute, I said. Hungry the whole time. You have not done it yet.
+sith_done_patience = You sat, and you wanted, and you did not stop wanting. Good. The Jedi call that failure. Remember who taught you otherwise.
+sith_reward_patience = Now feed it. There are things alive on this moon that will not be alive when you are done. Five. I do not care which.
+sith_train_prey = Five lives. Anything that breathes. I am not interested in why.
+sith_wait_prey = Five. Count them.
+sith_done_prey = Five. And you came back wanting a sixth. That is the lesson; the five were the price of it.
+sith_reward_prey = That is all I give for nothing. The rank above yours is taken, and I decide when you are strong enough to take it. Come back when you have done something I would be afraid of.
+sith_trained = I have nothing more for you yet. Go and be dangerous somewhere. The next door opens when it opens.
+sith_trained_note = Your training with Darth Vhal is complete for now. She will have more when she judges you ready.
+sith_patience_done = A minute of wanting, done. Tell Darth Vhal.
+sith_prey_done = Five lives. Tell Darth Vhal.
+sith_prey_progress = Lives taken: %DI of 5.

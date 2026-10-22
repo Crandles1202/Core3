@@ -19,7 +19,7 @@ lab "attunementReset:$CHAR" >/dev/null
 lab "attunementFlag:$CHAR:padawan:1" >/dev/null
 lab "skill:$CHAR:force_title_jedi_novice" >/dev/null       # the Padawan box itself: the enclave's cells admit it, a flag alone is ejected at the door
 lab "attunementFlag:$CHAR:alignment:dark" >/dev/null
-check_eq "dark_padawan_screen" "$(lab "jediMaster:$CHAR" | sed -n 's/.*screen=\([a-z_]*\).*/\1/p')" "dark" "$(lab "jediMaster:$CHAR" | tail -n1)"
+check_eq "dark_padawan_screen" "$(lab "jediMaster:$CHAR" | sed -n 's/.*screen=\([a-z_]*\).*/\1/p')" "otherdoor" "$(lab "jediMaster:$CHAR" | tail -n1)"
 # --- B: the light Padawan is taken: council, novice box, first task ----------------------------------------------
 lab "attunementFlag:$CHAR:alignment:light" >/dev/null
 check_eq "light_padawan_screen" "$(lab "jediMaster:$CHAR" | sed -n 's/.*screen=\([a-z_]*\).*/\1/p')" "offer"
@@ -34,7 +34,7 @@ wait "$BOT_PID"
 check_eq "offer_accepted" "$(bot_action_count converse ok)" "2" "$(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tr '\n' ' ' | cut -c1-300)"
 M=$(lab "jediMaster:$CHAR" | head -n1)
 check "taken_as_student" "$(grep -q 'student=true' <<<"$M" && echo 1 || echo 0)" "$M"
-check "novice_rank_and_council" "$(grep -q 'novice=true' <<<"$M" && grep -q 'council=1' <<<"$M" && echo 1 || echo 0)" "$M"
+check "novice_rank_and_council" "$(grep -q 'rank=true' <<<"$M" && grep -q 'council=1' <<<"$M" && echo 1 || echo 0)" "$M"
 check "stillness_given" "$(grep -q 'current=stillness told=true' <<<"$M" && echo 1 || echo 0)" "$M"
 check "client_got_taken" "$(grep -aq 'fb_force:master_taken' "$BOTLOG" && echo 1 || echo 0)" "$(grep -a 'master_' "$BOTLOG" | cut -c1-90 | tr '\n' ' ')"
 
