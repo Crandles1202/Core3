@@ -1015,7 +1015,9 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   error. The visions' cast went that way and every vision ended at once. Strings go into screenplay data
   (`writeScreenPlayData`) or quest status. An event scheduled with an object pointer (`createEvent(ms, play,
   fn, pObj, "")`) panics the Lua state if the object is gone by then: pass the oid as the string argument and
-  `getSceneObject` it.
+  `getSceneObject` it — **keyed to a long-lived object such as the player**: `createEvent` with a nil object
+  builds a task that never runs (4b.4's spared enemy stayed; the visions' 180 s figure sweep had the same hole).
+  `createServerEvent` is the object-less form, for persistent server-wide events.
 
 ### 2026-10-21 — 4b.1 the Jedi Master
 

@@ -131,7 +131,9 @@ function FbKnight:spawnBossAt(pPlayer, d, zone, x, z, y, heading, cell)
 	writeData(oid .. ":fbKnightFor", SceneObject(pPlayer):getObjectID())
 	createObserver(DAMAGERECEIVED, "FbKnight", "onBossHit", pBoss)
 	createObserver(OBJECTDESTRUCTION, "FbKnight", "onBossDown", pBoss)
-	createEvent(self.bossLifetime, "FbKnight", "sweepBoss", nil, tostring(oid))
+	-- keyed to the student: an event with no object never fires (DirectorManager::createEvent), and the enemy's own
+	-- pointer may be dead by then
+	createEvent(self.bossLifetime, "FbKnight", "sweepBoss", pPlayer, tostring(oid))
 	if FbLabTests ~= nil and FbLabTests.registryAdd ~= nil then
 		FbLabTests.registryAdd({ oid = oid, zone = zone, cell = cell, x = x, y = y, z = z, template = d.boss, src = "fb_knight", name = SceneObject(pBoss):getObjectName() })
 	end
@@ -220,7 +222,7 @@ end
 function FbKnight:spare(pPlayer, pBoss)
 	if not self:belongsTo(pPlayer, pBoss) or not self:yielded(pBoss) then return false end
 	local oid = SceneObject(pBoss):getObjectID()
-	if self:award(pPlayer, "spare") then createEvent(4000, "FbKnight", "sweepBoss", nil, tostring(oid)) end
+	if self:award(pPlayer, "spare") then createEvent(4000, "FbKnight", "sweepBoss", pPlayer, tostring(oid)) end
 	return true
 end
 
@@ -228,7 +230,7 @@ end
 function FbKnight:execute(pPlayer, pBoss)
 	if not self:belongsTo(pPlayer, pBoss) or not self:yielded(pBoss) then return false end
 	local oid = SceneObject(pBoss):getObjectID()
-	if self:award(pPlayer, "kill") then createEvent(1500, "FbKnight", "sweepBoss", nil, tostring(oid)) end
+	if self:award(pPlayer, "kill") then createEvent(1500, "FbKnight", "sweepBoss", pPlayer, tostring(oid)) end
 	return true
 end
 
