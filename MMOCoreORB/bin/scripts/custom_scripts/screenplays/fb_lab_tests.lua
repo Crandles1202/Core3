@@ -1827,15 +1827,23 @@ end
 -- of fail verdicts. INFO lines carry the facts, WARN/FAIL lines the problems.
 function FbLabTests:placement(filter)
 	local list = FbLabTests.liveSpawns(filter)
-	local fails, warns = 0, 0
+	local fails, warns, gone = 0, 0, 0
 	for _, e in ipairs(list) do
-		local f = FbLabTests.placementOf(e)
-		print(string.format("INFO placement %s los=%s/8 pattern=%s floor=%s verdict=%s why=%s", f.line, tostring(f.los), tostring(f.pattern),
-			f.floor and string.format("%.1f", f.floor) or "-", f.verdict, (table.concat(f.reasons, ";"):gsub(" ", "_"))))
-		if f.verdict == "fail" then fails = fails + 1; print("FAIL placement " .. e.name .. " (" .. e.oid .. "): " .. table.concat(f.reasons, "; "))
-		elseif f.verdict == "warn" then warns = warns + 1; print("WARN placement " .. e.name .. " (" .. e.oid .. "): " .. table.concat(f.reasons, "; ")) end
+		-- a spawn another thread removes while the audit runs (a cantina seat churning, a visitor fading) loses its
+		-- zone and collapses to cell-local coordinates: that reads as "boxed in", so check the zone around the audit
+		local f = SceneObject(e.pObj):getZoneName() ~= "" and FbLabTests.placementOf(e) or nil
+		if f == nil or SceneObject(e.pObj):getZoneName() == "" then
+			gone = gone + 1
+			print(string.format("INFO placement oid=%d name=%s template=%s src=%s verdict=gone why=removed_during_the_audit",
+				e.oid, (e.name:gsub(" ", "_")), e.template, tostring(e.src)))
+		else
+			print(string.format("INFO placement %s los=%s/8 pattern=%s floor=%s verdict=%s why=%s", f.line, tostring(f.los), tostring(f.pattern),
+				f.floor and string.format("%.1f", f.floor) or "-", f.verdict, (table.concat(f.reasons, ";"):gsub(" ", "_"))))
+			if f.verdict == "fail" then fails = fails + 1; print("FAIL placement " .. e.name .. " (" .. e.oid .. "): " .. table.concat(f.reasons, "; "))
+			elseif f.verdict == "warn" then warns = warns + 1; print("WARN placement " .. e.name .. " (" .. e.oid .. "): " .. table.concat(f.reasons, "; ")) end
+		end
 	end
-	print(string.format("INFO placement summary spawns=%d fail=%d warn=%d", #list, fails, warns))
+	print(string.format("INFO placement summary spawns=%d fail=%d warn=%d gone=%d", #list - gone, fails, warns, gone))
 	return tostring(fails)
 end
 
