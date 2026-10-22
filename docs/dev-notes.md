@@ -1017,7 +1017,9 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   fn, pObj, "")`) panics the Lua state if the object is gone by then: pass the oid as the string argument and
   `getSceneObject` it — **keyed to a long-lived object such as the player**: `createEvent` with a nil object
   builds a task that never runs (4b.4's spared enemy stayed; the visions' 180 s figure sweep had the same hole).
-  `createServerEvent` is the object-less form, for persistent server-wide events.
+  `createServerEvent` is the object-less form, for persistent server-wide events. And the handler runs as
+  `Play:fn(pObject, args)` — self first — so a dot-defined `function Play.fn(_, args)` reads the object as
+  `args` and the id is lost (the spared enemy stayed a second time).
 
 ### 2026-10-21 — 4b.1 the Jedi Master
 

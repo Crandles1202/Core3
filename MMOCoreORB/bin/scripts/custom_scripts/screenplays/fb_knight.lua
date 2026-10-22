@@ -142,11 +142,12 @@ end
 
 function FbKnight:despawnBoss(pPlayer)
 	local oid = tonumber(self:get(pPlayer, "boss") or 0) or 0
-	if oid ~= 0 then FbKnight.sweepBoss(nil, tostring(oid)) end
+	if oid ~= 0 then FbKnight:sweepBoss(nil, tostring(oid)) end
 	self:clear(pPlayer, "boss")
 end
 
-function FbKnight.sweepBoss(_, args)
+-- an event handler is called as play:fn(pObject, args) — self first; a dot-defined handler would read the object as args
+function FbKnight:sweepBoss(pObj, args)
 	local oid = tonumber(args)
 	if oid == nil or oid == 0 then return end
 	local p = getSceneObject(oid)
