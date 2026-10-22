@@ -73,6 +73,11 @@ function FbKnight:screenFor(pPlayer, m)
 end
 
 local function say(pPlayer, m, id) CreatureObject(pPlayer):sendSystemMessage("@fb_force:" .. m.prefix .. id) end
+local function waypointTo(pPlayer, planet, x, y, label)
+	local pGhost = CreatureObject(pPlayer):getPlayerObject()
+	if pGhost == nil then return end
+	PlayerObject(pGhost):addWaypoint(planet, label, "", x, getTerrainHeightAt(planet, x, y), y, 1, true, true, 0)
+end
 
 -- ---------------------------------------------------------------- the trial given
 

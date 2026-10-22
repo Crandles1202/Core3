@@ -46,7 +46,7 @@ check_eq "spared_in_conversation" "$(bot_action_status converse)" "ok" "$(grep -
 K=$(lab "knight:$CHAR" | head -n1)
 check "token_held_choice_spare" "$(grep -q 'state=token choice=spare' <<<"$K" && echo 1 || echo 0)" "$K"
 check "light_holocron_in_the_bag" "$(lab "findItem:$CHAR:holocron" | grep -qi 'holocron' && echo 1 || echo 0)" "$(lab "findItem:$CHAR:holocron" | head -n1 | cut -c1-120)"
-check "sparing_leans_light" "$(grep -q 'align=35' <<<"$K" && echo 1 || echo 0)" "$K"
+check "sparing_leans_light" "$(grep -q 'align=55' <<<"$K" && echo 1 || echo 0)" "30 + four tasks' 5 + the spare's 5; $K"
 sleep 6
 check "chief_gone" "$(lab "objectAlive:$CHIEF" | grep -q 'alive=0' && echo 1 || echo 0)" "$(lab "objectAlive:$CHIEF")"
 check_eq "master_hears_the_report" "$(lab "knight:$CHAR" | sed -n 's/.*screen=\([a-z_0-9]*\).*/\1/p')" "knight_report"
@@ -78,7 +78,7 @@ check "elder_stands_at_the_stronghold" "$( [ -n "$ELDER" ] && lab "objectPos:$EL
 check "elder_placement" "$(lab "placement:fb_nightsister_witch" | grep -q 'verdict=ok\|verdict=warn' && echo 1 || echo 0)" "$(lab "placement:fb_nightsister_witch" | grep -a 'verdict' | head -n1 | cut -c1-160)"
 lab "knightChoose:$CHAR:kill" >/dev/null
 K=$(lab "knight:$CHAR" | head -n1)
-check "elder_finished_token_held" "$(grep -q 'state=token choice=kill' <<<"$K" && grep -q 'align=-35' <<<"$K" && echo 1 || echo 0)" "$K"
+check "elder_finished_token_held" "$(grep -q 'state=token choice=kill' <<<"$K" && grep -q 'align=-60' <<<"$K" && echo 1 || echo 0)" "-30, the dark tasks' -25, the kill's -5; $K"
 lab "knightGraduate:$CHAR" >/dev/null
 K=$(lab "knight:$CHAR" | head -n1)
 check "knight_of_the_dark" "$(grep -q 'state=done' <<<"$K" && grep -q 'jediState=8' <<<"$K" && grep -q 'frsRank=3' <<<"$K" && echo 1 || echo 0)" "$K"

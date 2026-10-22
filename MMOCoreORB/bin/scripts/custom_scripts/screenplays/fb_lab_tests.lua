@@ -216,7 +216,7 @@ function FbLabTests.discoverNpcs()
 		npcs[#npcs + 1] = {
 			template = t,
 			mobileFile = FbLabTests.mobileDir .. "/" .. t .. ".lua",
-			convoFile = FbLabTests.convoDir .. "/" .. t .. "_conv.lua",
+			convoFile = ((FbLabTests.eventNpcs or {})[t] or {}).convoFile or (FbLabTests.convoDir .. "/" .. t .. "_conv.lua"),   -- eventNpcs may name a shared one
 		}
 	end
 	return npcs
@@ -307,8 +307,8 @@ FbLabTests.eventNpcs = {
 	fb_vision_luke = { conversation = false, spawnedAtBoot = false },   -- Phase 4a.4
 	fb_vision_vader = { conversation = false, spawnedAtBoot = false },  -- Phase 4a.4
 	fb_vision_exar_kun = { conversation = false, spawnedAtBoot = false }, -- Phase 4a.4
-	fb_hunter_chief = { spawnedAtBoot = false },                        -- Phase 4b.4
-	fb_nightsister_witch = { spawnedAtBoot = false },                   -- Phase 4b.4
+	fb_hunter_chief = { spawnedAtBoot = false, convoFile = "scripts/mobile/conversations/tasks/fb_knight_boss_conv.lua" },      -- Phase 4b.4
+	fb_nightsister_witch = { spawnedAtBoot = false, convoFile = "scripts/mobile/conversations/tasks/fb_knight_boss_conv.lua" }, -- Phase 4b.4
 }
 
 function FbLabTests.checkNpc(npc)
@@ -330,6 +330,9 @@ function FbLabTests.checkNpc(npc)
 		Creature = { new = function(self, t) return t end },
 		CreatureTemplates = { addCreatureTemplate = function() end },
 		includeFile = function() end,
+		-- the stock templates build their attack lists with merge(table, table, …); the attack groups are
+		-- unknown here (they read as 0) and are skipped
+		merge = function(...) local r = {}; for _, t in ipairs({ ... }) do if type(t) == "table" then for _, v in ipairs(t) do r[#r + 1] = v end end end; return r end,
 	}, { __index = function(_, k) local v = _G[k]; if v == nil then return 0 end; return v end })
 	local mchunk, merr = loadfile(npc.mobileFile, "t", mobEnv)
 	if mchunk ~= nil then
