@@ -1055,3 +1055,13 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   at its far end: (0, −150) is clear, (0, −155) is in a chair). `fb_jedi_master.lua` became `fb_masters.lua`:
   `FbMasterBase:new{…}` carries everything, the two Masters are data (side, council, rank box, room, tasks,
   string prefix). The `master` flag on the character says whose student it is; the other Master turns it away.
+
+### 2026-10-21 — 4b.3 alignment, the ladder, the turn
+
+- Murder detection uses the AI bindings: a victim that `isAiAgent()` and not `isCreature()` (a humanoid NPC), with
+  `AiAgent:isKiller()` false and `AiAgent:isAggressiveTo(pPlayer)` false. Animals never count; hostile NPCs
+  never count.
+- The ladder reuses the Masters' task engine: rank tasks are ordinary entries with `rank` and `xp`; `screenFor`
+  gates the offer on `PlayerObject:getExperience("jedi_general")`, `reward` promotes. The stock FRS XP thresholds
+  (5000, 15000, 25000, …) are the numbers used. Surrendering the old side's boxes on the turn is
+  `CreatureObject:surrenderSkill(name)` (the binding passes verify/notify/… = true).

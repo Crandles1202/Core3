@@ -149,7 +149,7 @@ end
 
 function FbAttunement:reset(pPlayer)
 	for _, s in ipairs(self.sources) do deleteScreenPlayData(pPlayer, self.DATA, s) end
-	for _, f in ipairs({ "ghost25", "ghost50", "ghost75", "oldman", "called", "task", "incapAt", "incapDay", "medWorlds", "lore", "return", "trials", "ambushDue", "ambushDone", "alignment", "padawan", "master" }) do deleteScreenPlayData(pPlayer, self.DATA, "flag:" .. f) end
+	for _, f in ipairs({ "ghost25", "ghost50", "ghost75", "oldman", "called", "task", "incapAt", "incapDay", "medWorlds", "lore", "return", "trials", "ambushDue", "ambushDone", "alignment", "padawan", "master", "align" }) do deleteScreenPlayData(pPlayer, self.DATA, "flag:" .. f) end
 	if FbTrials ~= nil then FbTrials:reset(pPlayer) end
 	if FbVisions ~= nil then FbVisions:reset(pPlayer) end
 	if FbMasters ~= nil then FbMasters.reset(pPlayer) end
@@ -172,7 +172,7 @@ function FbAttunement:status(pPlayer)
 	local st = { total = self:total(pPlayer), per = {}, raw = {}, flags = {} }
 	st.tier = self:tier(st.total)
 	for _, s in ipairs(self.sources) do st.per[s], st.raw[s] = self:sourceTotal(pPlayer, s) end
-	for _, f in ipairs({ "ghost25", "ghost50", "ghost75", "called", "task", "medWorlds", "lore", "return", "trials", "ambushDue", "ambushDone", "alignment", "padawan", "master" }) do st.flags[f] = self:flag(pPlayer, f) end
+	for _, f in ipairs({ "ghost25", "ghost50", "ghost75", "called", "task", "medWorlds", "lore", "return", "trials", "ambushDue", "ambushDone", "alignment", "padawan", "master", "align" }) do st.flags[f] = self:flag(pPlayer, f) end
 	return st
 end
 
@@ -391,6 +391,7 @@ function FbAttunement:onKill(pPlayer, pVictim)
 	self:scanItems(pPlayer)
 	if FbTrials ~= nil then FbTrials:onKill(pPlayer, pVictim) end
 	if FbMasters ~= nil then FbMasters.onKill(pPlayer, pVictim) end   -- 4b.1/4b.2: the Masters' kill tasks
+	if FbAlignment ~= nil then FbAlignment:onKill(pPlayer, pVictim) end   -- 4b.3: the score
 	-- the fight may still be on: look again in 20 s
 	createEvent(20000, "FbAttunement", "maybeVisitLater", pPlayer, "")
 	return 0
@@ -511,6 +512,10 @@ function FbAttunement:showStatus(pPlayer)
 	if st.flags.task == "trials" and FbTrials ~= nil then
 		local msg = LuaStringIdChatParameter("@fb_force:trials_progress"); msg:setDI(FbTrials:doneCount(pPlayer))
 		CreatureObject(pPlayer):sendSystemMessage(msg:_getObject())
+	end
+	if FbAlignment ~= nil then
+		local line = FbAlignment:statusLine(pPlayer)
+		if line ~= nil then CreatureObject(pPlayer):sendSystemMessage(line) end
 	end
 	local lore = self:loreCount(pPlayer)
 	if lore > 0 then

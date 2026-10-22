@@ -15,8 +15,14 @@
 -- State per student is screenplay data named after the Master: `step` (index of the current task), `told:<id>`
 -- (the task was given), `ready:<id>` (done, not yet reported), `done` (comma list), `sat`, `prog`.
 --
--- Lab: FbLabTests jediMaster / sithMaster / jediMasterTake / sithMasterTake / trainingSet / trainingTick,
--- checkJediMaster / checkSithMaster; scenarios `jedi-master`, `sith-master`.
+-- 4b.3: the task list continues with the *rank* tasks (`rank = N, xp = …`): once the training is done, each rank of
+-- the ladder is a quest from the Master, offered when the character's Jedi experience has reached the rank's
+-- threshold; reporting it is the promotion (FRS rank N, the `force_rank_<side>_rank_0N` box). Every task also
+-- carries an alignment shift (`align`). A student of the other Master whose score leans this way is offered the
+-- turn (`FbMasterBase:turn`: the old side's rank boxes are surrendered, the new side starts at the novice).
+--
+-- Lab: FbLabTests jediMaster / sithMaster / jediMasterTake / sithMasterTake / masterTurn / trainingSet /
+-- trainingTick, checkJediMaster / checkSithMaster; scenarios `jedi-master`, `sith-master`, `ranks-alignment`.
 
 local SITTING = 8   -- CreaturePosture::SITTING (see fb_attunement)
 
@@ -80,12 +86,17 @@ function FbMasterBase:say(pPlayer, id) CreatureObject(pPlayer):sendSystemMessage
 -- which screen the Master opens with
 function FbMasterBase:screenFor(pPlayer)
 	if not self:isPadawan(pPlayer) then return "stranger" end
-	if self:alignment(pPlayer) ~= self.side then return "otherdoor" end
 	local m = FbAttunement:flag(pPlayer, "master")
-	if m ~= nil and m ~= self.side then return "otherdoor" end   -- the other Master's student stays theirs
+	if m ~= nil and m ~= self.side then
+		-- the other Master's student: theirs, unless the heart has turned this way (4b.3)
+		if FbAlignment ~= nil and FbAlignment:leans(pPlayer) == self.side then return "turn" end
+		return "otherdoor"
+	end
+	if m == nil and self:alignment(pPlayer) ~= self.side then return "otherdoor" end
 	if not self:isStudent(pPlayer) then return "offer" end
 	local t = self:currentTask(pPlayer)
 	if t == nil then return "trained" end
+	if t.rank ~= nil and self:get(pPlayer, "told:" .. t.id) == nil and self:jediXp(pPlayer) < (t.xp or 0) then return "rank_wait_xp" end
 	if self:get(pPlayer, "ready:" .. t.id) ~= nil then return "done_" .. t.id end
 	if self:get(pPlayer, "told:" .. t.id) == nil then return "train_" .. t.id end
 	return "wait_" .. t.id
@@ -129,7 +140,9 @@ function FbMasterBase:reward(pPlayer, id)
 	local d = self:get(pPlayer, "done")
 	self:set(pPlayer, "done", d == nil and id or (d .. "," .. id))
 	CreatureObject(pPlayer):awardExperience("jedi_general", self.xpPerTask, true)
-	local _, step = self:currentTask(pPlayer)
+	local t, step = self:currentTask(pPlayer)
+	if t ~= nil and t.align ~= nil and FbAlignment ~= nil then FbAlignment:shift(pPlayer, t.align, self.name .. ":" .. id) end
+	if t ~= nil and t.rank ~= nil then self:promote(pPlayer, t.rank) end
 	self:set(pPlayer, "step", step + 1)
 	self:clear(pPlayer, "prog"); self:clear(pPlayer, "sat")
 	if self.tasks[step + 1] == nil then
@@ -145,6 +158,56 @@ function FbMasterBase:complete(pPlayer, id)
 	self:set(pPlayer, "ready:" .. id, os.time())
 	self:say(pPlayer, id .. "_done")
 	printf("%s: %s has done %s\n", self.name, CreatureObject(pPlayer):getFirstName(), id)
+end
+
+function FbMasterBase:jediXp(pPlayer)
+	local pGhost = CreatureObject(pPlayer):getPlayerObject()
+	if pGhost == nil then return 0 end
+	return PlayerObject(pGhost):getExperience("jedi_general")
+end
+
+function FbMasterBase:rankSkillFor(rank)
+	if rank >= 11 then return "force_rank_" .. self.side .. "_master" end
+	return string.format("force_rank_%s_rank_%02d", self.side, rank)
+end
+
+-- the ladder: FRS rank N and its box (4b.3)
+function FbMasterBase:promote(pPlayer, rank)
+	local pGhost = CreatureObject(pPlayer):getPlayerObject()
+	if pGhost ~= nil then PlayerObject(pGhost):setFrsRank(rank) end
+	local box = self:rankSkillFor(rank)
+	if not CreatureObject(pPlayer):hasSkill(box) then awardSkillUnchecked(pPlayer, box) end
+	local msg = LuaStringIdChatParameter("@fb_force:" .. self.prefix .. "promoted"); msg:setDI(rank)
+	CreatureObject(pPlayer):sendSystemMessage(msg:_getObject())
+	printf("%s: %s promoted to rank %d (%s)\n", self.name, CreatureObject(pPlayer):getFirstName(), rank, box)
+end
+
+-- the turn: redemption or temptation. The old side's rank boxes go, the new side starts at the novice (4b.3)
+function FbMasterBase:turn(pPlayer)
+	if pPlayer == nil or FbAttunement == nil then return false end
+	local oldSide = FbAttunement:flag(pPlayer, "master")
+	if oldSide == nil or oldSide == self.side then return false end
+	local old = nil
+	for _, m in ipairs(FbMasters) do if m.side == oldSide then old = m end end
+	for rank = 0, 11 do
+		local box = rank == 0 and ("force_rank_" .. oldSide .. "_novice") or (old ~= nil and old:rankSkillFor(rank) or nil)
+		if box ~= nil and CreatureObject(pPlayer):hasSkill(box) then CreatureObject(pPlayer):surrenderSkill(box) end
+	end
+	if old ~= nil then old:reset(pPlayer) end
+	self:reset(pPlayer)
+	local pGhost = CreatureObject(pPlayer):getPlayerObject()
+	if pGhost ~= nil then
+		PlayerObject(pGhost):setFrsCouncil(self.council)
+		PlayerObject(pGhost):setFrsRank(0)
+	end
+	if not CreatureObject(pPlayer):hasSkill(self.rankSkill) then awardSkillUnchecked(pPlayer, self.rankSkill) end
+	FbAttunement:setFlag(pPlayer, "master", self.side)
+	FbAttunement:setFlag(pPlayer, "alignment", self.side)
+	FbAttunement:setFlag(pPlayer, "task", "training")
+	self:set(pPlayer, "step", 1)
+	self:say(pPlayer, "turned")
+	printf("%s: %s turns from the %s to the %s\n", self.name, CreatureObject(pPlayer):getFirstName(), oldSide, self.side)
+	return true
 end
 
 -- ---------------------------------------------------------------- the tasks
@@ -209,11 +272,12 @@ end
 -- one status line (lab)
 function FbMasterBase:status(pPlayer)
 	local t, step = self:currentTask(pPlayer)
-	return string.format("padawan=%s alignment=%s master=%s student=%s step=%d current=%s told=%s ready=%s done=%s sat=%s prog=%s rank=%s council=%s",
+	return string.format("padawan=%s alignment=%s master=%s student=%s step=%d current=%s told=%s ready=%s done=%s sat=%s prog=%s rank=%s council=%s frsRank=%s align=%d",
 		tostring(self:isPadawan(pPlayer)), tostring(FbAttunement:flag(pPlayer, "alignment") or "-"), tostring(FbAttunement:flag(pPlayer, "master") or "-"), tostring(self:isStudent(pPlayer)), step,
 		t and t.id or "-", t and tostring(self:get(pPlayer, "told:" .. t.id) ~= nil) or "-", t and tostring(self:get(pPlayer, "ready:" .. t.id) ~= nil) or "-",
 		self:get(pPlayer, "done") or "-", self:get(pPlayer, "sat") or "0", self:get(pPlayer, "prog") or "0",
-		tostring(CreatureObject(pPlayer):hasSkill(self.rankSkill)), tostring(PlayerObject(CreatureObject(pPlayer):getPlayerObject()):getFrsCouncil()))
+		tostring(CreatureObject(pPlayer):hasSkill(self.rankSkill)), tostring(PlayerObject(CreatureObject(pPlayer):getPlayerObject()):getFrsCouncil()),
+		tostring(PlayerObject(CreatureObject(pPlayer):getPlayerObject()):getFrsRank()), FbAlignment ~= nil and FbAlignment:score(pPlayer) or 0)
 end
 
 -- ---------------------------------------------------------------- the two Masters
@@ -225,8 +289,11 @@ FbJediMaster = FbMasterBase:new {
 	entrance = { x = -5575, y = 4910 }, otherEntrance = { x = 5068, y = 310, name = "The Dark Enclave" },
 	xpPerTask = 5000, sitPoll = 5000,
 	tasks = {
-		{ id = "stillness", kind = "sit", seconds = 60 },
-		{ id = "shadows", kind = "kill", match = "sith_shadow", count = 5 },
+		{ id = "stillness", kind = "sit", seconds = 60, align = 5 },
+		{ id = "shadows", kind = "kill", match = "sith_shadow", count = 5, align = 5 },
+		-- the ladder (4b.3): rank N is given for the task, once the Jedi experience is there
+		{ id = "rank1", rank = 1, xp = 5000, kind = "kill", match = "sith_shadow", count = 10, align = 5 },
+		{ id = "rank2", rank = 2, xp = 15000, kind = "sit", seconds = 180, align = 5 },
 	},
 }
 
@@ -237,8 +304,10 @@ FbSithMaster = FbMasterBase:new {
 	entrance = { x = 5068, y = 310 }, otherEntrance = { x = -5575, y = 4910, name = "The Light Enclave" },
 	xpPerTask = 5000, sitPoll = 5000,
 	tasks = {
-		{ id = "patience", kind = "sit", seconds = 60 },
-		{ id = "prey", kind = "kill", match = "", count = 5 },   -- anything that lives
+		{ id = "patience", kind = "sit", seconds = 60, align = -5 },
+		{ id = "prey", kind = "kill", match = "", count = 5, align = -10 },   -- anything that lives
+		{ id = "rank1", rank = 1, xp = 5000, kind = "kill", match = "mauler", count = 5, align = -5 },   -- the Maulers, Dathomir's dark pretenders
+		{ id = "rank2", rank = 2, xp = 15000, kind = "sit", seconds = 180, align = -5 },
 	},
 }
 

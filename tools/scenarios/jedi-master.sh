@@ -77,8 +77,8 @@ wait "$BOT_PID"
 XP2=$(lab "xp:$CHAR:jedi_general" | sed -n 's/.*amount=\([0-9-]*\).*/\1/p' | head -n1)
 check_eq "shadows_paid" "$(( ${XP2:-0} - ${XP1:-0} ))" "5000" "jedi_general $XP1 -> $XP2"
 M=$(lab "jediMaster:$CHAR" | head -n1)
-check "training_complete" "$(grep -q 'done=stillness,shadows' <<<"$M" && grep -q 'current=-' <<<"$M" && echo 1 || echo 0)" "$M"
-check_eq "trained_screen" "$(lab "jediMaster:$CHAR" | sed -n 's/.*screen=\([a-z_]*\).*/\1/p')" "trained"
-check "client_got_trained_note" "$(grep -aq 'fb_force:master_trained_note' "$BOTLOG" && echo 1 || echo 0)" "$(grep -a 'master_trained' "$BOTLOG" | cut -c1-90 | tail -n1)"
+check "training_complete" "$(grep -q 'done=stillness,shadows' <<<"$M" && grep -q 'current=rank1' <<<"$M" && echo 1 || echo 0)" "$M"
+check_eq "ladder_offers_rank1" "$(lab "jediMaster:$CHAR" | sed -n 's/.*screen=\([a-z_0-9]*\).*/\1/p')" "train_rank1"   # 10000 Jedi XP from the two tasks clears the 5000 of rank 1
+check "client_got_second_reward" "$(grep -aq 'fb_force:master_reward_shadows' "$BOTLOG" && echo 1 || echo 0)" "$(grep -a 'master_reward' "$BOTLOG" | cut -c1-90 | tail -n1)"
 lab "attunementReset:$CHAR" >/dev/null
 finish

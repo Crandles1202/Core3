@@ -38,7 +38,27 @@ screen("wait_shadows", "master_wait_shadows", {}, true)
 screen("done_shadows", "master_done_shadows", { {"It is done.", "reward_shadows"} })
 screen("reward_shadows", "master_reward_shadows", {}, true)
 
--- nothing more to give yet (4b.3)
+-- the ladder (4b.3): a rank is a task, given when the experience is there, reported for the promotion
+screen("rank_wait_xp", "master_rank_wait_xp", {}, true)
+screen("train_rank1", "master_train_rank1", { {"I will.", "told_rank1"} })
+screen("told_rank1", "master_told", {}, true)
+screen("wait_rank1", "master_wait_rank1", {}, true)
+screen("done_rank1", "master_done_rank1", { {"It is done.", "reward_rank1"} })
+screen("reward_rank1", "master_reward_rank1", {}, true)
+screen("train_rank2", "master_train_rank2", { {"I will.", "told_rank2"} })
+screen("told_rank2", "master_told", {}, true)
+screen("wait_rank2", "master_wait_rank2", {}, true)
+screen("done_rank2", "master_done_rank2", { {"It is done.", "reward_rank2"} })
+screen("reward_rank2", "master_reward_rank2", {}, true)
+
+-- the turn (4b.3): the other Master's student whose heart leans this way
+screen("turn", "master_turn", {
+	{"I am done with them.", "turned"},
+	{"No.", "later"},
+})
+screen("turned", "master_turned", {}, true)
+
+-- the ladder's end for now
 screen("trained", "master_trained", {}, true)
 
 addConversationTemplate("fb_jedi_master_conv", fbJediMasterConvoTemplate)
