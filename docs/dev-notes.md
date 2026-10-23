@@ -1297,6 +1297,23 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   each, the box gone from `ready` afterwards. Mos Eisley has eight scout trainers near its shuttleport.
 - **What Teyla can train:** nothing yet — the next Rifleman boxes cost 175 000–350 000 rifle experience (she has 1025)
   and the Scout boxes 1000 scout/trapping/camp experience (she has 0). Her level stays 1 until the first award; the
-  stock grind is the stock grind (XP ×2 already) — whether the citizens get more is Chuck's call. Follow-ups: scout
-  experience from harvesting corpses after a kill (the natural next action for a rifleman), a bazaar `sell` tool for
-  Wex (the bot client already lists and buys), crafting.
+  stock grind is the stock grind (XP ×2 already) — whether the citizens get more is Chuck's call. Follow-ups: a bazaar
+  `sell` tool for Wex (the bot client already lists and buys), crafting.
+- **Scouts harvest corpses** (same batch, after the gate above went red on a flake — see below). The rules
+  (`HarvestCorpseCommand.h`, `CreatureImplementation::canHarvestMe`, `CreatureManagerImplementation::harvest`): within
+  10 m of the corpse, not in combat, the `outdoors_scout_novice` box and `creature_harvesting` ≥ 1, the creature has
+  organics (a kreetle: insect meat / scaley hide; a worrt: meat, hide, bone), once per player per corpse,
+  `harvestcorpse [meat|hide|bone]` (random when unsaid). Scout experience = level × 5 + 19 (a kreetle paid 71 with the
+  ×2), the message is `@skl_use:creature_quality_<fat|medium|scrawny>` with the resource name — the client decodes it
+  now, and the seat reads the kill by the experience (`xp:<char>:scout` before and after) rather than the message.
+  `tools/seat fight … --harvest` (after the loot, waits up to 12 s for `where` to say combat=false, nowait command);
+  the pilot's `hunt` asks lab `skillmod:<char>:creature_harvesting` once and harvests every kill when it is at least 1,
+  reports `harvested`. Teyla holds the Scout novice box, so twenty worrts are one scout box (1000) and the first award
+  with the rifle in hand recomputes her level from 1 to the real number. Scenario `seat-fight` grants the box and checks
+  the corpse and the experience (14 checks).
+- **Gate flake, 2026-10-23 ~21:30:** `schematic-broker-ui` and `schematic-broker` both failed on the bot's converse with
+  Dannik Vosa in the Trade Hall ("did not start a conversation within 5s"), the same broker oid twice, right after the
+  `sandstorm` scenario; `gotoNpc` reported the teleport done both times, the lab-side purchase worked, and the scenario
+  passed on its own a few minutes later (12/12) as it had in every earlier gate. Pattern: the bot logs in 2 s after a
+  relog into a cell and talks after 2 s more; nothing in the batch touches that path. Unexplained; if it repeats, give
+  those two scenarios a longer `--wait` before the converse or a `where` check that the character came back in the cell.
