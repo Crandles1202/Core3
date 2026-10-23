@@ -274,7 +274,7 @@ class Senses:
         if me and isinstance(planet, str):
             t = threats_of(self.character_name, 150)
             strength = t.get("strength")
-            threats = [{k: v for k, v in r.items() if k in ("name", "level", "distance", "aggressive")} for r in t.get("threats", [])[:6]]
+            threats = [{k: v for k, v in r.items() if k in ("name", "level", "pack", "distance", "aggressive")} for r in t.get("threats", [])[:6]]
         position = {"x": round(me["x"], 1), "y": round(me["y"], 1)} if me else None
         if w.get("x") is not None:
             position = {"x": round(float(w["x"]), 1), "y": round(float(w["y"]), 1)}
@@ -310,6 +310,8 @@ def threats_of(character_name, radius=150):
             rows.append({"oid": int(f.get("oid") or 0), "name": (f.get("name") or "").replace("_", " "), "level": int(f.get("level") or 0),
                          "distance": int(float(f.get("distance") or 0)), "aggressive": f.get("aggressive") == "true",
                          "x": float(f.get("x") or 0), "y": float(f.get("y") or 0)})
+    for r in rows:   # a pack: the same kind within 25 m of it (five sevorrts are a different matter from one)
+        r["pack"] = sum(1 for o in rows if o["name"] == r["name"] and ((o["x"] - r["x"]) ** 2 + (o["y"] - r["y"]) ** 2) ** 0.5 <= 25)
     rows.sort(key=lambda r: r["distance"])
     return {"ok": bool(me), "strength": int(me.get("strength") or 0) if me else None, "threats": rows}
 
@@ -658,10 +660,13 @@ def seat_tools(seat, files, character_name, seat_name):
         for _ in range(max(1, min(int(kills), 5))):
             th = threats_of(character_name, 150)
             strength = th.get("strength") or 1
-            danger = [t for t in th["threats"] if t["aggressive"] and t["distance"] <= 120 and t["level"] * 2 > strength]
+            # what would attack you and win: above your strength alone, or a pack of anything above half of it
+            danger = [t for t in th["threats"] if t["aggressive"] and t["distance"] <= 120
+                      and (t["level"] > strength or (t.get("pack", 1) >= 2 and t["level"] * 2 > strength))]
             if danger:
                 t = danger[0]
-                log.append(_escape(f"danger: {t['name']} (level {t['level']}) {t['distance']} m away would attack you")); break
+                what = f"{t['name']} (level {t['level']}" + (f", a pack of {t['pack']}" if t.get("pack", 1) > 1 else "") + ")"
+                log.append(_escape(f"danger: {what} {t['distance']} m away would attack you")); break
             near = creatures_near(name_fragment)
             if near.get("ok") and not near["creatures"] and near.get("farther"):
                 # nothing in view but the server knows one roaming farther out: walk there and look again

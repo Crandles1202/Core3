@@ -1200,3 +1200,20 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
     died 30 s into a manual `seat fight` watched with the new `creatureHam:<oid>` oracle), but `objectAlive` answered
     alive=1 for the corpse — it only checked that the object was still in the zone, and a dead creature stays there for
     a while. It now counts a dead creature as not alive, so the fight loop sees the kill, loots and moves on.
+  - **The story camp killed Teyla, not the worrt** (2026-10-23, after the gates): her memory said a worrt took her
+    from 748 health to −6 in 23 s; a worrt hits for 50. `FbLabTests:story` showed the weekly story event *tusken_raid*
+    live with five raiders camped at 3985,−4770 — the `story-ticker` scenario fires it in every gate, so the camp
+    stands 100 m from her old hunting ground after every bench run, refilled hourly for a week. Tusken raiders are
+    level 19 and hit for 180–190: five of them empty 1100 health in one three-second tick of the fight loop, and the
+    pilot never saw them because the perception listed *creatures* (type 0x400) and the raiders are NPCs. Her server
+    level also read **1**: `calculatePlayerLevel` (`private_<weapon>_combat_difficulty / 100 + 1`, cap 25) is only
+    stored when a skill box is awarded, and the veteran start awarded hers unarmed; her rifle difficulty mod is 1150,
+    so she is really a 12. Fixes: lab `threats:<char>[:<radius>]` (aggressive AI agents and wild creatures above the
+    character's *fighting strength*, computed from the best weapon line; `objectsNear` prints `level=`), the pilot's
+    perception carries `fighting_strength` and `threats` (with `pack`), `creatures_near` rows carry `level` and `pack`,
+    `hunt` refuses to start with a winning threat within 120 m (above the strength alone, or a pack above half of it),
+    skips prey by the same rule and, after a retreat, **walks 300 m toward the nearest travel point** — the old loop
+    stopped attacking and stood still, which is how an incapacitation became a death. Verified live: at the new south
+    ground (3450,−5300) she met three level-10 zucca boars and five aggressive sevorrts, refused, and walked back
+    toward the starport. Her ground is now south of Mos Eisley (`mos_eisley_easy_newbie` circle, outside the `_sw`
+    rectangle's slaver theaters); the east is written off in her playbook.
