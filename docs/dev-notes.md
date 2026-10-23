@@ -1155,3 +1155,6 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 - The Mos Eisley cantina is stock building `1082874` (h 38); its main room is cell 3 (`cantina`, oid 1082877, the
   ambient life's anchor cell); a spot by the north wall at (8, 4) is 4 m from the nearest furniture. The stock
   mobile library has no male criminal smuggler dress, only the female one and the Binayre Trandoshans.
+- A lab character shared by every gate accumulates: after a dozen runs its `jedi_general` experience sat at the
+  stock cap (90 000) and a Master's reward added nothing. Scenarios that pay experience zero it first (`xpSet`,
+  through `awardExperience` by the difference).

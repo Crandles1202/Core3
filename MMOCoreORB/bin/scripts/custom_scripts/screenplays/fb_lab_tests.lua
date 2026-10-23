@@ -973,6 +973,20 @@ function FbLabTests:heal(charName, pool, amount)
 	return hamLine(charName, pPlayer)
 end
 
+-- xpSet:<char>:<type>:<amount> → that experience pool set to the amount (through awardExperience by the difference,
+-- so the stock caps apply: a reused character hit the jedi_general cap and a Master's reward could not add)
+function FbLabTests:xpSet(charName, xpType, amount)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pGhost = CreatureObject(pPlayer):getPlayerObject()
+	if pGhost == nil then print("ERROR " .. charName .. " has no player object"); return "none" end
+	local have = PlayerObject(pGhost):getExperience(xpType)
+	local want = tonumber(amount) or 0
+	if want ~= have then CreatureObject(pPlayer):awardExperience(xpType, want - have, false) end
+	print(string.format("INFO xpSet char=%s type=%s was=%d now=%d", charName, tostring(xpType), have, PlayerObject(pGhost):getExperience(xpType)))
+	return "ok"
+end
+
 -- revive:<char> → a dead or incapacitated lab character back on its feet with full pools (what a cloning would do,
 -- without the cloner); harmless on a healthy one
 function FbLabTests:revive(charName)
