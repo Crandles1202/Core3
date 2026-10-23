@@ -745,6 +745,11 @@ def seat_tools(seat, files, character_name, seat_name):
         seat_mod = load_seat_module()
         done, log = 0, []
         strength = 1
+        # a scout harvests every corpse it drops: meat, hide or bone into the inventory and scout experience (the cheap
+        # boxes a fighter can actually reach: level × 5 + 19 a corpse against 1000 a box)
+        mod = seat_mod.lab_fields(next((l for l in seat_mod.lab(f"skillmod:{character_name}:creature_harvesting", 8).splitlines() if l.startswith("INFO skillmod")), ""))
+        can_harvest = int(mod.get("creature_harvesting") or 0) >= 1
+        harvested = 0
         for _ in range(max(1, min(int(kills), 5))):
             th = threats_of(character_name, 150)
             strength = th.get("strength") or 1
@@ -776,13 +781,14 @@ def seat_tools(seat, files, character_name, seat_name):
                 w = seat_mod.walk_seat(seat, character_name, c["x"], c["y"], within=18)
                 if not w.get("ok"):
                     log.append(f"could not reach {c['name']}: {seat_mod.action_error(w)}"); break
-            r = seat_mod.fight_seat(seat, character_name, c["oid"], 90)
-            log.append(f"{c['name']}: {r['verdict']} in {r['seconds']} s" + (", looted" if r["looted"] else ""))
+            r = seat_mod.fight_seat(seat, character_name, c["oid"], 90, harvest=can_harvest)
+            log.append(f"{c['name']}: {r['verdict']} in {r['seconds']} s" + (", looted" if r["looted"] else "") + (", harvested" if r.get("harvested") else ""))
             if r["verdict"] == "killed":
                 done += 1
+                harvested += 1 if r.get("harvested") else 0
             elif r["verdict"] == "retreat":
                 log.append(_escape("retreat")); break
-        result = {"ok": done > 0, "kills": done, "strength": strength, "log": log, "health": my_health().get("health")}
+        result = {"ok": done > 0, "kills": done, "harvested": harvested, "strength": strength, "log": log, "health": my_health().get("health")}
         if done == 0:
             result["error"] = "no kill: " + ("; ".join(str(l) for l in log[-3:]) or "nothing matching to hunt")
         return result
@@ -893,7 +899,7 @@ def seat_tools(seat, files, character_name, seat_name):
          "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},
         {"name": "creatures_near", "description": "Creatures within 80 m whose name contains the fragment (empty for all), nearest first, with positions; when none, what roams within 300 m (walk there first). Wild creatures appear only around a player moving through open ground outside town.",
          "input_schema": {"type": "object", "properties": {"name_fragment": {"type": "string"}}, "required": ["name_fragment"], "additionalProperties": False}, "strict": True},
-        {"name": "hunt", "description": "Fight creatures whose name contains the fragment: walk to the nearest, attack until it dies, loot, repeat up to `kills` times (1-5). Stops if your health drops to a third. Takes a minute or two per kill.",
+        {"name": "hunt", "description": "Fight creatures whose name contains the fragment: walk to the nearest, attack until it dies, loot, harvest the corpse if you are a scout (meat/hide/bone and scout experience), repeat up to `kills` times (1-5). Stops if your health drops to a third. Takes a minute or two per kill.",
          "input_schema": {"type": "object", "properties": {"name_fragment": {"type": "string"}, "kills": {"type": "integer"}}, "required": ["name_fragment", "kills"], "additionalProperties": False}, "strict": True},
         {"name": "tend_harvesters", "description": "The gatherer's round on this planet: walk to each harvester you own, empty its hopper into your inventory, pay maintenance and power up to this many hours of reserve, switch it on. Takes minutes.",
          "input_schema": {"type": "object", "properties": {"hours_of_reserve": {"type": "integer"}}, "required": ["hours_of_reserve"], "additionalProperties": False}, "strict": True},

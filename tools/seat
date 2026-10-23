@@ -187,7 +187,7 @@ def path_within(char, x, y, within, cell=0, z=None):
     return direct + [[round(ex, 2), round(ez, 2), round(ey, 2), 0]]
 
 
-def fight_seat(s, char, target, max_s=90, reach=4.0):
+def fight_seat(s, char, target, max_s=90, reach=4.0, harvest=False):
     """attack, keep attacking, loot. Death is read server-side (objectAlive) since the bot client decodes no
     creature deltas; own health too (ham), to stop at a third of health."""
     import math, time as _t
@@ -238,9 +238,31 @@ def fight_seat(s, char, target, max_s=90, reach=4.0):
         _t.sleep(2)
         said = (s.request({"op": "vars", "path": "/SystemMessages"}).get("vars") or [])[n0:]
         looted = not any("@error_message" in m or "out_of_range" in m for m in said)
+    harvested, harvest_said = False, ""
+    if verdict == "killed" and harvest:
+        # a scout harvests the corpse (harvestcorpse [meat|hide|bone], a random one when unsaid): within 10 m, out of
+        # combat (the state lingers a few seconds after the kill), once per corpse; the only sure verdict is the scout
+        # experience (level × 5 + 19), since the quality line is a string id the client shows bare
+        def scout_xp():
+            line = next((l for l in lab(f"xp:{char}:scout", 8).splitlines() if l.startswith("INFO xp")), "")
+            return int(lab_fields(line).get("amount") or 0)
+        before = scout_xp()
+        for _ in range(6):
+            w = lab_fields(next((l for l in lab(f"where:{char}", 8).splitlines() if l.startswith("INFO where")), ""))
+            if w.get("combat") != "true":
+                break
+            _t.sleep(2)
+        n0 = len(s.request({"op": "vars", "path": "/SystemMessages"}).get("vars") or [])
+        s.action("command", name="harvestcorpse", target=str(target), nowait=True, timeout=5)
+        _t.sleep(2)
+        said = (s.request({"op": "vars", "path": "/SystemMessages"}).get("vars") or [])[n0:]
+        harvest_said = "; ".join(m for m in said if "harvest" in m or "resource" in m or "skl_use" in m)[:160]
+        harvested = scout_xp() > before
     result = {"ok": verdict == "killed", "verdict": verdict, "target": target, "swings": swings, "seconds": round(_t.time() - started),
-              "looted": looted}
-    print(f"fight: {verdict} after {swings} swing(s), {result['seconds']} s" + (", looted" if result["looted"] else ""))
+              "looted": looted, "harvested": harvested}
+    if harvest_said:
+        result["harvestSaid"] = harvest_said
+    print(f"fight: {verdict} after {swings} swing(s), {result['seconds']} s" + (", looted" if result["looted"] else "") + (", harvested" if harvested else ""))
     return result
 
 
@@ -686,10 +708,10 @@ def main(argv):
         reply = s.action("harvester", **fields)
     elif cmd == "fight":
         if not rest:
-            die("fight <name> <target oid> [--max S]")
+            die("fight <name> <target oid> [--max S] [--reach M] [--harvest]")
         char = s.request({"op": "ping"}).get("characterName") or seat_character_name(name)
         reply = fight_seat(s, char, int(rest[0]), int(rest[rest.index("--max") + 1]) if "--max" in rest else 90,
-                           float(rest[rest.index("--reach") + 1]) if "--reach" in rest else 4.0)
+                           float(rest[rest.index("--reach") + 1]) if "--reach" in rest else 4.0, "--harvest" in rest)
     elif cmd == "travel":
         if len(rest) < 2:
             die("travel <name> <planet> <point> [--from POINT] [--round-trip] [--wait S]")
