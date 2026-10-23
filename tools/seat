@@ -40,6 +40,8 @@ control channel on a unix socket (SeatAction, Phase 7.0). A pilot (7.3) sits on 
   seat resources <planet> [class]                      the resource oracle (FbLabTests:resources over swg cmd --shared)
   seat log <name> [lines]                              tail of the client log
   seat fight <name> <target oid> [--max S] [--reach M]  close to --reach m (default 4: melee; a rifle allows ~60), attack and keep swinging
+  seat sell <name> <item oid> <terminal oid> <price> [--describe TEXT]   list the item on a bazaar terminal for an instant sale (status 0 = listed)
+  seat retrieve <name> <item oid> <terminal oid>        take a listing back into the inventory (within 8 m)
                                                         (defaultattack every 3 s) until it is dead or --max s (90) pass, re-closing when the
                                                         server says out of range, then loot all from the corpse; prints a verdict line
   seat templates                                       (re)write ~/.swg-lab/templates.jsonl, the client's object type/name table, from the
@@ -147,6 +149,32 @@ def travel_points(planet):
             pt.update(sx=float(f["sx"]), sy=float(f["sy"]))
         points.append(pt)
     return points
+
+
+def sell_seat(s, char, item, vendor, price, description=""):
+    """List an inventory item on a bazaar terminal (or a vendor) for an instant sale at `price` credits — the bot's sell
+    action: one CreateImmediateAuction packet, the ItemSoldMessage status as the verdict (0 ok, 4 bad price, 9 not enough
+    credits for the 20 cr fee, 13 too many listings, 2 invalid item). A resource stack is listed whole (Lua cannot
+    split one). The server checks no distance for a bazaar sale; the caller walks to the terminal for manners."""
+    fields = {"item": int(item), "vendor": int(vendor), "price": int(price)}
+    if description:
+        fields["description"] = str(description)[:200]
+    reply = s.action("sell", timeout=30, **fields)
+    res = reply.get("result") or {}
+    status = res.get("auctionStatus", reply.get("auctionStatus"))
+    out = {"ok": bool(reply.get("ok")), "item": int(item), "vendor": int(vendor), "price": int(price), "status": status}
+    if not out["ok"]:
+        out["error"] = action_error(reply)
+    return out
+
+
+def retrieve_seat(s, char, item, vendor):
+    """Take a listing (or a sold/expired one) back from the terminal into the inventory: within 8 m of it."""
+    reply = s.action("retrieve", timeout=30, item=int(item), vendor=int(vendor))
+    out = {"ok": bool(reply.get("ok")), "item": int(item), "vendor": int(vendor)}
+    if not out["ok"]:
+        out["error"] = action_error(reply)
+    return out
 
 
 def action_error(reply):
@@ -740,6 +768,16 @@ def main(argv):
         char = s.request({"op": "ping"}).get("characterName") or seat_character_name(name)
         reply = fight_seat(s, char, int(rest[0]), int(rest[rest.index("--max") + 1]) if "--max" in rest else 90,
                            float(rest[rest.index("--reach") + 1]) if "--reach" in rest else 4.0, "--harvest" in rest)
+    elif cmd == "sell":
+        if len(rest) < 3:
+            die("sell <name> <item oid> <terminal oid> <price> [--describe TEXT]")
+        char = s.request({"op": "ping"}).get("characterName") or seat_character_name(name)
+        reply = sell_seat(s, char, rest[0], rest[1], rest[2], rest[rest.index("--describe") + 1] if "--describe" in rest else "")
+    elif cmd == "retrieve":
+        if len(rest) < 2:
+            die("retrieve <name> <item oid> <terminal oid>")
+        char = s.request({"op": "ping"}).get("characterName") or seat_character_name(name)
+        reply = retrieve_seat(s, char, rest[0], rest[1])
     elif cmd == "travel":
         if len(rest) < 2:
             die("travel <name> <planet> <point> [--from POINT] [--round-trip] [--wait S]")

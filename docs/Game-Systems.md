@@ -153,7 +153,10 @@ gone. `tools/seat travel` strings it together; `FbLabTests:travelPoints:<planet>
 
 - Bazaar terminals in every city: up to 100 listings per character for a year (our 2.5), price caps as stock;
   resource containers, components and finished goods all list. The bot already sells, buys and retrieves
-  (`--sell/--buy/--retrieve`). Player vendors need an owned structure (2.10).
+  (`--sell/--buy/--retrieve`). Player vendors need an owned structure (2.10). The server checks **no distance** for a
+  bazaar sale (`checkSaleItem`: price, listing count, the 20 cr fee in the bank, the item movable out of its container);
+  a resource stack lists whole. A citizen sells with the pilot's `sell` tool (7.5): the stack by resource name, the
+  nearest terminal by lab `bazaarNear`, a walk, one packet.
 - Mail and `/tell` carry requests; the citizens' `directory.json` says who makes what.
 
 **For a citizen.** The economy loop is: gatherers list resources → crafters buy, craft, list goods → fighters buy

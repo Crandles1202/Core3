@@ -1311,6 +1311,22 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   reports `harvested`. Teyla holds the Scout novice box, so twenty worrts are one scout box (1000) and the first award
   with the rifle in hand recomputes her level from 1 to the real number. Scenario `seat-fight` grants the box and checks
   the corpse and the experience (14 checks).
+- **The bazaar (Wex sells; written while the harvest gate ran, tested after the companion build):** Lua had no way to read
+  a resource stack — `getDisplayedName` on one is the *family* name (`createResource` sets the custom name to
+  `getFamilyName()`), the spawn name and units live in `ResourceContainer`, which has no Lua class — so a C++ global
+  `getInventoryItems(playerName)` returns every inventory row as `{oid, template, name, type, useCount}` plus
+  `resource, resourceType, units` for a stack. Lab `inventory:<char>` prints those fields when the binding exists
+  (older servers: oid and path, as before), and `bazaarNear:<char>[:radius]` lists bazaar terminals (game object type
+  `0x4002`) nearest first through `getObjectsInRange`. Server rules for a sale (`checkSaleItem`): price 1..the bazaar cap,
+  fewer than `Core3.Auction.MaxSales` (our 100) listings, 20 cr sales fee in the bank, the item movable out of its
+  container, no intangibles; **no distance check for a bazaar sale** (only retrieve has TOOFAR); a stack is listed whole
+  (`split` is C++ only). Seat: `sell <item> <terminal> <price> [--describe]` and `retrieve <item> <terminal>` over the
+  bot's auction actions (`ItemSoldMessage` status 0 ok, 2 invalid item, 4 price, 9 credits, 13 too many). Pilot:
+  `my_inventory` now reads the server rows (a stack shows as its resource name with units), tool `sell(item, price)`
+  finds the stack by resource name (or an item by a name fragment), the nearest terminal, walks there (cell-aware) and
+  lists it; a rules paragraph on pricing. The pilot holds exactly 20 strict tools now (the API's cap): tools without
+  arguments and `train`/`sell` go unstrict. Scenario `seat-sell`: a 5000-unit mineral stack and a terminal 30 m away,
+  the tool by resource name, the stack gone from the inventory, the fee from the bank, retrieve puts it back.
 - **Gate flake, 2026-10-23 ~21:30:** `schematic-broker-ui` and `schematic-broker` both failed on the bot's converse with
   Dannik Vosa in the Trade Hall ("did not start a conversation within 5s"), the same broker oid twice, right after the
   `sandstorm` scenario; `gotoNpc` reported the teleport done both times, the lab-side purchase worked, and the scenario

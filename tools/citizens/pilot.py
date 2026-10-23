@@ -583,8 +583,36 @@ def seat_tools(seat, files, character_name, seat_name):
         f = seat_mod.lab_fields(line)
         return {"ok": bool(f), "condition": _condition(), "health": f.get("health"), "action": f.get("action"), "mind": f.get("mind")}
 
+    def _inventory_rows():
+        """the server's inventory rows (lab inventory: oid, path, name, type, count, resource/rtype/units for a stack);
+        empty on a server without the 7.5 binding, when the caller falls back to the client's view"""
+        rows = []
+        for l in seat_mod.lab(f"inventory:{character_name}", 15).splitlines():
+            if not l.startswith("INFO item ") or " name=" not in l:
+                continue
+            f = seat_mod.lab_fields(l)
+            row = {"oid": int(f.get("oid") or 0), "path": f.get("path", ""), "name": (f.get("name") or "-").replace("_", " "),
+                   "type": int(f.get("type") or "0", 16) if str(f.get("type", "")).startswith("0x") else int(f.get("type") or 0),
+                   "count": int(f.get("count") or 1)}
+            if f.get("resource"):
+                row["resource"] = (f.get("resource") or "").replace("_", " ")
+                row["resource_type"] = (f.get("rtype") or "").replace("_", " ")
+                row["units"] = int(f.get("units") or 0)
+            rows.append(row)
+        return rows
+
     def my_inventory():
-        """what you carry: names with counts (type 0x800002 deeds, 0x8002 tools, …), from the client's view"""
+        """what you carry: names with counts (type 0x800002 deeds, 0x8002 tools, …); the server's rows when available
+        (a resource stack reads as its resource name with units), the client's view otherwise"""
+        rows = _inventory_rows()
+        if rows:
+            items = []
+            for r in rows:
+                if "resource" in r:
+                    items.append({"name": f"{r['resource']} ({r['resource_type']})", "units": r["units"], "oid": r["oid"]})
+                else:
+                    items.append({"name": r["name"], "count": r["count"], "oid": r["oid"]})
+            return {"ok": True, "items": items[:60]}
         counts = {}
         for o in _objects():
             if o["type"] in (0x400, 0x401, 0x402, 0x409) or o.get("parent", 0) == 0:
@@ -849,6 +877,49 @@ def seat_tools(seat, files, character_name, seat_name):
     def rest(seconds):
         return {"ok": True, "rest": max(30, min(int(seconds), 1800))}
 
+    def sell(item, price):
+        """list something you carry on the nearest bazaar terminal for an instant sale: `item` is a resource name (a stack
+        sells whole) or a fragment of an item's name; `price` in credits for the whole listing. Walks to the terminal
+        (lab bazaarNear, cell-aware), one CreateImmediateAuction packet, the 20 cr fee leaves the bank, the listing
+        stands for a year (our 2.5). The buyer's credits land in your bank."""
+        item = str(item or "").strip()
+        try:
+            price = int(price)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "price must be a whole number of credits"}
+        if not item or price < 1:
+            return {"ok": False, "error": "say what to sell and a price of at least 1 credit"}
+        rows = _inventory_rows()
+        if not rows:
+            return {"ok": False, "error": "could not read your inventory from the server (my_inventory names come from the client here)"}
+        low = item.lower()
+        pick = next((r for r in rows if "resource" in r and r["resource"].lower() == low), None) \
+            or next((r for r in rows if "resource" in r and low in r["resource"].lower()), None) \
+            or next((r for r in rows if r["name"].lower() == low), None) \
+            or next((r for r in rows if low in r["name"].lower()), None)
+        if pick is None:
+            names = sorted({(r.get("resource") or r["name"]) for r in rows})[:12]
+            return {"ok": False, "error": f"nothing called '{item}' in your inventory; you carry: " + ", ".join(names)}
+        terminals = [seat_mod.lab_fields(l) for l in seat_mod.lab(f"bazaarNear:{character_name}:800", 20).splitlines() if l.startswith("INFO bazaar ")]
+        if not terminals:
+            return {"ok": False, "error": "no bazaar terminal within 800 m; every city has one (walk into town or travel_to a shuttle point first)"}
+        t = terminals[0]
+        cell = int(t.get("cell") or 0)
+        if cell:
+            w = seat_mod.walk_seat(seat, character_name, float(t["localX"]), float(t["localY"]), cell=cell, within=3)
+        else:
+            w = seat_mod.walk_seat(seat, character_name, float(t["x"]), float(t["y"]), within=3)
+        if not w.get("ok"):
+            return {"ok": False, "error": "could not reach the bazaar terminal: " + seat_mod.action_error(w), "terminal": int(t["oid"]), "distance": int(float(t.get("distance") or 0))}
+        label = f"{pick['units']} units of {pick['resource']} ({pick['resource_type']})" if "resource" in pick else pick["name"]
+        r = seat_mod.sell_seat(seat, character_name, pick["oid"], int(t["oid"]), price, label)
+        out = {"ok": r["ok"], "listed": label, "price": price, "terminal": int(t["oid"]), "indoors": bool(cell), "status": r.get("status"), "fee": 20}
+        if not r["ok"]:
+            why = {4: "the price is outside the bazaar's range", 9: "not enough credits in the bank for the 20 cr fee",
+                   13: "too many listings already (100 per character)", 2: "that item cannot be sold"}.get(r.get("status"), r.get("error") or "refused")
+            out["error"] = why
+        return out
+
     impl = {
         "say": say, "tell": tell, "emote": emote, "walk_to": walk_to, "travel_to": travel_to,
         "resources_here": resources_here, "survey": survey, "sample": sample, "place_harvester": place_harvester,
@@ -856,6 +927,7 @@ def seat_tools(seat, files, character_name, seat_name):
         "my_health": my_health, "clone": clone, "my_inventory": my_inventory, "travel_points": travel_points, "spots_near_shuttles": spots_near_shuttles, "creatures_near": creatures_near, "hunt": hunt, "tend_harvesters": tend_harvesters,
         "threats_near": threats_near,
         "train": train,
+        "sell": sell,
         "remember": remember, "complete_milestone": complete_milestone, "change_plan": change_plan, "rest": rest,
     }
     schema = [
@@ -889,6 +961,8 @@ def seat_tools(seat, files, character_name, seat_name):
          "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},
         {"name": "train", "description": "Buy a skill box at its trainer (the exact name from \"training\" → \"ready\" in your perception, e.g. outdoors_scout_movement_01): walks to the nearest trainer of that profession in this city and pays the credits. This is how you grow stronger; a box in \"next\" needs more experience first.",
          "input_schema": {"type": "object", "properties": {"skill": {"type": "string"}}, "required": ["skill"]}},
+        {"name": "sell", "description": "List something you carry on the nearest bazaar terminal for an instant sale: a resource by its name (the whole stack) or an item by a fragment of its name, at a price in credits for the whole listing. Walks to the terminal; the 20 cr fee comes from your bank; the listing stands a year and the buyer's credits land in your bank.",
+         "input_schema": {"type": "object", "properties": {"item": {"type": "string"}, "price": {"type": "integer"}}, "required": ["item", "price"]}},
         {"name": "spots_near_shuttles", "description": "For one resource (exact name from resources_here): the best spot within 1.5 km of each shuttle point on this planet, with density and the walk from the shuttle. A harvester only needs a good spot near a town.",
          "input_schema": {"type": "object", "properties": {"resource": {"type": "string"}}, "required": ["resource"], "additionalProperties": False}, "strict": True},
         {"name": "travel_points", "description": "The shuttle and starport points of a planet with positions: pick the one nearest a spot, travel_to it, then walk the rest (under 2 km).",
@@ -938,6 +1012,10 @@ after a retreat — read its log and do not send it again at the same spot.
 "training" lists the skill boxes you can buy right now ("ready", with the credits) and what you are working toward
 ("next", experience have/cost): when a box is ready and you can pay, call train with its name before anything else —
 that is how a character grows, and your fighting_strength and level follow it.
+Selling: my_inventory shows what you carry (a resource stack by its resource name with units); sell lists one thing on
+the nearest bazaar terminal at your price for the whole listing (20 cr fee from the bank, a year on the board). Price what
+you sell: a resource by its units and quality (tens of thousands of units of a common mineral are worth a few thousand
+credits; a rare one more), an item by what a shop would ask. Keep what you still need (deeds, tools, your weapon).
 When nothing needs you, work your current milestone ("now") before resting: a combat skill grows by hunting creatures
 you can take near where you are (walk a leg through open ground outside town, creatures_near, then hunt; "xp" in the perception shows amount/cap per type, so you
 can see whether it pays), a gatherer tends harvesters, a crafter samples and keeps resources, and anyone with nothing
