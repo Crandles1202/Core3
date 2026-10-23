@@ -1186,3 +1186,8 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
     "swimming … walk back to land". `pendingTask:<char>:<name>[:cancel]` oracle (new exact-name bindings
     `hasPendingTaskNamed` / `cancelPendingTaskNamed`; the stock Lua ones build `screenplay:key` names) came out of the
     first, wrong theory and stays as a lab tool.
+  - **Never ask the terrain at the planet edge**: `TerrainManager::getHeight` at x or y = ±8192 prints a WARNING *with a
+    full stack trace* per call; the first land-only `resources` scan touched the edge rows and columns for every
+    spawn and flooded the console thread for nine minutes (the queued `shutdown` ran only after; `swg stop` gave up
+    at 240 s). The scan now stays strictly inside (−8192, 8192). `swg status` reported RUNNING throughout — a flooded
+    console looks healthy from outside.

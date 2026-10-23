@@ -328,6 +328,9 @@ Persisted object fields (`containerVolumeLimit`, …) are only read from the tem
   a bot through it first. The **bench kills idle citizens**: every gate's `sandstorm` scenario sends Tusken raiders over Mos
   Eisley's east outskirts (Teyla died there 2026-10-22); a dead character gets the revive window on login and the pilot's
   `clone` tool answers it.
+- **The terrain refuses ±8192** (`TerrainManager::getHeight` out of bounds) with a warning *and a stack trace per call*: a
+  scan that touches the planet edge floods the console thread for minutes while `swg status` still says RUNNING. Keep every
+  terrain lookup strictly inside the planet; the resource oracle's best spots are land-only (`getWaterHeightAt`).
 - gtest's `<<` cannot print an engine3 `String`; use `.toCharArray()` in assertion messages.
 - **Threads in engine3 code must be engine3 `Thread`s** (subclass, `run()`, `start()`, `join()`), never `std::thread`:
   `Locker` skips the lock when the lock's holder equals `Thread::getCurrentThread()`, and on a foreign thread both are
