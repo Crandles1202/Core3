@@ -45,6 +45,10 @@ ENV_FILE = os.path.expanduser("~/.env")
 # survey tool codes (SurveyTool.idl): what resources_here means by a class word
 RESOURCE_TOOLS = {"solar": 1, "chemical": 2, "flora": 3, "gas": 4, "geothermal": 5, "mineral": 6, "water": 7, "wind": 8, "fusion": 9}
 TOOL_NAMES = {v: k for k, v in RESOURCE_TOOLS.items()}
+# CommandQueueRemove error=1 state=N names the locomotion that refused the command
+MAX_WALK_M = 2000
+LOCOMOTION_REFUSALS = {20: "you are dead: clone first", 19: "you are incapacitated: wait", 14: "you are sitting: stand up first",
+                       13: "you are kneeling", 21: "you are blocked"}
 DEFAULT_MODEL = "claude-haiku-5-5"   # Chuck 2026-10-20: cheapest by default; a persona may set "model:" in its ## Character section
 DEFAULT_EFFORT = "low"        # a game character's next move is a chat-sized decision
 MAX_ROUNDS_PER_WAKE = 6       # tool rounds the model may take before the wake ends
@@ -247,16 +251,24 @@ class Senses:
         system = self._new_lines("/SystemMessages", "system_seen")
         objects = self.seat.request({"op": "objects"}).get("objects", [])
         me = next((o for o in objects if o["oid"] == ping.get("character")), None)
+        planet = self.seat.request({"op": "vars", "path": "/Scene/terrain"}).get("vars")
         near = []
         if me:
+            # the client names a creature by its appearance template (a rill reads "dune_lizard"): ask the server
+            names = {}
+            if isinstance(planet, str):
+                seat_mod = load_seat_module()
+                for line in seat_mod.lab(f"objectsNear:{planet}:{me['x']:.0f}:{me['y']:.0f}:60:1024", 20).splitlines():
+                    if line.startswith("INFO object "):
+                        f = seat_mod.lab_fields(line)
+                        names[int(f.get("oid") or 0)] = (f.get("name") or "").replace("_", " ")
             for o in objects:
                 if o["oid"] == me["oid"] or o["type"] not in (0x400, 0x401, 0x402, 0x409):
                     continue
                 d = ((o["x"] - me["x"]) ** 2 + (o["y"] - me["y"]) ** 2) ** 0.5
                 if d < 40:
-                    near.append({"oid": o["oid"], "name": o["name"], "player": o["type"] == 0x409, "distance": round(d, 1)})
+                    near.append({"oid": o["oid"], "name": names.get(o["oid"], o["name"]), "player": o["type"] == 0x409, "distance": round(d, 1)})
             near.sort(key=lambda n: n["distance"])
-        planet = self.seat.request({"op": "vars", "path": "/Scene/terrain"}).get("vars")
         w = self.where_fields()
         position = {"x": round(me["x"], 1), "y": round(me["y"], 1)} if me else None
         if w.get("x") is not None:
@@ -299,7 +311,17 @@ def seat_tools(seat, files, character_name, seat_name):
 
     def walk_to(x, y):
         seat_mod = load_seat_module()
-        return seat_mod.walk_seat(seat, character_name, float(x), float(y))
+        here = seat_mod.where(character_name)
+        if here:
+            dist = ((float(x) - here["x"]) ** 2 + (float(y) - here["y"]) ** 2) ** 0.5
+            if dist > MAX_WALK_M:
+                return {"ok": False, "error": f"{dist:.0f} m is too far to walk alone through the wild (both of you who tried died on the way); "
+                        f"use travel_to for a shuttle to the nearest city, or pick a spot within {MAX_WALK_M} m"}
+        r = seat_mod.walk_seat(seat, character_name, float(x), float(y))
+        cond = _condition()
+        if cond and cond != "fine":
+            r = dict(r); r["ok"] = False; r["condition"] = cond; r["error"] = f"the walk ended with you {cond}"
+        return r
 
     def travel_to(planet, point):
         seat_mod = load_seat_module()
@@ -597,7 +619,7 @@ def seat_tools(seat, files, character_name, seat_name):
          "input_schema": {"type": "object", "properties": {"name": {"type": "string"}, "text": {"type": "string"}}, "required": ["name", "text"], "additionalProperties": False}, "strict": True},
         {"name": "emote", "description": "Play a social emote (wave, bow, salute, nod, shrug, cheer, laugh, thank, greet, sigh…).",
          "input_schema": {"type": "object", "properties": {"name": {"type": "string"}, "target": {"type": "integer"}}, "required": ["name", "target"], "additionalProperties": False}, "strict": True},
-        {"name": "walk_to", "description": "Walk to a world position on this planet (takes real time: 4.5 m/s).",
+        {"name": "walk_to", "description": "Walk to a world position on this planet (takes real time: 4.5 m/s). Refused beyond 2000 m: the wild kills a lone walker; take a shuttle (travel_to) between cities and walk from there.",
          "input_schema": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "required": ["x", "y"], "additionalProperties": False}, "strict": True},
         {"name": "travel_to", "description": "Take the shuttle to a travel point: walk to the nearest terminal, buy a ticket (a few hundred credits), board when the shuttle lands. Points are named like Mos_Eisley_Starport, Coronet_Starport, Theed_Starport, Bestine_Shuttleport; another planet needs a starport on both ends. Takes minutes.",
          "input_schema": {"type": "object", "properties": {"planet": {"type": "string"}, "point": {"type": "string"}}, "required": ["planet", "point"], "additionalProperties": False}, "strict": True},
@@ -758,6 +780,10 @@ def run(args):
             result = {"ok": False, "error": str(e)}
         if not result.get("ok") and result.get("error") is None and isinstance(result.get("result"), dict):
             result["error"] = result["result"].get("error") or result["result"].get("status")
+        err = str(result.get("error") or "")
+        for code, meaning in LOCOMOTION_REFUSALS.items():
+            if f"state={code}" in err:
+                result["error"] = err + f" ({meaning})"
         files.log({"tool": name, "input": inputs, "ok": result.get("ok")})
         print(f"[{args.citizen}] {name} {json.dumps(inputs, ensure_ascii=False)[:160]} -> {'ok' if result.get('ok') else result.get('error')}")
         return result
