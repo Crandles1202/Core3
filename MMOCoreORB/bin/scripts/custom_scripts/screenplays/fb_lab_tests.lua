@@ -1982,6 +1982,87 @@ function FbLabTests:threats(charName, radius)
 	return tostring(n)
 end
 
+-- ---------------------------------------------------------------- training (7.5: a citizen buys skill boxes at a trainer)
+
+-- trainable:<char>[:all] → the skill boxes the character can buy at a trainer right now (INFO trainable: prerequisites,
+-- experience and skill points all met, the stock canLearnSkill) and the boxes it is working toward (INFO next:
+-- prerequisites met, experience or points short), for every profession it already holds a box of; `all` adds the
+-- novice box of every other profession. Each line names the trainer type (the mobile template of the NPC who
+-- teaches it: trainers:<planet>:<type> finds one), the experience type with have/cost, the credits and the points.
+function FbLabTests:trainable(charName, scope)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	if trainerSkills == nil then print("ERROR trainable: trainerSkills (screenplays/trainers/trainerData.lua) not loaded"); return "none" end
+	local pGhost = CreatureObject(pPlayer):getPlayerObject()
+	if pGhost == nil then print("ERROR trainable: " .. charName .. " has no player object"); return "none" end
+	local sm = LuaSkillManager()
+	local types = {}
+	for t in pairs(trainerSkills) do table.insert(types, t) end
+	table.sort(types)
+	local n, ready = 0, 0
+	for _, trainerType in ipairs(types) do
+		local list = trainerSkills[trainerType]
+		local inside = false
+		for _, s in ipairs(list) do
+			if CreatureObject(pPlayer):hasSkill(s) then inside = true; break end
+		end
+		for _, s in ipairs(list) do
+			local novice = s:find("_novice$") ~= nil
+			if not CreatureObject(pPlayer):hasSkill(s) and (inside or (scope == "all" and novice)) and sm:fulfillsSkillPrerequisites(pPlayer, s) then
+				local pSkill = sm:getSkill(s)
+				if pSkill ~= nil then
+					local sk = LuaSkill(pSkill)
+					local xpType, xpCost = sk:getXpType(), sk:getXpCost()
+					local have = (xpType ~= nil and xpType ~= "") and PlayerObject(pGhost):getExperience(xpType) or 0
+					local can = sm:canLearnSkill(pPlayer, s, false)
+					if can then ready = ready + 1 end
+					print(string.format("INFO %s skill=%s trainer=%s xpType=%s xpHave=%d xpCost=%d credits=%d points=%d",
+						can and "trainable" or "next", s, trainerType, (xpType ~= nil and xpType ~= "") and xpType or "-", have, xpCost,
+						sk:getMoneyRequired(), sk:getSkillPointsRequired()))
+					n = n + 1
+				end
+			end
+		end
+	end
+	print(string.format("INFO training char=%s trainable=%d next=%d cash=%d bank=%d level=%d strength=%d", charName, ready, n - ready,
+		CreatureObject(pPlayer):getCashCredits(), CreatureObject(pPlayer):getBankCredits(), CreatureObject(pPlayer):getLevel(), fightingStrength(pPlayer)))
+	return tostring(ready)
+end
+
+-- trainers:<planet>:<trainerType>[:<x>:<y>] → every trainer NPC of that type (its mobile template name, e.g.
+-- trainer_rifleman) within 500 m of a travel point of the planet, nearest to x,y first (or to its travel point), with
+-- the point it stands by; cell-local coordinates for one indoors (what pathTo/walk want).
+function FbLabTests:trainers(planet, trainerType, x, y)
+	local env, err = loadIsolated("scripts/managers/planet/planet_manager.lua")
+	if env == nil then print("ERROR trainers: planet_manager.lua: " .. tostring(err)); return "none" end
+	local cfg = env[planet]
+	if cfg == nil or cfg.planetTravelPoints == nil then print("ERROR trainers: no travel points for " .. tostring(planet)); return "none" end
+	if trainerType == nil or trainerType == "" then print("ERROR trainers: planet trainerType [x y]"); return "none" end
+	x, y = tonumber(x), tonumber(y)
+	local seen, rows = {}, {}
+	for _, pt in ipairs(cfg.planetTravelPoints) do
+		for _, o in ipairs(getObjectsInRange(planet, pt.x, pt.y, 500, 0x401) or {}) do
+			if not seen[o.oid] then
+				seen[o.oid] = true
+				local p = getSceneObject(o.oid)
+				if p ~= nil and SceneObject(p):isAiAgent() and AiAgent(p):getCreatureTemplateName() == trainerType and not CreatureObject(p):isDead() then
+					local d = (x ~= nil and y ~= nil) and math.sqrt((o.x - x) ^ 2 + (o.y - y) ^ 2) or math.sqrt((o.x - pt.x) ^ 2 + (o.y - pt.y) ^ 2)
+					table.insert(rows, { o = o, point = pt.name:gsub("%s", "_"), d = d })
+				end
+			end
+		end
+	end
+	table.sort(rows, function(a, b) return a.d < b.d end)
+	for _, r in ipairs(rows) do
+		local o = r.o
+		print(string.format("INFO trainer oid=%d name=%s type=%s x=%.1f y=%.1f z=%.1f cell=%d cellName=%s building=%d localX=%.2f localY=%.2f localZ=%.2f point=%s distance=%.0f",
+			o.oid, (o.name or ""):gsub("%s", "_"), trainerType, o.x, o.y, o.z, o.cell, o.cellName ~= "" and o.cellName or "-", o.building,
+			o.localX or 0, o.localY or 0, o.localZ or 0, r.point, r.d))
+	end
+	print(string.format("INFO trainers planet=%s type=%s count=%d", planet, trainerType, #rows))
+	return tostring(#rows)
+end
+
 -- resourceNear:<planet>:<resource>[:<radius>] → for every travel point of the planet, the best buildable land spot of that
 -- resource within radius m (default 1500, a 250 m grid): where a harvester can stand within a walk of a shuttle.
 function FbLabTests:resourceNear(planet, resource, radius)
