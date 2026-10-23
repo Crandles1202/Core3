@@ -323,6 +323,11 @@ Persisted object fields (`containerVolumeLimit`, …) are only read from the tem
   invoke. `~/workspace/Core3/tools/swg bench use …` from a worktree takes the lock as "bench", and the worktree's own
   tools (`tools/seat`, `citizen`, the pilot's lab calls) are then refused as "alice" — silently, for anything that reads
   lab lines. Always run the worktree's `tools/swg` (CLAUDE.md's `tools/swg …` means that one).
+- **Wild creatures spawn only around a player who moves** (`SpawnArea::notifyPositionUpdate` → `tryToSpawn`, lairs near the
+  player, never inside a city's no-spawn circle): an oracle count at a quiet spot says nothing about the hunting there — walk
+  a bot through it first. The **bench kills idle citizens**: every gate's `sandstorm` scenario sends Tusken raiders over Mos
+  Eisley's east outskirts (Teyla died there 2026-10-22); a dead character gets the revive window on login and the pilot's
+  `clone` tool answers it.
 - gtest's `<<` cannot print an engine3 `String`; use `.toCharArray()` in assertion messages.
 - **Threads in engine3 code must be engine3 `Thread`s** (subclass, `run()`, `start()`, `join()`), never `std::thread`:
   `Locker` skips the lock when the lock's holder equals `Thread::getCurrentThread()`, and on a foreign thread both are

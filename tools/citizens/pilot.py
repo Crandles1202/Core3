@@ -42,6 +42,9 @@ CAST_DIR = os.path.join(HERE, "cast")
 VENV_PYTHON = os.path.join(LABDIR, "venv", "bin", "python")
 ENV_FILE = os.path.expanduser("~/.env")
 
+# survey tool codes (SurveyTool.idl): what resources_here means by a class word
+RESOURCE_TOOLS = {"solar": 1, "chemical": 2, "flora": 3, "gas": 4, "geothermal": 5, "mineral": 6, "water": 7, "wind": 8, "fusion": 9}
+TOOL_NAMES = {v: k for k, v in RESOURCE_TOOLS.items()}
 DEFAULT_MODEL = "claude-haiku-5-5"   # Chuck 2026-10-20: cheapest by default; a persona may set "model:" in its ## Character section
 DEFAULT_EFFORT = "low"        # a game character's next move is a chat-sized decision
 MAX_ROUNDS_PER_WAKE = 6       # tool rounds the model may take before the wake ends
@@ -220,6 +223,17 @@ class Senses:
         self.state[key + "_total"] = total + len(fresh)
         return fresh
 
+    def where_fields(self):
+        """the server's INFO where line: zone, world x/y, cell, posture, dead/incap (the client sees cell-local
+        coordinates indoors and decodes no creature deltas, so this is the truth about position and condition)"""
+        seat_mod = load_seat_module()
+        line = next((l for l in seat_mod.lab(f"where:{self.character_name}", 8).splitlines() if l.startswith("INFO where")), "")
+        return seat_mod.lab_fields(line)
+
+    @staticmethod
+    def condition_of(f):
+        return "dead (clone first)" if f.get("dead") == "true" else "incapacitated" if f.get("incap") == "true" else "fine"
+
     def gather(self):
         ping = self.seat.request({"op": "ping"})
         chat = self._new_lines("/SpatialChat", "chat_seen")
@@ -237,13 +251,20 @@ class Senses:
                     near.append({"oid": o["oid"], "name": o["name"], "player": o["type"] == 0x409, "distance": round(d, 1)})
             near.sort(key=lambda n: n["distance"])
         planet = self.seat.request({"op": "vars", "path": "/Scene/terrain"}).get("vars")
+        w = self.where_fields()
+        position = {"x": round(me["x"], 1), "y": round(me["y"], 1)} if me else None
+        if w.get("x") is not None:
+            position = {"x": round(float(w["x"]), 1), "y": round(float(w["y"]), 1)}
+            if (w.get("cell") or "0") != "0":
+                position["indoors"] = "inside a building; walk_to a spot outside leaves it through the door"
         return {
             "xp": self.progress(),
             "you": self.character_name,
+            "condition": self.condition_of(w),
             "now": self.current_milestone(),
             "character": ping.get("character"),
             "planet": planet if isinstance(planet, str) else None,
-            "position": {"x": round(me["x"], 1), "y": round(me["y"], 1)} if me else None,
+            "position": position,
             "heard": chat[-12:],
             "tells": tells[-12:],
             "system": [s for s in system if not s.startswith("@") or "combat" in s][-8:],
@@ -286,11 +307,21 @@ def seat_tools(seat, files, character_name, seat_name):
     def _objects():
         return seat.request({"op": "objects"}).get("objects", [])
 
+    def _name_matches(fragment, name):
+        """every word of the fragment appears in the name, case-insensitive: 'harvester_ore' finds
+        '@deed:ore_s1_harvester_deed_name', 'survey tool mineral' finds '@item_n:survey_tool_mineral'"""
+        words = [w for w in fragment.lower().replace("-", "_").replace(" ", "_").split("_") if w]
+        hay = name.lower()
+        return all(w in hay for w in words)
+
     def _find_object(fragment, otype=None):
         for o in _objects():
-            if (otype is None or o["type"] == otype) and fragment in o["name"]:
+            if (otype is None or o["type"] == otype) and _name_matches(fragment, o["name"]):
                 return o
         return None
+
+    def _names_of(otype):
+        return sorted({o["name"] for o in _objects() if o["type"] == otype})
 
     def resources_here(resource_class):
         """the resource oracle for the planet the character is on (the citizens' spreadsheet)"""
@@ -299,21 +330,40 @@ def seat_tools(seat, files, character_name, seat_name):
         if not isinstance(planet, str):
             return {"ok": False, "error": "planet unknown (no scene yet)"}
         rows = []
-        for line in seat_mod.lab(f"resources:{planet}" + (f":{resource_class}" if resource_class else ""), 40).splitlines():
+        want = (resource_class or "").strip().lower()
+        tool_code = RESOURCE_TOOLS.get(want)
+        # a known class word selects by the survey tool that finds it; any other word is a text filter on the oracle
+        for line in seat_mod.lab(f"resources:{planet}" + (f":{want}" if want and tool_code is None and want != "all" else ""), 40).splitlines():
             if line.startswith("INFO resource "):
                 f = seat_mod.lab_fields(line)
+                tool = int(f.get("tool") or 0)
+                if tool_code is not None and tool != tool_code:
+                    continue
+                if tool_code is None and tool < 0 and want != "all":
+                    continue   # creature resources (hides, meat, bone) come from hunting, not from a survey tool
                 best = (f.get("best") or "").split(";")[0].split(",")
                 attrs = dict(kv.split("=", 1) for kv in (f.get("attrs") or "").split(",") if "=" in kv)
-                rows.append({"name": f.get("name"), "class": f.get("class"), "family": f.get("family"), "tool": f.get("tool"),
+                rows.append({"name": f.get("name"), "class": f.get("class"), "family": f.get("family"),
+                             "tool": TOOL_NAMES.get(tool, "none (hunted)"),
                              "best": {"x": float(best[0]), "y": float(best[1]), "density": float(best[2])} if len(best) >= 3 else None,
                              "attributes": attrs})
         return {"ok": True, "planet": planet, "resources": rows[:40]}
 
     def survey(resource):
-        tool = _find_object("survey_tool")
+        tool = _find_object("survey_tool_mineral") or _find_object("survey_tool")
         if tool is None:
             return {"ok": False, "error": "no survey tool in the inventory"}
-        return seat.action("survey", tool=tool["oid"], resource=resource)
+        reply = seat.action("survey", tool=tool["oid"], resource=resource)
+        if not reply.get("ok"):
+            # the tool wants the exact name: try the fragment against its list, else say what it can find here
+            names = [r.get("name") for r in (seat.request({"op": "vars", "path": "/Survey/resources"}).get("vars") or []) if r.get("name")]
+            hit = [n for n in names if resource.lower() in n.lower()]
+            if len(hit) == 1 and hit[0] != resource:
+                reply = seat.action("survey", tool=tool["oid"], resource=hit[0])
+            if not reply.get("ok"):
+                err = (reply.get("result") or {}).get("error") or reply.get("error")
+                return {"ok": False, "error": err, "this_tool_finds_here": names[:30]}
+        return reply
 
     def sample(resource, rounds):
         n = max(1, min(int(rounds), 6))
@@ -322,7 +372,7 @@ def seat_tools(seat, files, character_name, seat_name):
     def place_harvester(deed_fragment, x, y):
         deed = _find_object(deed_fragment, 0x800002) or _find_object(deed_fragment)
         if deed is None:
-            return {"ok": False, "error": f"no deed matching '{deed_fragment}' in the inventory"}
+            return {"ok": False, "error": f"no deed matching '{deed_fragment}' in the inventory", "deeds_carried": _names_of(0x800002)}
         return seat.action("place", deed=deed["oid"], x=float(x), y=float(y), angle=0)
 
     def harvester(oid, op, resource, amount):
@@ -353,11 +403,44 @@ def seat_tools(seat, files, character_name, seat_name):
         lots = next((seat_mod.lab_fields(l).get("remaining") for l in out.splitlines() if l.startswith("INFO lots")), None)
         return {"ok": True, "structures": rows, "lotsRemaining": lots}
 
+    def _condition():
+        """dead / incapacitated / fine, from the server (the client decodes no creature deltas)"""
+        seat_mod = load_seat_module()
+        line = next((l for l in seat_mod.lab(f"where:{character_name}", 8).splitlines() if l.startswith("INFO where")), "")
+        f = seat_mod.lab_fields(line)
+        if f.get("dead") == "true":
+            return "dead: you cannot move or act until you clone (tool clone)"
+        if f.get("incap") == "true":
+            return "incapacitated: wait a minute, you get up on your own"
+        return "fine" if f else None
+
     def my_health(returning=None):
         seat_mod = load_seat_module()
         line = next((l for l in seat_mod.lab(f"ham:{character_name}", 8).splitlines() if l.startswith("INFO ham")), "")
         f = seat_mod.lab_fields(line)
-        return {"ok": bool(f), "health": f.get("health"), "action": f.get("action"), "mind": f.get("mind")}
+        return {"ok": bool(f), "condition": _condition(), "health": f.get("health"), "action": f.get("action"), "mind": f.get("mind")}
+
+    def my_inventory():
+        """what you carry: names with counts (type 0x800002 deeds, 0x8002 tools, …), from the client's view"""
+        counts = {}
+        for o in _objects():
+            if o["type"] in (0x400, 0x401, 0x402, 0x409) or o.get("parent", 0) == 0:
+                continue
+            key = o["name"].split(":")[-1].replace("_", " ")
+            counts[key] = counts.get(key, 0) + 1
+        return {"ok": True, "items": [{"name": k, "count": v} for k, v in sorted(counts.items())][:60]}
+
+    def clone():
+        """dead: answer the revive window (closest cloning facility); the server moves you there"""
+        reply = seat.action("sui", value="0", match="revive", timeout=10)
+        if not reply.get("ok"):
+            return {"ok": False, "error": "no revive window open" + ("" if _condition().startswith("dead") else " (you are not dead)"),
+                    "detail": (reply.get("result") or {}).get("error")}
+        time.sleep(3)
+        seat_mod = load_seat_module()
+        line = next((l for l in seat_mod.lab(f"where:{character_name}", 8).splitlines() if l.startswith("INFO where")), "")
+        f = seat_mod.lab_fields(line)
+        return {"ok": True, "cloned": True, "condition": _condition(), "planet": f.get("zone"), "x": f.get("x"), "y": f.get("y")}
 
     def creatures_near(name_fragment):
         """creatures (not players, not city NPCs) within 80 m, nearest first"""
@@ -373,7 +456,29 @@ def seat_tools(seat, files, character_name, seat_name):
             if d <= 80:
                 out.append({"oid": o["oid"], "name": o["name"], "distance": round(d, 1), "x": round(o["x"], 1), "y": round(o["y"], 1)})
         out.sort(key=lambda c: c["distance"])
-        return {"ok": True, "creatures": out[:12]}
+        result = {"ok": True, "creatures": out[:12]}
+        if not out:
+            # nothing in view: the server knows what roams within 300 m (droids and city NPCs left out)
+            seat_mod = load_seat_module()
+            planet = seat.request({"op": "vars", "path": "/Scene/terrain"}).get("vars")
+            far = []
+            if isinstance(planet, str):
+                for line in seat_mod.lab(f"objectsNear:{planet}:{me['x']:.0f}:{me['y']:.0f}:300:1024", 20).splitlines():
+                    if not line.startswith("INFO object "):
+                        continue
+                    f = seat_mod.lab_fields(line)
+                    nm, tpl = f.get("name") or "", f.get("template") or ""
+                    if "droid" in tpl or "3po" in tpl or "/r2" in tpl or "/r3" in tpl or "/r4" in tpl or "/r5" in tpl or "(" in nm:
+                        continue
+                    if name_fragment and name_fragment.lower() not in nm.lower():
+                        continue
+                    x, y = float(f.get("x")), float(f.get("y"))
+                    far.append({"name": nm.replace("_", " "), "distance": round(((x - me["x"]) ** 2 + (y - me["y"]) ** 2) ** 0.5), "x": x, "y": y})
+            far.sort(key=lambda c: c["distance"])
+            result["farther"] = far[:8]
+            result["hint"] = ("walk_to one of these, then hunt" if far else
+                              "nothing roams within 300 m; creatures appear around a player who keeps moving through open ground outside town: walk a 150 m leg and look again")
+        return result
 
     def hunt(name_fragment, kills):
         """the fighter's loop: nearest matching creature, walk to 20 m, fight, loot; up to `kills` times"""
@@ -456,7 +561,7 @@ def seat_tools(seat, files, character_name, seat_name):
         "say": say, "tell": tell, "emote": emote, "walk_to": walk_to, "travel_to": travel_to,
         "resources_here": resources_here, "survey": survey, "sample": sample, "place_harvester": place_harvester,
         "harvester": harvester, "harvester_status": harvester_status, "my_structures": my_structures,
-        "my_health": my_health, "creatures_near": creatures_near, "hunt": hunt, "tend_harvesters": tend_harvesters,
+        "my_health": my_health, "clone": clone, "my_inventory": my_inventory, "creatures_near": creatures_near, "hunt": hunt, "tend_harvesters": tend_harvesters,
         "remember": remember, "complete_milestone": complete_milestone, "change_plan": change_plan, "rest": rest,
     }
     schema = [
@@ -470,13 +575,13 @@ def seat_tools(seat, files, character_name, seat_name):
          "input_schema": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "required": ["x", "y"], "additionalProperties": False}, "strict": True},
         {"name": "travel_to", "description": "Take the shuttle to a travel point: walk to the nearest terminal, buy a ticket (a few hundred credits), board when the shuttle lands. Points are named like Mos_Eisley_Starport, Coronet_Starport, Theed_Starport, Bestine_Shuttleport; another planet needs a starport on both ends. Takes minutes.",
          "input_schema": {"type": "object", "properties": {"planet": {"type": "string"}, "point": {"type": "string"}}, "required": ["planet", "point"], "additionalProperties": False}, "strict": True},
-        {"name": "resources_here", "description": "What resources are currently spawning on this planet (name, class, best spot and density, stats). Class filters: mineral, chemical, flora, gas, water, wind, solar, or empty for all.",
+        {"name": "resources_here", "description": "What resources are currently spawning on this planet (name, class, best spot and density, stats). Class filter by the survey tool that finds it: mineral, chemical, flora, gas, water, wind, solar, geothermal, fusion; empty = everything a tool can find; 'all' adds creature resources (hides, meat: hunted, not surveyed). Use the exact name from here with survey.",
          "input_schema": {"type": "object", "properties": {"resource_class": {"type": "string"}}, "required": ["resource_class"], "additionalProperties": False}, "strict": True},
-        {"name": "survey", "description": "Survey a resource by name with the survey tool you carry: tells how rich it is around you and the best nearby point.",
+        {"name": "survey", "description": "Survey a resource (exact name from resources_here, or a unique fragment) with the survey tool you carry: how rich it is around you and the best nearby point. A mineral tool only finds minerals.",
          "input_schema": {"type": "object", "properties": {"resource": {"type": "string"}}, "required": ["resource"], "additionalProperties": False}, "strict": True},
         {"name": "sample", "description": "Sample a resource by name where you stand (needs a survey of it first; each round takes ~25 s and yields a few units when the concentration is good).",
          "input_schema": {"type": "object", "properties": {"resource": {"type": "string"}, "rounds": {"type": "integer"}}, "required": ["resource", "rounds"], "additionalProperties": False}, "strict": True},
-        {"name": "place_harvester", "description": "Place a harvester from a deed you carry (name fragment such as 'harvester_ore') at a world spot within 100 m, outdoors and outside cities. Uses a lot.",
+        {"name": "place_harvester", "description": "Place a harvester from a deed you carry (words of its name, e.g. 'ore harvester'; an ore harvester mines minerals) at a world spot within 100 m, outdoors and outside cities. Uses a lot.",
          "input_schema": {"type": "object", "properties": {"deed_fragment": {"type": "string"}, "x": {"type": "number"}, "y": {"type": "number"}}, "required": ["deed_fragment", "x", "y"], "additionalProperties": False}, "strict": True},
         {"name": "harvester", "description": "Operate a harvester you own while standing next to it. op: resources (what it can extract here, with density), select (resource = spawn oid from resources), activate, deactivate, maintain (amount = credits), power (amount = energy units from wind/solar containers you carry), empty (resource = spawn oid, amount = units from the hopper into your inventory). Pass 0 for unused fields.",
          "input_schema": {"type": "object", "properties": {"oid": {"type": "integer"}, "op": {"type": "string"}, "resource": {"type": "integer"}, "amount": {"type": "integer"}}, "required": ["oid", "op", "resource", "amount"], "additionalProperties": False}, "strict": True},
@@ -484,9 +589,13 @@ def seat_tools(seat, files, character_name, seat_name):
          "input_schema": {"type": "object", "properties": {"oid": {"type": "integer"}}, "required": ["oid"], "additionalProperties": False}, "strict": True},
         {"name": "my_structures", "description": "The structures you own (oid, planet, position, active) and the lots you have left.",
          "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},
-        {"name": "my_health", "description": "Your health/action/mind pools as current/max/wounds.",
+        {"name": "my_health", "description": "Your condition (fine, incapacitated, dead) and health/action/mind pools as current/max/wounds.",
          "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},
-        {"name": "creatures_near", "description": "Creatures within 80 m whose name contains the fragment (empty for all), nearest first, with positions.",
+        {"name": "my_inventory", "description": "What you carry, by name with counts (deeds, tools, weapons, resources).",
+         "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},
+        {"name": "clone", "description": "When you are dead: revive at the closest cloning facility. Nothing else works until you do.",
+         "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},
+        {"name": "creatures_near", "description": "Creatures within 80 m whose name contains the fragment (empty for all), nearest first, with positions; when none, what roams within 300 m (walk there first). Wild creatures appear only around a player moving through open ground outside town.",
          "input_schema": {"type": "object", "properties": {"name_fragment": {"type": "string"}}, "required": ["name_fragment"], "additionalProperties": False}, "strict": True},
         {"name": "hunt", "description": "Fight creatures whose name contains the fragment: walk to the nearest, attack until it dies, loot, repeat up to `kills` times (1-5). Stops if your health drops to a third. Takes a minute or two per kill.",
          "input_schema": {"type": "object", "properties": {"name_fragment": {"type": "string"}, "kills": {"type": "integer"}}, "required": ["name_fragment", "kills"], "additionalProperties": False}, "strict": True},
@@ -501,6 +610,11 @@ def seat_tools(seat, files, character_name, seat_name):
         {"name": "rest", "description": "Nothing to do right now: sleep this many seconds (30–1800) unless something happens.",
          "input_schema": {"type": "object", "properties": {"seconds": {"type": "integer"}}, "required": ["seconds"], "additionalProperties": False}, "strict": True},
     ]
+    # the API allows 20 strict tools: a tool without arguments has nothing to validate, so it goes without
+    for t in schema:
+        if not t["input_schema"]["properties"]:
+            t.pop("strict", None)
+    assert sum(1 for t in schema if t.get("strict")) <= 20, "too many strict tools"
     return impl, schema
 
 
@@ -515,8 +629,9 @@ announce your own name unless asked who you are; people see your name over your 
 doing (your "now"), not "on my way somewhere".
 Your life plan is a commitment: work its milestones in order and do not abandon it on a whim; change_plan only for a
 reason your character would give out loud, and expect it to be reviewed. Keep your memory honest and short.
+If "condition" says dead, call clone before anything else; incapacitated, wait a minute.
 When nothing needs you, work your current milestone ("now") before resting: a combat skill grows by hunting creatures
-you can take near where you are (creatures_near, then hunt; "xp" in the perception shows amount/cap per type, so you
+you can take near where you are (walk a leg through open ground outside town, creatures_near, then hunt; "xp" in the perception shows amount/cap per type, so you
 can see whether it pays), a gatherer tends harvesters, a crafter samples and keeps resources, and anyone with nothing
 to do walks somewhere people are. Then call rest. One wake is a few actions at most; the world keeps running between
 wakes."""
@@ -615,6 +730,8 @@ def run(args):
             result = fn(**inputs)
         except Exception as e:   # a tool failure is a result the model should see, not a crash of the pilot
             result = {"ok": False, "error": str(e)}
+        if not result.get("ok") and result.get("error") is None and isinstance(result.get("result"), dict):
+            result["error"] = result["result"].get("error") or result["result"].get("status")
         files.log({"tool": name, "input": inputs, "ok": result.get("ok")})
         print(f"[{args.citizen}] {name} {json.dumps(inputs, ensure_ascii=False)[:160]} -> {'ok' if result.get('ok') else result.get('error')}")
         return result
@@ -639,7 +756,13 @@ def run(args):
             {"type": "text", "text": "# Life plan\n" + files.plan() + "\n\n# Memory\n" + files.memory()[-6000:]},
         ]
         files.log({"wake": ticks, "perception": {k: (len(v) if isinstance(v, list) else v) for k, v in perception.items()}})
-        rest = decider.decide(system_blocks, perception, schema, run_tool, files.log)
+        try:
+            rest = decider.decide(system_blocks, perception, schema, run_tool, files.log)
+        except Exception as e:   # an API refusal or outage is a wait, not the end of the citizen
+            print(f"[{args.citizen}] decider failed: {str(e)[:300]}; trying again in 120 s", flush=True)
+            files.log({"decider_error": str(e)[:300]})
+            time.sleep(120)
+            continue
         state["last_wake"] = now_iso()
         files.save_state(state)
 

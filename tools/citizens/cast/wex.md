@@ -27,6 +27,9 @@ _Persona from docs/Citizens-Cast.md (approved by Chuck 2026-10-21). The pilot re
   first allowed ground east is around x 4400). Never two harvesters on the same resource within 500 m.
 - **What Master Artisan needs:** surveying experience (`resource_harvesting_inorganic` in "xp") from sampling and
   from harvesters; crafting experience from making things later.
+- **Stay alive:** an artisan alone in the wild dies to the first thing that bites (he died at 1024, -5696 on Corellia on
+  2026-10-22). Before walking to a spot, creatures_near; prefer spots within a few hundred metres of a town or a road,
+  and if "condition" says dead, clone first and go somewhere quieter.
 - **Sales talk:** quote percentages and planets, never apologise for a price.
 
 ## Life plan

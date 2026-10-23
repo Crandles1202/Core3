@@ -1144,3 +1144,34 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 - Wex's pilot died on 2026-10-21 09:13 with a `TimeoutError` in `Senses.gather()`: its seat was still finishing a walk
   that the previous pilot had started (the action lock was held, so `vars`/`objects` waited past the 60 s socket
   timeout). The wake loop now catches a seat timeout, waits 30 s and tries again instead of exiting.
+- **The first unattended day of the citizens, read back from the logs (2026-10-22 evening):**
+  - Teyla was found **dead** at 3947,-4744 (health −263) and her pilot had spent the day resting and asking for a medic:
+    `my_health` showed pools only and the model never learned the word for it. Likeliest killer: the `sandstorm`
+    scenario, which every gate runs — twelve Tusken raiders walk in over the east outskirts, exactly where her playbook
+    parked her (knight's lane lost the shared lab character the same way). The perception now carries `condition`
+    (fine / incapacitated / dead), `my_health` says it too, and a `clone` tool answers the revive window
+    (`seat.action("sui", value="0", match="revive")` — the server opens `@base_player:revive_title` on login for a dead
+    character, so cloning works even after a restart). While the citizens live on the test bench, scenario events can
+    and will kill them; the live-world server proposed to Chuck is the real fix.
+  - **Wild creatures spawn only around a player who moves**: `SpawnArea::notifyPositionUpdate` → `tryToSpawn` (every
+    5 s at most, `Core3.Regions.minimumLairSpawnInterval`), lairs placed near the player and never inside the city
+    circle (Mos Eisley: 456 m around 3460,-4768). `objectsNear:tatooine:4010:-4700:600:1024` was empty until Teyla had
+    walked one leg; then worrts, womp rats, a rill and rockmites stood between 3600 and 3830. `creatures_near` now falls
+    back to a server-side 300 m scan (droids and named NPCs filtered out) and says so when nothing roams; Teyla's
+    playbook tells her to walk legs and never to stand on the outskirts.
+  - Wex surveyed "Bihommo" (a Corellian wooly hide: `tool=-1`, hunted, not surveyed) because `resources_here("mineral")`
+    returned nothing — the oracle's text filter matches class names like "Axidite Iron", never the word *mineral*. The
+    pilot now maps the class words to survey-tool codes (`SurveyTool.idl`: mineral 6, chemical 2, …), hides creature
+    resources unless asked for `all`, and `survey` accepts a unique fragment and lists what the tool finds here on a
+    miss. His deed request `harvester_ore` found nothing because the client names the deed
+    `@deed:ore_s1_harvester_deed_name`: object lookup now matches every word of the fragment, and the error lists the
+    deeds carried.
+  - A seat reply nests its error under `result`; the pilot's log line printed `None` for every failed action.
+  - Both citizens cloned themselves on the next wake once the tool existed (Wex had died too, at his Bihommo spot, and
+    cloned in Coronet). Then neither could leave the cloning facility: `findPath` from a cell to the world works only for
+    a target near the building (30 m yes, 190 m no — `findPathFromCellToWorld` ends on the exterior floor mesh), so
+    `pathTo` now steps out first (a reachable world point 30–60 m from the building, eight bearings) and continues with
+    a world path. The client reports cell-local coordinates indoors: the perception's position now comes from the
+    server's `where` line and says "indoors" when it is.
+  - The API caps **strict tools at 20**; adding `clone` made 21 and both pilots died on a 400 at their first wake. Tools
+    without arguments go unstrict, and a decider exception is now a 120 s wait, not the end of the pilot.
