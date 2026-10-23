@@ -494,8 +494,16 @@ def seat_tools(seat, files, character_name, seat_name):
         done, log = 0, []
         for _ in range(max(1, min(int(kills), 5))):
             near = creatures_near(name_fragment)
+            if near.get("ok") and not near["creatures"] and near.get("farther"):
+                # nothing in view but the server knows one roaming farther out: walk there and look again
+                f = near["farther"][0]
+                w = seat_mod.walk_seat(seat, character_name, f["x"], f["y"], within=18)
+                if not w.get("ok"):
+                    log.append(f"could not reach {f['name']} {f['distance']} m away: {seat_mod.action_error(w)}"); break
+                log.append(f"walked {f['distance']} m toward {f['name']}")
+                near = creatures_near(name_fragment)
             if not near.get("ok") or not near["creatures"]:
-                log.append("nothing matching in view"); break
+                log.append("nothing matching in view" + (" or within 300 m" if near.get("ok") else "")); break
             c = near["creatures"][0]
             if c["distance"] > 22:
                 w = seat_mod.walk_seat(seat, character_name, c["x"], c["y"], within=18)
