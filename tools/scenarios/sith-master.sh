@@ -16,6 +16,7 @@ wait_online || die "$CHAR never came online"
 lab "attunementSit:$CHAR:stand" >/dev/null
 sleep 4
 lab "attunementReset:$CHAR" >/dev/null
+lab "xpSet:$CHAR:jedi_general:0" >/dev/null       # a reused character may sit at the stock cap, where a reward adds nothing
 lab "attunementFlag:$CHAR:padawan:1" >/dev/null
 lab "skill:$CHAR:force_title_jedi_novice" >/dev/null       # the Padawan box itself: the enclave's cells admit it, a flag alone is ejected at the door
 lab "attunementFlag:$CHAR:alignment:light" >/dev/null
