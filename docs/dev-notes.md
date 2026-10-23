@@ -1144,3 +1144,17 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 - Wex's pilot died on 2026-10-21 09:13 with a `TimeoutError` in `Senses.gather()`: its seat was still finishing a walk
   that the previous pilot had started (the action lock was held, so `vars`/`objects` waited past the 60 s socket
   timeout). The wake loop now catches a seat timeout, waits 30 s and tries again instead of exiting.
+
+### 2026-10-23 — 4a.0 crystal formations
+
+- Several stock caves share one portal layout: the Tatooine squill cave and the Lok droid engineer's cave are the
+  same POB (room coordinates transfer), the Dathomir rancor cave is the Dantooine crystal hunters' cave mirrored
+  (x negated). `lotsurvey rooms` on each shows it; a cave's world position comes from `objectPos:<any of its cell
+  oids>` (the cell's world position is the building's).
+- Saber crystal colours are `@jedi_spam:saber_color_N`: 0 Red, 1 Dark Red, 2 Light Green, 3 Dark Green, 4 Blue,
+  5 Dark Blue, 6 Yellow, 7 Dark Yellow, 8 Light Purple, 9 Dark Purple, 10 Orange, 11 Brown (12+ are the named
+  rares, 31 the special red). Lua has no colour setter; a loot item with `craftingValues = {{"color", N, N}}` pins
+  it, and `custom_scripts/loot/serverobjects.lua` is included by the stock loot loader, so custom loot items work.
+- A harvestable world object = a server-only object template (`clientTemplateFileName` of a stock look +
+  `objectMenuComponent`), spawned with `spawnSceneObject(zone, template, x, z, y, cellOid, qw, qx, qy, qz)`; the
+  Lab Remote established the pattern.
