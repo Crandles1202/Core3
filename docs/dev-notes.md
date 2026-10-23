@@ -1247,3 +1247,9 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 - A lab character shared by every gate accumulates: after a dozen runs its `jedi_general` experience sat at the
   stock cap (90 000) and a Master's reward added nothing. Scenarios that pay experience zero it first (`xpSet`,
   through `awardExperience` by the difference).
+- **A gate is good for one tip.** Three gated branches merged in a row: the first two went in, the third
+  (`feature/crystals`) no longer merged cleanly once the bounty lane was on `unstable` (both had added to
+  `fb_lab_tests.lua`, `screenplays.lua`, `fb_force.stf.txt` and the docs). The owner merges `unstable` into the
+  branch, resolves, and re-gates before Chuck merges; `bench merge` refuses a dirty bench, so a conflicted merge
+  must be finished (committed) before the next one runs. Keep-both resolutions of Lua need a `luac -p` before the
+  commit: the crystals merge lost two `end`s at a hunk border and committed anyway because the shell chain used `;`.
