@@ -63,6 +63,7 @@ end
 -- the price keeps up with the visibility and never comes down on its own
 function FbBounty:updateAmount(pPlayer)
 	if self:visibility(pPlayer) < self.threshold then return self:amount(pPlayer) end   -- no price until the terminals would list you
+	if self:isPaid(pPlayer) then return self:amount(pPlayer) end   -- the fixer's arrangement holds for its day
 	local want = math.floor(self:visibility(pPlayer) * self.creditsPerVisibility)
 	if want > self:amount(pPlayer) then
 		local had = self:amount(pPlayer)
@@ -124,10 +125,12 @@ end
 -- the hunt: the squad spawns out of sight and comes for the character
 function FbBounty:hunt(pPlayer)
 	if pPlayer == nil then return false end
-	local so = SceneObject(pPlayer)
-	local zone = so:getZoneName()
-	if zone == "" or so:getParentID() ~= 0 then return false end
-	local px, py = so:getWorldPositionX(), so:getWorldPositionY()
+	-- plain numbers first: SceneObject(pMob) below re-points the one shared wrapper (the gotcha; the first run wrote
+	-- each hunter's own id as its owner and the cooldown went to an NPC called Lerlo)
+	local zone, parent = SceneObject(pPlayer):getZoneName(), SceneObject(pPlayer):getParentID()
+	if zone == "" or parent ~= 0 then return false end
+	local playerOid = SceneObject(pPlayer):getObjectID()
+	local px, py, pz = SceneObject(pPlayer):getWorldPositionX(), SceneObject(pPlayer):getWorldPositionY(), SceneObject(pPlayer):getWorldPositionZ()
 	local bearing = math.rad(getRandomNumber(360))
 	local dist = 45 + getRandomNumber(15)
 	local oids = {}
@@ -138,8 +141,8 @@ function FbBounty:hunt(pPlayer)
 		if pMob ~= nil then
 			local oid = SceneObject(pMob):getObjectID()
 			oids[#oids + 1] = oid
-			writeData(oid .. ":fbBountyFor", so:getObjectID())
-			AiAgent(pMob):setHomeLocation(px, so:getWorldPositionZ(), py, nil)   -- no leashing back while they close in
+			writeData(oid .. ":fbBountyFor", playerOid)
+			AiAgent(pMob):setHomeLocation(px, pz, py, nil)   -- no leashing back while they close in
 			AiAgent(pMob):setDefender(pPlayer)   -- on the character from the first step; aggressive and ENEMY besides
 			createObserver(OBJECTDESTRUCTION, "FbBounty", "onHunterDown", pMob)
 			createEvent(45 * 60 * 1000, "FbBounty", "sweepHunter", pPlayer, tostring(oid))
