@@ -2476,6 +2476,13 @@ function FbLabTests:pathTo(a, b, c, d, e, f, g)
 		end
 	end
 	if path == nil then print(string.format("ERROR pathTo: no path on %s from %.1f,%.1f (cell %d) to %.1f,%.1f (cell %d)", planet, x1, y1, cell1, x2, y2, cell2)); return "none" end
+	-- the pathfinder returns the indoor target itself as the last point, at the z it was asked for (0): a walker sent
+	-- there stands a floor's height under the room, and the in-building line-of-sight check (an NPC conversation)
+	-- refuses it without a word — give it the floor of the last node in the same cell
+	local last, prev = path[#path], path[#path - 1]
+	if last ~= nil and prev ~= nil and (last[4] or 0) ~= 0 and last[4] == prev[4] and math.abs(last[2]) < 0.001 and math.abs(prev[2]) >= 0.001 then
+		last[2] = prev[2]
+	end
 	local parts, length, px, py, pc = {}, 0, x1, y1, cell1
 	for i, pt in ipairs(path) do
 		local cell = pt[4] or 0

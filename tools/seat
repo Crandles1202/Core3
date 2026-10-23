@@ -160,7 +160,18 @@ def path_within(char, x, y, within, cell=0, z=None):
     `within`·0.6 m short of the target, at height z (the target's, when known)."""
     import math
     direct = path_from_server(char, x, y, cell)
-    if cell or not direct:
+    if not direct:
+        return direct
+    if cell:
+        # indoors the route is exact; stop `within`·0.6 m short along its last leg (same cell, same floor height) so the
+        # walker does not stand inside the NPC it came to talk to (a zero-length line of sight is not a line of sight)
+        if within and len(direct) >= 2 and direct[-1][3] == direct[-2][3]:
+            last, prev = direct[-1], direct[-2]
+            dx, dy = last[0] - prev[0], last[2] - prev[2]
+            dist = math.hypot(dx, dy)
+            stop = within * 0.6
+            if dist > stop > 0:
+                direct[-1] = [round(last[0] - dx / dist * stop, 2), last[1], round(last[2] - dy / dist * stop, 2), last[3]]
         return direct
     def end_distance(path):
         return math.hypot(path[-1][0] - x, path[-1][2] - y)

@@ -687,13 +687,14 @@ def seat_tools(seat, files, character_name, seat_name):
             return {"ok": False, "error": f"the nearest {row['trainer'].replace('trainer_', '')} trainer, {name}, stands {dist:.0f} m away by {tr.get('point')}: travel_to that point first"}
         cell = int(tr.get("cell") or 0)
         if cell:
-            w = seat_mod.walk_seat(seat, character_name, float(tr["localX"]), float(tr["localY"]), cell=cell)
+            w = seat_mod.walk_seat(seat, character_name, float(tr["localX"]), float(tr["localY"]), cell=cell, within=3)
         else:
             w = seat_mod.walk_seat(seat, character_name, float(tr["x"]), float(tr["y"]), within=3)
         if not w.get("ok"):
             return {"ok": False, "error": f"could not reach {name}: {seat_mod.action_error(w)}"}
         npc = int(tr["oid"])
-        c = seat.action("converse", npc=npc, options=[0], timeout=12)
+        # the converse action's own wait is its "timeout" field (seat.action's timeout is the socket's)
+        c = seat.request({"op": "action", "action": {"action": "converse", "npc": npc, "options": [0], "timeout": 12}}, timeout=90)
         if not c.get("ok"):
             return {"ok": False, "error": f"{name} would not talk: {seat_mod.action_error(c)}"}
         opts = seat.request({"op": "vars", "path": "/Conversation/options"}).get("vars") or []
@@ -701,7 +702,7 @@ def seat_tools(seat, files, character_name, seat_name):
         if want not in opts:
             offered = [o.split(":", 1)[1] for o in opts if isinstance(o, str) and o.startswith("@skl_n:")]
             return {"ok": False, "error": f"{name} did not offer {skill}", "offered": offered, "said": seat.request({"op": "vars", "path": "/Conversation/message"}).get("vars")}
-        c = seat.action("converse", npc=npc, options=[0, opts.index(want), 0], timeout=12)
+        c = seat.request({"op": "action", "action": {"action": "converse", "npc": npc, "options": [0, opts.index(want), 0], "timeout": 12}}, timeout=90)
         line = next((l for l in seat_mod.lab(f"hasSkill:{character_name}:{skill}", 8).splitlines() if l.startswith("INFO hasSkill")), "")
         has = "has=true" in line
         after = trainable_of(character_name)
