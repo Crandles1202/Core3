@@ -1317,3 +1317,15 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   passed on its own a few minutes later (12/12) as it had in every earlier gate. Pattern: the bot logs in 2 s after a
   relog into a cell and talks after 2 s more; nothing in the batch touches that path. Unexplained; if it repeats, give
   those two scenarios a longer `--wait` before the converse or a `where` check that the character came back in the cell.
+- **Gate flake 2, 2026-10-23 ~22:20, explained and fixed:** the re-gate on `3d172f429f` was green everywhere except
+  `survey-sample` (`sample_ok`: "no sample result at all"), which passed alone right after. Cause, in the server: one
+  sample start in 51 (`SurveySessionImplementation::startSample`, `System::random(50) == 7`) opens the *concentrated
+  sample* list box (`@survey:cnode_t`: a richer spot nearby, or `@survey:gnode_t`: gamble 300 action) instead of
+  sampling; the real client answers it, the seat's `sample` action only counted result messages for 5 s. Row 0 of either
+  window ("ignore / keep sampling here") calls `rescheduleSample`, which schedules the sample **25 s** out (not 3 s).
+  Fix in `tools/seat` (`sample_seat`, used by the CLI and the pilot's `sample` tool): on "no sample result" answer a
+  window whose title contains `node_t` with row 0 and re-send the sample with two rounds (a sample with a task pending is
+  swallowed; the 30 s wait catches the rescheduled result), else re-send once (a first result slower than the action's
+  5 s); the result carries `minigame`, `retried` and the survey/sample system messages seen (`said`) so the next flake
+  explains itself. The seat's `sui` answer needs its own `timeout` field in the action body: the Python `timeout`
+  keyword of `Seat.action` is the socket wait and is not sent.

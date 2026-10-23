@@ -503,7 +503,7 @@ def seat_tools(seat, files, character_name, seat_name):
 
     def sample(resource, rounds):
         n = max(1, min(int(rounds), 6))
-        return seat.action("sample", resource=resource, rounds=n, timeout=30 * n + 30)
+        return load_seat_module().sample_seat(seat, resource, n)
 
     def place_harvester(deed_fragment, x, y):
         deed = _find_object(deed_fragment, 0x800002) or _find_object(deed_fragment)

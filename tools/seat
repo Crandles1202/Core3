@@ -35,7 +35,8 @@ control channel on a unix socket (SeatAction, Phase 7.0). A pilot (7.3) sits on 
   seat harvester <name> <oid> empty <spawn oid> <units> [--discard]   the hopper into the inventory
   seat harvester <name> <oid> status                   the server-side view (FbLabTests:harvester: hopper, maintenance, power)
   seat survey <name> <tool oid> <resource> [range]    use the survey tool, survey that resource, print the grid's best point
-  seat sample <name> <resource> [rounds]               sample where the character stands (3 s, then 25 s per extra round)
+  seat sample <name> <resource> [rounds]               sample where the character stands (3 s, then 25 s per extra round;
+                                                        answers the 1-in-51 concentrated-sample window and retries)
   seat resources <planet> [class]                      the resource oracle (FbLabTests:resources over swg cmd --shared)
   seat log <name> [lines]                              tail of the client log
   seat fight <name> <target oid> [--max S] [--reach M]  close to --reach m (default 4: melee; a rifle allows ~60), attack and keep swinging
@@ -265,6 +266,36 @@ def fight_seat(s, char, target, max_s=90, reach=4.0, harvest=False):
     print(f"fight: {verdict} after {swings} swing(s), {result['seconds']} s" + (", looted" if result["looted"] else "") + (", harvested" if harvested else ""))
     return result
 
+
+def sample_seat(s, resource, rounds=1):
+    """Sample on a seat, surviving the server's minigame: one start in 51 (SurveySession::startSample, random(50) == 7)
+    opens a "concentrated sample" list box (cnode: a richer spot nearby; gnode: gamble 300 action) instead of sampling,
+    and the real client answers it. Row 0 of either (ignore / keep sampling here) reschedules the sample 25 s out,
+    so after answering the sample is re-sent with two rounds (a sample with a task pending is swallowed by the
+    server; the action's 30 s wait catches the rescheduled result). A first result later than the action's 5 s
+    (the gate under load) is caught by the same retry. The result says what happened: minigame, retried, said."""
+    rounds = max(1, int(rounds))
+    n0 = len(s.request({"op": "vars", "path": "/SystemMessages"}).get("vars") or [])
+    reply = s.action("sample", resource=resource, rounds=rounds, timeout=30 * rounds + 30)
+    if reply.get("ok"):
+        return reply
+    err = action_error(reply)
+    if "no sample result" not in err:
+        return reply
+    # the minigame window: title @survey:cnode_t / @survey:gnode_t ("node_t" matches both and nothing else)
+    sui = s.request({"op": "action", "action": {"action": "sui", "value": "0", "match": "node_t", "timeout": 3}}, timeout=15)
+    minigame = sui.get("ok", False)
+    if minigame:
+        print("sample: the concentrated-sample window opened (1 in 51): answered 'keep sampling here', waiting 25 s")
+    else:
+        print("sample: no result within the action's wait and no window: sending it again")
+    retry_rounds = max(rounds, 2) if minigame else rounds
+    reply = s.action("sample", resource=resource, rounds=retry_rounds, timeout=30 * retry_rounds + 30)
+    said = (s.request({"op": "vars", "path": "/SystemMessages"}).get("vars") or [])[n0:]
+    reply["minigame"] = minigame
+    reply["retried"] = True
+    reply["said"] = [m[:100] for m in said if "survey" in m or "sample" in m or "error_message" in m][-8:]
+    return reply
 
 def walk_seat(s, char, x, y, cell=0, speed=4.5, within=None, z=None):
     points = path_within(char, x, y, within, cell, z) if within else path_from_server(char, x, y, cell)
@@ -658,10 +689,7 @@ def main(argv):
     elif cmd == "sample":
         if not rest:
             die("sample <name> <resource> [rounds]")
-        fields = {"resource": rest[0]}
-        if len(rest) > 1:
-            fields["rounds"] = int(rest[1])
-        reply = s.action("sample", **fields)
+        reply = sample_seat(s, rest[0], int(rest[1]) if len(rest) > 1 else 1)
     elif cmd == "walk":
         if len(rest) < 2:
             die("walk <name> <x> <y> [--cell OID] [--speed M/S] [--within M]")
