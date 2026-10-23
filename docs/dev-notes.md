@@ -1253,3 +1253,7 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   branch, resolves, and re-gates before Chuck merges; `bench merge` refuses a dirty bench, so a conflicted merge
   must be finished (committed) before the next one runs. Keep-both resolutions of Lua need a `luac -p` before the
   commit: the crystals merge lost two `end`s at a hunk border and committed anyway because the shell chain used `;`.
+- Lua 5.3's `%d` refuses a float with a fraction (`bad argument to 'format': number has no integer representation`):
+  anything read from C++ as `lua_pushnumber` (visibility, HAM, heights) goes through `math.floor` before `%d`. The
+  bounty's hunt log line died on a decayed visibility of 1999.6, after the squad was spawned, and the lab tick
+  returned nothing — a check that passed when the number was still whole.
