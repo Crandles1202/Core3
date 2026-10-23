@@ -1217,3 +1217,17 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
     ground (3450,−5300) she met three level-10 zucca boars and five aggressive sevorrts, refused, and walked back
     toward the starport. Her ground is now south of Mos Eisley (`mos_eisley_easy_newbie` circle, outside the `_sw`
     rectangle's slaver theaters); the east is written off in her playbook.
+
+### 2026-10-23 — 4c the bounty
+
+- Stock visibility: `PlayerObject:getVisibility()` / `setVisibility(n)` (Lua), raised by the server on saber and Force
+  use near others, decayed hourly over 21 days (`visibility_manager.lua`: maxVisibility 8000, termThreshold 1500,
+  falloffThreshold 100). `FbBounty` reads it and nothing else; the price and the hunters are ours.
+- Setting a spawned NPC on a player: `AiAgent:setDefender(pPlayer)` (the invasions' pattern) with an AGGRESSIVE +
+  ATTACKABLE + ENEMY pvp mask; `addDefender` exists on AiAgent only, not on a player's CreatureObject.
+- The Mos Eisley cantina is stock building `1082874` (h 38); its main room is cell 3 (`cantina`, oid 1082877, the
+  ambient life's anchor cell); a spot by the north wall at (8, 4) is 4 m from the nearest furniture. The stock
+  mobile library has no male criminal smuggler dress, only the female one and the Binayre Trandoshans.
+- A lab character shared by every gate accumulates: after a dozen runs its `jedi_general` experience sat at the
+  stock cap (90 000) and a Master's reward added nothing. Scenarios that pay experience zero it first (`xpSet`,
+  through `awardExperience` by the difference).

@@ -309,6 +309,11 @@ FbLabTests.eventNpcs = {
 	fb_vision_exar_kun = { conversation = false, spawnedAtBoot = false }, -- Phase 4a.4
 	fb_hunter_chief = { spawnedAtBoot = false, convoFile = "scripts/mobile/conversations/tasks/fb_knight_boss_conv.lua" },      -- Phase 4b.4
 	fb_nightsister_witch = { spawnedAtBoot = false, convoFile = "scripts/mobile/conversations/tasks/fb_knight_boss_conv.lua" }, -- Phase 4b.4
+	fb_bounty_thug = { conversation = false, spawnedAtBoot = false },        -- Phase 4c
+	fb_bounty_hunter = { conversation = false, spawnedAtBoot = false },      -- Phase 4c
+	fb_bounty_veteran = { conversation = false, spawnedAtBoot = false },     -- Phase 4c
+	fb_bounty_dark_hunter = { conversation = false, spawnedAtBoot = false }, -- Phase 4c
+	fb_bounty_light_hunter = { conversation = false, spawnedAtBoot = false }, -- Phase 4c
 }
 
 function FbLabTests.checkNpc(npc)
@@ -811,6 +816,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkSithMaster()
 		FbLabTests.checkAlignment()
 		FbLabTests.checkKnight()
+		FbLabTests.checkBounty()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)
@@ -967,6 +973,20 @@ function FbLabTests:heal(charName, pool, amount)
 	return hamLine(charName, pPlayer)
 end
 
+-- xpSet:<char>:<type>:<amount> → that experience pool set to the amount (through awardExperience by the difference,
+-- so the stock caps apply: a reused character hit the jedi_general cap and a Master's reward could not add)
+function FbLabTests:xpSet(charName, xpType, amount)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pGhost = CreatureObject(pPlayer):getPlayerObject()
+	if pGhost == nil then print("ERROR " .. charName .. " has no player object"); return "none" end
+	local have = PlayerObject(pGhost):getExperience(xpType)
+	local want = tonumber(amount) or 0
+	if want ~= have then CreatureObject(pPlayer):awardExperience(xpType, want - have, false) end
+	print(string.format("INFO xpSet char=%s type=%s was=%d now=%d", charName, tostring(xpType), have, PlayerObject(pGhost):getExperience(xpType)))
+	return "ok"
+end
+
 -- revive:<char> → a dead or incapacitated lab character back on its feet with full pools (what a cloning would do,
 -- without the cloner); harmless on a healthy one
 function FbLabTests:revive(charName)
@@ -976,11 +996,11 @@ function FbLabTests:revive(charName)
 	local was = string.format("dead=%s incap=%s posture=%d", tostring(c:isDead()), tostring(c:isIncapacitated()), c:getPosture())
 	-- only a character that is down: a seated one must stay seated across a login (the shrine meditation and the
 	-- Masters' sit tasks count on it; standing everyone up at every login failed all of them, gate 2026-10-22)
+	c:clearCombatState(true)   -- always: a lab character left "in combat" is refused a hunt, a talk, a sit
 	if not (c:isDead() or c:isIncapacitated() or c:getPosture() == 13 or c:getPosture() == 14) then
-		print("INFO revive char=" .. charName .. " not needed (" .. was .. ")")
+		print("INFO revive char=" .. charName .. " not needed (" .. was .. "), combat cleared")
 		return "ok"
 	end
-	c:clearCombatState(true)
 	for _, pool in ipairs({ 0, 3, 6 }) do c:setHAM(pool, c:getMaxHAM(pool)) end
 	-- a real posture change: setPosture is a no-op when the posture already reads upright, and the locomotion
 	-- (what every queued command checks) is only recomputed on a change — a character that died kept
@@ -3229,6 +3249,77 @@ function FbLabTests.checkKnight()
 			for _, k in ipairs({ "offer", "go", "given", "wait", "report", "done", "spare", "kill", "graduated" }) do need(prefix .. "knight_" .. k) end
 		end
 		check("knight.strings", #missing == 0, #missing == 0 and "every line of the trial" or ("missing: " .. table.concat(missing, ", ")))
+	end
+end
+
+-- ---------------------------------------------------------------- Phase 4c: the bounty
+
+local function bountyLine(charName, pPlayer) print("INFO bounty char=" .. charName .. " " .. FbBounty:status(pPlayer)) end
+function FbLabTests:bounty(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	FbBounty:updateAmount(pPlayer)
+	bountyLine(charName, pPlayer)
+	print("INFO bounty fixerScreen=" .. FbBounty:fixerScreen(pPlayer) .. " fixer=" .. tostring(FbBounty:fixerNpc() ~= nil))
+	return "ok"
+end
+-- bountySet:<char>:<visibility> → the stock visibility set to that value (what saber and Force use raise)
+function FbLabTests:bountySet(charName, vis)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pGhost = CreatureObject(pPlayer):getPlayerObject()
+	if pGhost ~= nil then PlayerObject(pGhost):setVisibility(tonumber(vis) or 0) end
+	FbBounty:updateAmount(pPlayer)
+	bountyLine(charName, pPlayer)
+	return "ok"
+end
+-- bountyTick:<char> → the trigger once, now (a hunt if one is due)
+function FbLabTests:bountyTick(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local ok, why = FbBounty:due(pPlayer)
+	print("INFO bountyTick hunt=" .. tostring(FbBounty:maybe(pPlayer)) .. " was=" .. tostring(ok) .. "(" .. tostring(why) .. ") " .. FbBounty:status(pPlayer))
+	return "ok"
+end
+-- bountyPay:<char> → pay the fixer without the conversation
+function FbLabTests:bountyPay(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	print("INFO bountyPay paid=" .. tostring(FbBounty:pay(pPlayer)))
+	bountyLine(charName, pPlayer)
+	return "ok"
+end
+-- bountyClear:<char> → the price, the pause, the cooldown and the hunters gone; visibility to 0
+function FbLabTests:bountyClear(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	FbBounty:reset(pPlayer)
+	local pGhost = CreatureObject(pPlayer):getPlayerObject()
+	if pGhost ~= nil then PlayerObject(pGhost):setVisibility(0) end
+	bountyLine(charName, pPlayer)
+	return "ok"
+end
+
+function FbLabTests.checkBounty()
+	check("bounty.loaded", FbBounty ~= nil and FbBounty.tiers ~= nil)
+	if FbBounty == nil then return end
+	for _, t in ipairs(FbBounty.tiers) do
+		local mf = io.open("scripts/mobile/quest/tatooine/" .. t.template .. ".lua", "r")
+		check("bounty.tier." .. t.template, mf ~= nil); if mf ~= nil then mf:close() end
+	end
+	for side, t in pairs(FbBounty.forceHunters) do
+		local mf = io.open("scripts/mobile/quest/tatooine/" .. t .. ".lua", "r")
+		check("bounty.forcehunter." .. side, mf ~= nil, t); if mf ~= nil then mf:close() end
+	end
+	if isZoneEnabled(FbBounty.fixer.zone) then check("bounty.fixer_stands", FbBounty:fixerNpc() ~= nil, FbBounty.fixer.room .. " of " .. FbBounty.fixer.buildingOid) end
+	local f = io.open("../../tre-src/string/en/fb_force.stf.txt", "r")
+	if f ~= nil then
+		local text = f:read("a"); f:close()
+		local missing = {}
+		local function need(k) if not text:find("\n" .. k .. " = ", 1, true) then missing[#missing + 1] = k end end
+		for _, k in ipairs({ "placed", "hunted", "squad_down", "paid", "short", "status_active", "status_paid" }) do need("bounty_" .. k) end
+		for _, k in ipairs({ "nothing", "paid", "offer", "price", "pay", "refuse" }) do need("fixer_" .. k) end
+		check("bounty.strings", #missing == 0, #missing == 0 and "every line" or ("missing: " .. table.concat(missing, ", ")))
 	end
 end
 

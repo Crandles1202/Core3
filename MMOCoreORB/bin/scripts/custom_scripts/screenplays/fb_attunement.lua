@@ -153,6 +153,7 @@ function FbAttunement:reset(pPlayer)
 	if FbTrials ~= nil then FbTrials:reset(pPlayer) end
 	if FbVisions ~= nil then FbVisions:reset(pPlayer) end
 	if FbMasters ~= nil then FbMasters.reset(pPlayer) end
+	if FbBounty ~= nil then FbBounty:reset(pPlayer) end
 	deleteScreenPlayData(pPlayer, self.DATA, "ghostTier")
 	removeQuestStatus("FbAttunement.visit." .. SceneObject(pPlayer):getObjectID())
 	removeQuestStatus("FbAttunement.poll." .. SceneObject(pPlayer):getObjectID())
@@ -368,6 +369,7 @@ end
 function FbAttunement:onIncap(pPlayer, pAttacker)
 	if pPlayer == nil then return 0 end
 	self:setFlag(pPlayer, "incapAt", os.time())
+	if FbBounty ~= nil then FbBounty:onPlayerDown(pPlayer) end   -- 4c: the hunters leave
 	return 0
 end
 
@@ -392,6 +394,7 @@ function FbAttunement:onKill(pPlayer, pVictim)
 	if FbTrials ~= nil then FbTrials:onKill(pPlayer, pVictim) end
 	if FbMasters ~= nil then FbMasters.onKill(pPlayer, pVictim) end   -- 4b.1/4b.2: the Masters' kill tasks
 	if FbAlignment ~= nil then FbAlignment:onKill(pPlayer, pVictim) end   -- 4b.3: the score
+	if FbBounty ~= nil then FbBounty:maybe(pPlayer) end   -- 4c: a fight may bring the hunters
 	-- the fight may still be on: look again in 20 s
 	createEvent(20000, "FbAttunement", "maybeVisitLater", pPlayer, "")
 	return 0
@@ -517,6 +520,10 @@ function FbAttunement:showStatus(pPlayer)
 		local line = FbAlignment:statusLine(pPlayer)
 		if line ~= nil then CreatureObject(pPlayer):sendSystemMessage(line) end
 	end
+	if FbBounty ~= nil then
+		local line = FbBounty:statusLine(pPlayer)
+		if line ~= nil then CreatureObject(pPlayer):sendSystemMessage(line) end
+	end
 	local lore = self:loreCount(pPlayer)
 	if lore > 0 then
 		local msg = LuaStringIdChatParameter("@fb_force:lore_count"); msg:setDI(lore)
@@ -540,6 +547,7 @@ function FbAttunement:onLogin(pPlayer)
 	printf("FbAttunement: login hook for %s\n", CreatureObject(pPlayer):getFirstName())
 	if FbVisions ~= nil then FbVisions:onLogin(pPlayer) end   -- 4a.4: a logout inside a vision ends it at home
 	if FbMasters ~= nil then FbMasters.onLogin(pPlayer) end   -- 4b.1/4b.2: re-arm the sit polls
+	if FbBounty ~= nil then FbBounty:onLogin(pPlayer) end   -- 4c: the five-minute tick
 	dropObserver(KILLEDCREATURE, "FbAttunement", "onKill", pPlayer); createObserver(KILLEDCREATURE, "FbAttunement", "onKill", pPlayer)
 	dropObserver(OBJECTDESTRUCTION, "FbAttunement", "onIncap", pPlayer); createObserver(OBJECTDESTRUCTION, "FbAttunement", "onIncap", pPlayer)
 	dropObserver(BADGEAWARDED, "FbAttunement", "onBadge", pPlayer); createObserver(BADGEAWARDED, "FbAttunement", "onBadge", pPlayer)

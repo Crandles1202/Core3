@@ -386,3 +386,18 @@ sith_knight_done = Knight. They use the same word up there. It means something d
 sith_knight_spare = You let her live. The holocron is yours; so is the question of why.
 sith_knight_kill = You finished her. The holocron is yours.
 sith_knight_graduated = You are a Knight of the dark. The third rank is yours, and the robe.
+
+# ---- Phase 4c: the bounty, the hunters, the fixer
+bounty_placed = Somewhere a price has been put on you. You can feel the eyes.
+bounty_hunted = Hunters. They did not come to talk.
+bounty_squad_down = The hunters are down. There will be others; the price did not die with them.
+bounty_paid = Dax Ventrell takes %DI credits and the price comes off your head. For a while.
+bounty_short = You do not have that kind of money on you.
+bounty_status_active = There is a price on your head, and someone is collecting it.
+bounty_status_paid = The price on your head has been paid off, for now.
+fixer_nothing = You have the look of someone who wants something. I only deal in one thing, and you do not have the problem it fixes.
+fixer_paid = We have an arrangement, you and I. Come back when it runs out.
+fixer_offer = I know who you are, and I know what the people who want you are willing to pay. I can make the paper go away. Costs more than the paper is worth. That is how it works.
+fixer_price = Dax Ventrell wants %DI credits.
+fixer_pay = Pleasure. Walk slower for a while; you were drawing eyes.
+fixer_refuse = Then keep running. It is good for the legs.
