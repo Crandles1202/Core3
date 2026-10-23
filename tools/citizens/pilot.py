@@ -87,10 +87,12 @@ def now_iso():
 
 # ------------------------------------------------------------------ the citizen's files
 class CitizenFiles:
-    def __init__(self, name):
+    def __init__(self, name, home=None):
         self.name = name
         self.persona_path = os.path.join(CAST_DIR, f"{name}.md")
-        self.dir = os.path.join(LABDIR, "citizens", name)
+        # the live state lives in ~/.swg-lab/citizens/<name>; a scenario passes its own --home so a test wake as a
+        # persona never touches (or deletes) the real citizen's memory and plan
+        self.dir = home or os.path.join(LABDIR, "citizens", name)
         os.makedirs(self.dir, exist_ok=True)
         self.plan_path = os.path.join(self.dir, "plan.md")
         self.memory_path = os.path.join(self.dir, "memory.md")
@@ -178,9 +180,34 @@ class CitizenFiles:
 class Senses:
     """Perception from the seat, as deltas since the last wake."""
 
-    def __init__(self, seat, state):
+    def __init__(self, seat, state, character_name="", files=None):
         self.seat = seat
         self.state = state
+        self.character_name = character_name
+        self.files = files
+
+    def current_milestone(self):
+        """the first unticked milestone of the life plan: what the character is working on"""
+        if self.files is None:
+            return None
+        for line in self.files.plan().splitlines():
+            if line.startswith("- [ ]"):
+                return line[5:].strip()
+        return None
+
+    def progress(self):
+        """XP by type as 'amount/cap' (lab progress oracle); {} when the oracle is missing or the lab is unreachable"""
+        try:
+            line = next((l for l in load_seat_module().lab(f"progress:{self.character_name}", 8).splitlines()
+                         if l.startswith("INFO progress")), "")
+        except Exception:
+            return {}
+        xp = {}
+        for part in line.split(" xp=", 1)[1].split(",") if " xp=" in line else []:
+            if "=" in part:
+                k, v = part.split("=", 1)
+                xp[k] = v
+        return xp
 
     def _new_lines(self, path, key):
         reply = self.seat.request({"op": "vars", "path": path})
@@ -211,6 +238,9 @@ class Senses:
             near.sort(key=lambda n: n["distance"])
         planet = self.seat.request({"op": "vars", "path": "/Scene/terrain"}).get("vars")
         return {
+            "xp": self.progress(),
+            "you": self.character_name,
+            "now": self.current_milestone(),
             "character": ping.get("character"),
             "planet": planet if isinstance(planet, str) else None,
             "position": {"x": round(me["x"], 1), "y": round(me["y"], 1)} if me else None,
@@ -286,7 +316,8 @@ def seat_tools(seat, files, character_name, seat_name):
         return seat.action("survey", tool=tool["oid"], resource=resource)
 
     def sample(resource, rounds):
-        return seat.action("sample", resource=resource, rounds=max(1, min(int(rounds), 6)))
+        n = max(1, min(int(rounds), 6))
+        return seat.action("sample", resource=resource, rounds=n, timeout=30 * n + 30)
 
     def place_harvester(deed_fragment, x, y):
         deed = _find_object(deed_fragment, 0x800002) or _find_object(deed_fragment)
@@ -322,6 +353,89 @@ def seat_tools(seat, files, character_name, seat_name):
         lots = next((seat_mod.lab_fields(l).get("remaining") for l in out.splitlines() if l.startswith("INFO lots")), None)
         return {"ok": True, "structures": rows, "lotsRemaining": lots}
 
+    def my_health(returning=None):
+        seat_mod = load_seat_module()
+        line = next((l for l in seat_mod.lab(f"ham:{character_name}", 8).splitlines() if l.startswith("INFO ham")), "")
+        f = seat_mod.lab_fields(line)
+        return {"ok": bool(f), "health": f.get("health"), "action": f.get("action"), "mind": f.get("mind")}
+
+    def creatures_near(name_fragment):
+        """creatures (not players, not city NPCs) within 80 m, nearest first"""
+        objs = _objects()
+        me = next((o for o in objs if o["oid"] == seat.request({"op": "ping"}).get("character")), None)
+        if me is None:
+            return {"ok": False, "error": "no self in view"}
+        out = []
+        for o in objs:
+            if o["type"] != 0x400 or (name_fragment and name_fragment.lower() not in o["name"].lower()):
+                continue
+            d = ((o["x"] - me["x"]) ** 2 + (o["y"] - me["y"]) ** 2) ** 0.5
+            if d <= 80:
+                out.append({"oid": o["oid"], "name": o["name"], "distance": round(d, 1), "x": round(o["x"], 1), "y": round(o["y"], 1)})
+        out.sort(key=lambda c: c["distance"])
+        return {"ok": True, "creatures": out[:12]}
+
+    def hunt(name_fragment, kills):
+        """the fighter's loop: nearest matching creature, walk to 20 m, fight, loot; up to `kills` times"""
+        seat_mod = load_seat_module()
+        done, log = 0, []
+        for _ in range(max(1, min(int(kills), 5))):
+            near = creatures_near(name_fragment)
+            if not near.get("ok") or not near["creatures"]:
+                log.append("nothing matching in view"); break
+            c = near["creatures"][0]
+            if c["distance"] > 22:
+                w = seat_mod.walk_seat(seat, character_name, c["x"], c["y"], within=18)
+                if not w.get("ok"):
+                    log.append(f"could not reach {c['name']}: {seat_mod.action_error(w)}"); break
+            r = seat_mod.fight_seat(seat, character_name, c["oid"], 90)
+            log.append(f"{c['name']}: {r['verdict']} in {r['seconds']} s" + (", looted" if r["looted"] else ""))
+            if r["verdict"] == "killed":
+                done += 1
+            elif r["verdict"] == "retreat":
+                break
+        return {"ok": done > 0, "kills": done, "log": log, "health": my_health().get("health")}
+
+    def tend_harvesters(hours_of_reserve):
+        """the gatherer's round: every harvester you own on this planet — walk to it, empty every hopper line into
+        your inventory, top up maintenance and power to `hours_of_reserve` hours at its rates"""
+        seat_mod = load_seat_module()
+        hours = max(6, min(int(hours_of_reserve), 168))
+        planet = seat.request({"op": "vars", "path": "/Scene/terrain"}).get("vars")
+        mine = my_structures()
+        visited, log = 0, []
+        for st in mine.get("structures", []):
+            if st.get("zone") != planet or st.get("type") not in ("0x1003", "0x1002", "0x1000"):
+                continue
+            oid, x, y = int(st["oid"]), float(st["x"]), float(st["y"])
+            w = seat_mod.walk_seat(seat, character_name, x, y, within=12)
+            if not w.get("ok"):
+                log.append(f"{oid}: unreachable ({seat_mod.action_error(w)})"); continue
+            status = harvester_status(oid)
+            if not status.get("ok"):
+                log.append(f"{oid}: no status"); continue
+            lines = []
+            for h in status.get("hopper", []):
+                q = int(h.get("quantity", 0))
+                if q > 0:
+                    r = seat.action("harvester", target=oid, op="empty", resource=int(h["spawn"]), quantity=q)
+                    lines.append(f"emptied {q} {h.get('name')}" if r.get("ok") else f"empty failed: {seat_mod.action_error(r)}")
+            m_rate, p_rate = int(status.get("maintenanceRate", 0)), int(status.get("powerRate", 0))
+            need_m = hours * m_rate - int(status.get("maintenance", 0))
+            need_p = hours * p_rate - int(status.get("power", 0))
+            if need_m > 0:
+                r = seat.action("harvester", target=oid, op="maintain", amount=need_m)
+                lines.append(f"paid {need_m} maintenance" if r.get("ok") else f"maintenance failed: {seat_mod.action_error(r)}")
+            if need_p > 0:
+                r = seat.action("harvester", target=oid, op="power", amount=need_p)
+                lines.append(f"deposited {need_p} power" if r.get("ok") else f"power failed: {seat_mod.action_error(r)}")
+            if status.get("active") != "true":
+                r = seat.action("harvester", target=oid, op="activate")
+                lines.append("activated" if r.get("ok") else f"activate failed: {seat_mod.action_error(r)}")
+            visited += 1
+            log.append(f"{oid} ({status.get('activeResourceName', '?')}): " + ("; ".join(lines) or "fine"))
+        return {"ok": visited > 0 or not mine.get("structures"), "visited": visited, "log": log}
+
     def remember(note):
         files.remember(note)
         return {"ok": True}
@@ -342,6 +456,7 @@ def seat_tools(seat, files, character_name, seat_name):
         "say": say, "tell": tell, "emote": emote, "walk_to": walk_to, "travel_to": travel_to,
         "resources_here": resources_here, "survey": survey, "sample": sample, "place_harvester": place_harvester,
         "harvester": harvester, "harvester_status": harvester_status, "my_structures": my_structures,
+        "my_health": my_health, "creatures_near": creatures_near, "hunt": hunt, "tend_harvesters": tend_harvesters,
         "remember": remember, "complete_milestone": complete_milestone, "change_plan": change_plan, "rest": rest,
     }
     schema = [
@@ -369,6 +484,14 @@ def seat_tools(seat, files, character_name, seat_name):
          "input_schema": {"type": "object", "properties": {"oid": {"type": "integer"}}, "required": ["oid"], "additionalProperties": False}, "strict": True},
         {"name": "my_structures", "description": "The structures you own (oid, planet, position, active) and the lots you have left.",
          "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},
+        {"name": "my_health", "description": "Your health/action/mind pools as current/max/wounds.",
+         "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},
+        {"name": "creatures_near", "description": "Creatures within 80 m whose name contains the fragment (empty for all), nearest first, with positions.",
+         "input_schema": {"type": "object", "properties": {"name_fragment": {"type": "string"}}, "required": ["name_fragment"], "additionalProperties": False}, "strict": True},
+        {"name": "hunt", "description": "Fight creatures whose name contains the fragment: walk to the nearest, attack until it dies, loot, repeat up to `kills` times (1-5). Stops if your health drops to a third. Takes a minute or two per kill.",
+         "input_schema": {"type": "object", "properties": {"name_fragment": {"type": "string"}, "kills": {"type": "integer"}}, "required": ["name_fragment", "kills"], "additionalProperties": False}, "strict": True},
+        {"name": "tend_harvesters", "description": "The gatherer's round on this planet: walk to each harvester you own, empty its hopper into your inventory, pay maintenance and power up to this many hours of reserve, switch it on. Takes minutes.",
+         "input_schema": {"type": "object", "properties": {"hours_of_reserve": {"type": "integer"}}, "required": ["hours_of_reserve"], "additionalProperties": False}, "strict": True},
         {"name": "remember", "description": "Write a note into your long-term memory (people met, promises, what happened).",
          "input_schema": {"type": "object", "properties": {"note": {"type": "string"}}, "required": ["note"], "additionalProperties": False}, "strict": True},
         {"name": "complete_milestone", "description": "Tick a milestone of your life plan, quoting its text exactly.",
@@ -384,10 +507,19 @@ def seat_tools(seat, files, character_name, seat_name):
 # ------------------------------------------------------------------ deciders
 SYSTEM_RULES = """You are playing a character in Star Wars Galaxies on a small private server. You act only through the tools.
 Stay in character at all times; never mention being an AI, a model or a program. Speak the way the persona's voice
-samples do, briefly. Other players are real people: be a good companion, answer tells, remember them.
+samples do: one or two short sentences, in your own words, like a person typing in a game. Other players are real
+people: be a good companion, answer tells, remember them.
+The perception JSON tells you who you are ("you"), where you are, what you are working on now ("now"), who is nearby
+and what you heard. A tell arrives as "Sender: text": answer that sender with the tell tool, by that name. Do not
+announce your own name unless asked who you are; people see your name over your head. Say concretely what you are
+doing (your "now"), not "on my way somewhere".
 Your life plan is a commitment: work its milestones in order and do not abandon it on a whim; change_plan only for a
 reason your character would give out loud, and expect it to be reviewed. Keep your memory honest and short.
-When nothing needs you, call rest. One wake is a few actions at most; the world keeps running between wakes."""
+When nothing needs you, work your current milestone ("now") before resting: a combat skill grows by hunting creatures
+you can take near where you are (creatures_near, then hunt; "xp" in the perception shows amount/cap per type, so you
+can see whether it pays), a gatherer tends harvesters, a crafter samples and keeps resources, and anyone with nothing
+to do walks somewhere people are. Then call rest. One wake is a few actions at most; the world keeps running between
+wakes."""
 
 
 class ModelDecider:
@@ -418,6 +550,9 @@ class ModelDecider:
             if response.stop_reason == "refusal":
                 log({"refusal": getattr(response.stop_details, "category", None) if response.stop_details else None})
                 break
+            for b in response.content:
+                if b.type == "text" and b.text.strip():
+                    log({"text": b.text.strip()[:400]})
             tool_uses = [b for b in response.content if b.type == "tool_use"]
             if not tool_uses:
                 break
@@ -459,7 +594,7 @@ class DryDecider:
 
 # ------------------------------------------------------------------ the loop
 def run(args):
-    files = CitizenFiles(args.citizen)
+    files = CitizenFiles(args.citizen, args.home)
     persona = files.persona()
     ensure_runtime(args.dry)
     seat_mod = load_seat_module()
@@ -469,7 +604,7 @@ def run(args):
 
     state = files.state()
     state["seat"] = seat_name
-    senses = Senses(seat, state)
+    senses = Senses(seat, state, character, files)
     impl, schema = seat_tools(seat, files, character, seat_name)
 
     def run_tool(name, inputs):
@@ -490,7 +625,14 @@ def run(args):
     ticks = 0
     while args.ticks == 0 or ticks < args.ticks:
         ticks += 1
-        perception = senses.gather()
+        try:
+            perception = senses.gather()
+        except (TimeoutError, OSError) as e:
+            # the seat is busy (a walk left over from an earlier pilot holds its action lock): wait, do not die
+            print(f"[{args.citizen}] seat not answering ({e}); trying again in 30 s", flush=True)
+            ticks -= 1
+            time.sleep(30)
+            continue
         # the stable prefix first (cached), the plan and memory after it (they change rarely)
         system_blocks = [
             {"type": "text", "text": SYSTEM_RULES + "\n\n# Persona\n" + persona, "cache_control": {"type": "ephemeral"}},
@@ -521,11 +663,18 @@ def show(args):
 
 
 def main():
+    # the log is usually a redirected file: flush every line so a tail shows the current wake, not the last buffer
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+        sys.stderr.reconfigure(line_buffering=True)
+    except (AttributeError, ValueError):
+        pass
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run")
     r.add_argument("citizen")
     r.add_argument("--seat")
+    r.add_argument("--home", default=None, help="state directory (default ~/.swg-lab/citizens/<citizen>; scenarios use their own)")
     r.add_argument("--model", default=None, help=f"model id (default: the persona's model:, else {DEFAULT_MODEL})")
     r.add_argument("--effort", default=DEFAULT_EFFORT, choices=["low", "medium", "high"])
     r.add_argument("--idle", type=int, default=300, help="seconds between wakes when nothing happens")

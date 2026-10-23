@@ -56,6 +56,17 @@ MOVES=$("$SEAT" vars "$NAME" /Moves 2>&1 | sed -n 's/.*"count": \([0-9]*\).*/\1/
 check_ge "others_movement_decoded" "${MOVES:-0}" 1 "Moves/count=${MOVES:-0} within 15 s of a stormtrooper (oid ${WALKER:-?}) walking 8 m"
 [ -n "$WALKER" ] && lab "destroyObject:$WALKER" >/dev/null 2>&1
 
+# several drivers at once: a pilot holds one connection in 30 s waits for its whole life, so a second driver (a seat
+# command from the shell, another tool) must be answered while that wait is pending
+"$SEAT" wait "$NAME" Tell 20000 >/dev/null 2>&1 &
+WAITER=$!
+sleep 1
+T0=$(date +%s)
+PING2=$(timeout 10 "$SEAT" ping "$NAME" 2>&1)
+T1=$(date +%s)
+check "ping_during_wait" "$( grep -q "character" <<<"$PING2" && [ $((T1 - T0)) -le 5 ] && echo 1 || echo 0 )" "answered in $((T1 - T0)) s while another driver waits 20 s"
+kill "$WAITER" 2>/dev/null; wait "$WAITER" 2>/dev/null || true
+
 # a slash command through the channel (sit: the posture command, no queue ack)
 CMD=$("$SEAT" cmd "$NAME" sitServer --nowait 2>&1)
 check "command_via_channel" "$( grep -q '"ok": true' <<<"$CMD" && echo 1 || echo 0 )"

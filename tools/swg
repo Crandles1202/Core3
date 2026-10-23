@@ -733,6 +733,9 @@ cmd_test() {
 			test_unit || rc=1
 			test_planner || rc=1
 			cmd_start || exit 1
+			# a natural sandstorm on Tatooine (3.9) sends Tusken raiders to the outskirts where scenarios park their
+			# characters (2026-10-21: one storm killed the gate's character and failed ten scenarios in a row)
+			say "== all: clear skies on tatooine for the run"; cmd_cmd "runLuaFunction FbLabTests:weatherSet:tatooine:0" >/dev/null 2>&1 || true
 			test_lua || rc=1
 			test_bot || rc=1
 			test_scenario all || rc=1

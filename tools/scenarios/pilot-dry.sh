@@ -9,7 +9,7 @@ SEAT="$REPO/tools/seat"
 PILOT="$REPO/tools/citizens/pilot.py"
 NAME="labpilot-$$"
 CITIZEN="teyla"
-CDIR="$LABDIR/citizens/$CITIZEN"
+CDIR="$LABDIR/scenario/pilot-dry"   # never the real ~/.swg-lab/citizens/teyla: a gate once wiped her memory and plan
 NONCE="pilotcheck$RANDOM"
 [ -n "$CHAR" ] || die "no Lab* character on account $BOT_USER (run: swg test bot)"
 
@@ -24,7 +24,7 @@ check_eq "seat_started" "$RC" "0" "$(tail -n1 <<<"$OUT")"
 "$SEAT" tell "$NAME" "$CHAR" "Hello there $NONCE" >/dev/null 2>&1
 sleep 1
 
-PLOG=$(python3 "$PILOT" run "$CITIZEN" --seat "$NAME" --dry --ticks 1 2>&1); RC=$?
+PLOG=$(python3 "$PILOT" run "$CITIZEN" --seat "$NAME" --home "$CDIR" --dry --ticks 1 2>&1); RC=$?
 check_eq "pilot_ran" "$RC" "0" "$(tail -n1 <<<"$PLOG")"
 check "pilot_answered_tell" "$( grep -q '^\[teyla\] tell .*-> ok' <<<"$PLOG" && echo 1 || echo 0 )" "$(grep '^\[teyla\] tell' <<<"$PLOG" | head -n1 | cut -c1-120)"
 sleep 1

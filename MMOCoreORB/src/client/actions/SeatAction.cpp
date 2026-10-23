@@ -27,6 +27,7 @@
  * the channel: they would break the session the seat is keeping.
  */
 
+#include <signal.h>
 #include "client/ActionBase.h"
 #include "client/ActionResult.h"
 #include "client/ActionManager.h"
@@ -45,6 +46,10 @@
 #include <errno.h>
 #include <string.h>
 #include <string>
+#include <mutex>
+#include <atomic>
+#include <vector>
+#include <set>
 
 class SeatAction : public ActionBase {
 	String socketPath;
@@ -53,11 +58,36 @@ class SeatAction : public ActionBase {
 	ActionResult result;
 	bool skipped;
 	bool failed;
-	int requests;
+	std::atomic<int> requests;
 	Time started;
 
+	// every driver gets its own thread (a pilot holds its connection for life and spends most of it in 30 s waits;
+	// with one driver at a time every other seat command queued behind it until it timed out): requests other than
+	// wait are serialized by handleLock, a wait blocks only on the zone's condition.
+	// The threads are engine3 Threads, never std::thread: engine3's Locker skips the lock when the holder equals
+	// Thread::getCurrentThread(), and on a foreign thread both are null — a std::thread driver left the zone mutex
+	// locked after Zone::waitFor and the client deadlocked at shutdown.
+	class DriverThread : public Thread {
+		SeatAction* seat;
+		ClientCore* core;
+		int fd;
+
+	public:
+		DriverThread(SeatAction* seat, ClientCore* core, int fd) : Thread("SeatDriver"), seat(seat), core(core), fd(fd) {}
+
+		void run() override {
+			seat->driver(*core, fd);
+		}
+	};
+
+	std::mutex handleLock;
+	std::mutex driversLock;
+	std::set<int> driverFds;
+	std::vector<DriverThread*> driverThreads;
+	std::atomic<bool> stopping;
+
 public:
-	SeatAction() : timeoutSeconds(0), skipped(false), failed(false), requests(0) {
+	SeatAction() : timeoutSeconds(0), skipped(false), failed(false), requests(0), stopping(false) {
 		setLogLevel(Logger::INFO);
 		setLoggingName("Seat");
 	}
@@ -105,6 +135,9 @@ public:
 
 	// ===== The channel =====
 	void fail(const String& msg, uint16 code) {
+		std::lock_guard<std::mutex> guard(handleLock);
+		if (failed)
+			return;
 		error() << msg;
 		result.setError(msg, code);
 		failed = true;
@@ -174,7 +207,7 @@ public:
 				reply["sceneReady"] = core.zone->isSceneReady();
 				reply["connected"] = core.zone->isConnected();
 				reply["uptimeMs"] = started.miliDifference();
-				reply["requests"] = requests;
+				reply["requests"] = requests.load();
 			} else if (op == "action") {
 				if (!req.contains("action") || !req["action"].is_object() || !req["action"].contains("action")) {
 					reply["ok"] = false;
@@ -227,6 +260,7 @@ public:
 					reply["error"] = "wait needs a signal name";
 					return reply;
 				}
+				// the only request served outside handleLock (the caller decides by op)
 				bool fired = core.zone->waitFor(String(signal.c_str()).hashCode(), timeoutMs);
 				reply["ok"] = true;
 				reply["fired"] = fired;
@@ -248,6 +282,19 @@ public:
 		return reply;
 	}
 
+	// One driver's thread: serve it, close it, and stop the seat when it asked for quit.
+	void driver(ClientCore& core, int fd) {
+		bool done = serve(core, fd);
+		::close(fd);
+		{
+			std::lock_guard<std::mutex> guard(driversLock);
+			driverFds.erase(fd);
+			info(true) << "driver disconnected (" << (int) driverFds.size() << " left)";
+		}
+		if (done)
+			stopping = true;
+	}
+
 	// Serve one driver connection. Returns true when the seat should end (quit, timeout, zone lost).
 	bool serve(ClientCore& core, int fd) {
 		std::string buffer;
@@ -265,12 +312,13 @@ public:
 				return false;
 			}
 
+			if (stopping)
+				return true;
 			if (!core.zone->isConnected()) {
 				fail("zone connection lost", 7);
 				return true;
 			}
 			if (timedOut()) {
-				info(true) << "seat timeout after " << timeoutSeconds << "s";
 				return true;
 			}
 			if (r == 0)
@@ -293,7 +341,15 @@ public:
 				JSONSerializationType reply;
 				try {
 					JSONSerializationType req = JSONSerializationType::parse(line);
-					reply = handle(core, req, quit);
+					std::string op = req.value("op", std::string(""));
+					// wait blocks only on the zone's condition; ping and quit touch nothing an action touches — all three are
+					// answered while another driver's long action (a five-minute walk) holds the lock
+					if (op == "wait" || op == "ping" || op == "quit") {
+						reply = handle(core, req, quit);
+					} else {
+						std::lock_guard<std::mutex> guard(handleLock);
+						reply = handle(core, req, quit);
+					}
 				} catch (const std::exception& e) {
 					reply = JSONSerializationType::object();
 					reply["ok"] = false;
@@ -304,7 +360,7 @@ public:
 				if (!writeAll(fd, reply.dump() + "\n"))
 					return false;
 				if (quit) {
-					info(true) << "quit requested after " << requests << " request(s)";
+					info(true) << "quit requested after " << requests.load() << " request(s)";
 					return true;
 				}
 			}
@@ -312,12 +368,21 @@ public:
 	}
 
 	void run(ClientCore& core) override {
+		// a driver that drops the channel mid-request (a stopped pilot) must not take the seat down: without this the
+		// write of the pending reply to the closed socket raises SIGPIPE and the client dies with its character
+		::signal(SIGPIPE, SIG_IGN);
 		if (core.zone == nullptr || !core.zone->isConnected() || !core.zone->isSceneReady()) {
 			result.setError("Not in the zone (seat needs a zoned-in character)", 1);
 			return;
 		}
 		if (socketPath.isEmpty()) {
 			result.setError("--seat needs a socket path", 2);
+			return;
+		}
+
+		struct sockaddr_un addr;
+		if ((size_t) socketPath.length() >= sizeof(addr.sun_path)) {
+			result.setError(String("--seat path longer than ") + String::valueOf((int) sizeof(addr.sun_path) - 1) + " bytes: " + socketPath, 2);
 			return;
 		}
 
@@ -329,7 +394,6 @@ public:
 
 		::unlink(socketPath.toCharArray());
 
-		struct sockaddr_un addr;
 		memset(&addr, 0, sizeof(addr));
 		addr.sun_family = AF_UNIX;
 		strncpy(addr.sun_path, socketPath.toCharArray(), sizeof(addr.sun_path) - 1);
@@ -351,8 +415,7 @@ public:
 		started.updateToCurrentTime();
 		info(true) << "seat listening on " << socketPath << (timeoutSeconds > 0 ? " for " + String::valueOf(timeoutSeconds) + "s" : String(" until quit"));
 
-		bool done = false;
-		while (!done) {
+		while (!stopping) {
 			struct pollfd pfd;
 			pfd.fd = listenFd;
 			pfd.events = POLLIN;
@@ -378,14 +441,29 @@ public:
 			if (fd < 0)
 				continue;
 
-			info(true) << "driver connected";
-			done = serve(core, fd);
-			::close(fd);
-			info(true) << "driver disconnected";
+			std::lock_guard<std::mutex> guard(driversLock);
+			driverFds.insert(fd);
+			info(true) << "driver connected (" << (int) driverFds.size() << " now)";
+			DriverThread* t = new DriverThread(this, &core, fd);
+			driverThreads.push_back(t);
+			t->start();
 		}
 
+		stopping = true;
 		::close(listenFd);
 		::unlink(socketPath.toCharArray());
+
+		// wake the drivers still blocked in read/poll so their threads end, then join them
+		{
+			std::lock_guard<std::mutex> guard(driversLock);
+			for (int fd : driverFds)
+				::shutdown(fd, SHUT_RDWR);
+		}
+		for (DriverThread* t : driverThreads) {
+			t->join();
+			delete t;
+		}
+		driverThreads.clear();
 
 		if (!failed)
 			result.setSuccess();
@@ -401,7 +479,7 @@ public:
 		json["action"] = getName();
 		json["socket"] = socketPath.toCharArray();
 		json["timeout"] = timeoutSeconds;
-		json["requests"] = requests;
+		json["requests"] = requests.load();
 		if (skipped) {
 			json["status"] = "skipped";
 		} else if (result.isOK()) {

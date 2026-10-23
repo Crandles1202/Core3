@@ -94,6 +94,9 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   `selectedCharacterOid` before sending `SelectCharacter` (otherwise the scene is aborted as "wrong
   OID"), and `--wait-after-zone` now sleeps *before* the auto-appended `logoutCharacter` action.
 - Exit codes: 0 ok, `100 + action error code` (104 = create failed, 105 = create timeout).
+- The seat serves every driver on its own engine3 `Thread` (2026-10-21): a `std::thread` cannot hold engine3 locks
+  (see CLAUDE.md gotchas). Requests other than `wait` are serialized by one lock; `quit` shuts the other drivers'
+  sockets and joins them. A `--seat` path must fit `sun_path` (107 bytes; the scratchpad is too deep — use `~/.swg-lab`).
 
 ## Scenario testing (bot + oracle)
 - `tools/swg test scenario <name>` runs `tools/scenarios/<name>.sh`; `lib.sh` gives `bot …` (core3client
@@ -186,6 +189,49 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   now builds `Lab` + three consonant-vowel syllables and retries up to 3 times on `name_declined_*`.
 
 ## Session log
+- **2026-10-21 (morning) — the seat serves several drivers.** Teyla's re-seated pilot made every other `seat`
+  command time out: the seat served one driver connection at a time and a pilot keeps its connection for life, spending
+  most of it in 30 s `wait` calls (seen as `Zone::waitFor` on the seat thread in a `sudo gdb -p` backtrace — plain gdb
+  gets `ptrace: Operation not permitted`, yama scope 1). Now a thread per driver: `wait` blocks only on the zone's
+  condition, everything else runs under one lock, `quit` shuts the other drivers' sockets and joins. Also: the pilot's
+  log is line-buffered (a redirected stdout showed nothing for minutes), `seat prune` and `seat start` delete the
+  state directories scenario seats leave behind (106 of them this morning), and the NetStatusRequest exception the
+  trials lane flagged is engine3 on both sides (CLAUDE.md known noise).
+  **Citizens between tells:** `tools/citizens/crew up|down|status|log` runs any set of citizens (seat + pilot in the
+  background, pids under `~/.swg-lab/citizens/<name>/`). Teyla's first idle wake on the new rules still chose `rest`:
+  in town there is nothing to hunt and the plan said only "Master Rifleman" — so persona files now carry a
+  `## Playbook` (Teyla: the flats east of Mos Eisley; Wex: the gatherer's round and how to open a site), the
+  perception carries `xp` (lab `progress:<char>`: amount/cap per XP type) so a citizen can tell whether its work pays,
+  and the pilot logs the model's text (`{"text": …}` in log.jsonl) so a wake can be read afterwards.
+  **First real walks (14:00):** Teyla set off for the flats (535 m) and Wex for a steel spot (1.5 km), both logged
+  "timed out": the seat's walk blocks until arrival but the driver's socket timeout was 120 s, and the late reply was
+  then read as the answer to the *next* request ("no self in view"). Now `Seat.request` drops replies whose id is not
+  the request's, `walk_seat` waits length/speed + 60 s, `sample` 30 s per round, and the seat answers `ping`/`quit`
+  outside the action lock so a seat can be stopped mid-walk. `citizen outfit` gave Wex three ore deeds and 6000 wind;
+  Teyla already carried a CDEF rifle (equipped now). Lock lesson: the bench copy of `tools/swg` locks as "bench" and
+  the worktree's tools are then refused as "alice" — the pilot's lab calls failed silently all morning.
+- **2026-10-21 (small hours) — Teyla's first wakes, the cast online, fighting on a seat.** Chuck's Console key arrived
+  (`sk-ant-usr-…` works with the SDK; stored in `~/.env`, read by the pilot). First live `/tell` exchange: she answered
+  in character but opened with her own name; the perception now carries `you` and `now` (first open milestone) and
+  the rules say answer the sender by name. Haiku 5.5 cost per wake: ~3.3k cached prefix once, ~1k input + ~50 output
+  per round. **Bench/seat lessons:** a `swg build` or `bench use` by another lane restarts the server and drops every
+  seat (coordinate before deploys; the trials lane and I now message each other); `pkill -f "<pattern>"` matched my
+  own shell; a stopped pilot's seat died of SIGPIPE on the reply write (ignored now). **Cast:** eleven citizens created
+  in four minutes with `citizen new`; Wookiees may not have a surname (`name_declined_racially_inappropriate`,
+  NameManager species rules 0/0) — Brakk is "Brakk". All veteran skill names were checked against
+  `string/en/skl_n.stf` (1481 keys, in `/tre/patch_12_00.tre` and others) before creation. **Combat on a seat:**
+  `attack` once starts combat; a player repeating `defaultattack` gets INVALIDLOCOMOTION (error 2 in the
+  CommandQueueRemove) — repeat `attack` instead; unarmed the server wants the target within ~5 m
+  (`max(10, weapon range)` is the check, `@error_message:target_out_of_range` otherwise); a womp rat is level 10 and
+  took a fresh character to a tenth of its health in 20 s, a kreetle is level 1–3; `loot all` on the corpse sends no
+  CommandQueueRemove at all; equipping from Lua is `transferObject(item, 4, true)` with the hand freed first.
+  **A gate failed on the weather:** a natural heavy sandstorm was on at the gate's start (`weather.event_matches_sky`
+  saw weather=3 before the 3.9 event's tick), the storm's Tusken raiders camp on the Mos Eisley outskirts where
+  scenarios park their characters, the gate's character died (every command came back `error=1 state=20`:
+  locomotion 20 = DEAD) and ten scenarios failed in a row. `swg test all` and `lib.sh` now clear Tatooine's sky first
+  (`weatherSet:tatooine:0`, the automatic pattern stays). Also: `trap - EXIT` before `finish` skips a scenario's
+  cleanup on the happy path — call `cleanup` explicitly (seat-fight left a level-10 womp rat at the shared desert
+  spot until the next restart).
 - **2026-10-20 (night) — 7.6a travel on a seat.** Chuck: "get started on the seats", key to follow. Built the trip:
   ticket terminal → `purchaseTicket` → shuttle → `boardShuttle` → the new scene. **Where the terminals are:** not
   in the `.ws` snapshot (`lotsurvey near` finds none) — they are `childObjects` of the port building's Lua template,
@@ -1086,3 +1132,15 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   `setPvpStatusBitmask(0)`, AI off, `setOptionBit(CONVERSABLE)` — the conversation template is on the mobile from
   the start, the bit decides whether it talks. The stock Knight unlock (`JediTrials:unlockJediKnight`) sets the
   Jedi state 4/8 and the Knight title but also forces faction overt; ours leaves faction alone.
+## 2026-10-22 (alice) — rebased on the Phase 4b merges, two pilot lessons
+
+- `origin/unstable` took three Phase 4b lanes (master, sith, ranks) while `feature/alice` waited for its gate; the merge
+  into `feature/alice` auto-resolved (CLAUDE.md, `fb_lab_tests.lua`, the roadmap and dev-notes all changed on both
+  sides, no overlapping hunks).
+- **Teyla's real directory was wiped a second time** (2026-10-22 13:03 local): every other lane's gate ran the
+  `pilot-dry` scenario from `unstable`, which still lacks the `--home` fix from 6e19297a17, so `rm -rf
+  ~/.swg-lab/citizens/teyla` ran on each gate and left the dry run's memory in its place. Nothing to do but merge
+  this branch; until then, treat Teyla's memory as disposable.
+- Wex's pilot died on 2026-10-21 09:13 with a `TimeoutError` in `Senses.gather()`: its seat was still finishing a walk
+  that the previous pilot had started (the action lock was held, so `vars`/`objects` waited past the 60 s socket
+  timeout). The wake loop now catches a seat timeout, waits 30 s and tries again instead of exiting.

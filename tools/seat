@@ -7,6 +7,8 @@ control channel on a unix socket (SeatAction, Phase 7.0). A pilot (7.3) sits on 
                                                         (password from ~/.swg-lab/<user>.pass; seat name defaults to the character)
   seat stop <name>                                     ask the seat to quit (logout follows) and wait for the client to exit
   seat list                                            seats with a live socket
+  seat prune [--all]                                   remove the state directories of dead scenario seats (lab*-NNNN; start does this
+                                                        too); --all removes every dead seat's directory, named citizens included
   seat ping <name>                                     round trip
   seat send <name> '<json request>'                    raw request, prints the reply
   seat do <name> <action> [key=value …]                {"op":"action","action":{"action":<action>,…}}; values parse as JSON when they can
@@ -36,6 +38,9 @@ control channel on a unix socket (SeatAction, Phase 7.0). A pilot (7.3) sits on 
   seat sample <name> <resource> [rounds]               sample where the character stands (3 s, then 25 s per extra round)
   seat resources <planet> [class]                      the resource oracle (FbLabTests:resources over swg cmd --shared)
   seat log <name> [lines]                              tail of the client log
+  seat fight <name> <target oid> [--max S] [--reach M]  close to --reach m (default 4: melee; a rifle allows ~60), attack and keep swinging
+                                                        (defaultattack every 3 s) until it is dead or --max s (90) pass, re-closing when the
+                                                        server says out of range, then loot all from the corpse; prints a verdict line
   seat templates                                       (re)write ~/.swg-lab/templates.jsonl, the client's object type/name table, from the
                                                         server's loaded templates (FbLabTests:templateDump); start does it when the file is missing
 
@@ -171,12 +176,71 @@ def path_within(char, x, y, within, cell=0, z=None):
     return direct + [[round(ex, 2), round(ez, 2), round(ey, 2), 0]]
 
 
+def fight_seat(s, char, target, max_s=90, reach=4.0):
+    """attack, keep attacking, loot. Death is read server-side (objectAlive) since the bot client decodes no
+    creature deltas; own health too (ham), to stop at a third of health."""
+    import math, time as _t
+    started = _t.time()
+
+    def approach():
+        """within weapon reach of the target (unarmed/melee: the server wants ~5 m; max(10, weapon range) is the check)"""
+        objs = s.request({"op": "objects"}).get("objects", [])
+        me = next((o for o in objs if o["oid"] == s.request({"op": "ping"}).get("character")), None)
+        it = next((o for o in objs if o["oid"] == target), None)
+        if me is None or it is None:
+            return False
+        if math.hypot(it["x"] - me["x"], it["y"] - me["y"]) <= reach:
+            return True
+        w = walk_seat(s, char, round(it["x"], 1), round(it["y"], 1), within=reach * 0.7)
+        return bool(w.get("ok"))
+
+    def out_of_range_since(n):
+        try:
+            kept = s.request({"op": "vars", "path": "/SystemMessages"}).get("vars") or []
+        except Exception:
+            return False
+        return any("target_out_of_range" in m for m in kept[n:])
+
+    approach()
+    msgs0 = len(s.request({"op": "vars", "path": "/SystemMessages"}).get("vars") or [])
+    s.action("command", name="attack", target=str(target), timeout=5)
+    swings, verdict = 1, "timeout"
+    while _t.time() - started < max_s:
+        _t.sleep(3)
+        alive = lab_fields(next((l for l in lab(f"objectAlive:{target}", 8).splitlines() if l.startswith("INFO object")), "")).get("alive", "1")
+        if alive == "0":
+            verdict = "killed"; break
+        ham = lab_fields(next((l for l in lab(f"ham:{char}", 8).splitlines() if l.startswith("INFO ham")), ""))
+        hp = ham.get("health", "1/1/1").split("/")
+        if len(hp) >= 2 and int(hp[1]) > 0 and int(hp[0]) < int(hp[1]) // 3:
+            verdict = "retreat"; break
+        if out_of_range_since(msgs0):
+            msgs0 = len(s.request({"op": "vars", "path": "/SystemMessages"}).get("vars") or [])
+            approach()
+        s.action("command", name="attack", target=str(target), nowait=True, timeout=5)
+        swings += 1
+    looted = False
+    if verdict == "killed":
+        # `loot all` sends no CommandQueueRemove on success (like purchaseTicket): send it and look for a refusal
+        n0 = len(s.request({"op": "vars", "path": "/SystemMessages"}).get("vars") or [])
+        s.action("command", name="loot", target=str(target), args="all", nowait=True, timeout=5)
+        _t.sleep(2)
+        said = (s.request({"op": "vars", "path": "/SystemMessages"}).get("vars") or [])[n0:]
+        looted = not any("@error_message" in m or "out_of_range" in m for m in said)
+    result = {"ok": verdict == "killed", "verdict": verdict, "target": target, "swings": swings, "seconds": round(_t.time() - started),
+              "looted": looted}
+    print(f"fight: {verdict} after {swings} swing(s), {result['seconds']} s" + (", looted" if result["looted"] else ""))
+    return result
+
+
 def walk_seat(s, char, x, y, cell=0, speed=4.5, within=None, z=None):
     points = path_within(char, x, y, within, cell, z) if within else path_from_server(char, x, y, cell)
     if not points:
         return {"ok": False, "error": f"no path for {char} to {x},{y}" + (f" in cell {cell}" if cell else "") + (f" (within {within} m)" if within else "")}
-    print(f"path: {len(points)} points, {path_length(points):.0f} m" + (" (ends indoors)" if points[-1][3] else ""))
-    return s.action("walk", points=points, speed=speed)
+    length = path_length(points)
+    print(f"path: {len(points)} points, {length:.0f} m" + (" (ends indoors)" if points[-1][3] else ""))
+    # the walk blocks until the character arrives: wait for it (a 1.5 km walk is 5.5 min at 4.5 m/s), with a margin
+    return s.action("walk", points=points, speed=speed, timeout=length / speed + 60)
 
 
 def travel_seat(s, name, to_planet, to_point, from_point=None, round_trip=False, max_wait=240):
@@ -275,18 +339,22 @@ class Seat:
         if timeout is not None:
             self.sock.settimeout(timeout)
         self.sock.sendall((json.dumps(req) + "\n").encode())
-        while b"\n" not in self.buf:
-            chunk = self.sock.recv(65536)
-            if not chunk:
-                die(f"seat '{self.name}' closed the channel")
-            self.buf += chunk
-        line, self.buf = self.buf.split(b"\n", 1)
-        return json.loads(line.decode())
+        while True:
+            while b"\n" not in self.buf:
+                chunk = self.sock.recv(65536)
+                if not chunk:
+                    die(f"seat '{self.name}' closed the channel")
+                self.buf += chunk
+            line, self.buf = self.buf.split(b"\n", 1)
+            reply = json.loads(line.decode())
+            # a reply to an earlier request that timed out on our side (a long walk) must not be taken for this one
+            if reply.get("id") in (None, req["id"]):
+                return reply
 
-    def action(self, action, **fields):
+    def action(self, action, timeout=120, **fields):
         body = {"action": action}
         body.update(fields)
-        return self.request({"op": "action", "action": body}, timeout=120)
+        return self.request({"op": "action", "action": body}, timeout=timeout)
 
     def close(self):
         self.sock.close()
@@ -320,7 +388,39 @@ def write_templates():
     return int(m.group(1))
 
 
+def seat_alive(name):
+    """True while the seat's client process is running."""
+    pidfile = os.path.join(SEATS, name, "pid")
+    try:
+        os.kill(int(open(pidfile).read()), 0)
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def prune_seats(everything=False):
+    """Delete the directories of dead seats (scenario seats lab*-NNNN by default, every dead seat with everything)."""
+    if not os.path.isdir(SEATS):
+        return 0
+    import shutil
+    n = 0
+    for name in os.listdir(SEATS):
+        if not everything and not re.fullmatch(r"lab[a-z]*-\d+", name):
+            continue
+        if seat_alive(name) or os.path.exists(os.path.join(SEATS, name, "sock")):
+            continue
+        shutil.rmtree(os.path.join(SEATS, name), ignore_errors=True)
+        n += 1
+    return n
+
+
+def cmd_prune(args):
+    n = prune_seats(everything="--all" in args)
+    print(f"pruned {n} dead seat director{'y' if n == 1 else 'ies'}")
+
+
 def cmd_start(args):
+    prune_seats()
     if not os.path.exists(TEMPLATES):
         write_templates()
     if len(args) < 2:
@@ -436,6 +536,8 @@ def main(argv):
         return cmd_stop(args)
     if cmd == "list":
         return cmd_list(args)
+    if cmd == "prune":
+        return cmd_prune(args)
     if cmd == "templates":
         return 0 if write_templates() else 1
     if cmd == "points":
@@ -571,6 +673,12 @@ def main(argv):
         elif op == "empty":
             fields["resource"] = int(rest[2]); fields["quantity"] = int(rest[3]); fields["discard"] = "--discard" in rest
         reply = s.action("harvester", **fields)
+    elif cmd == "fight":
+        if not rest:
+            die("fight <name> <target oid> [--max S]")
+        char = s.request({"op": "ping"}).get("characterName") or seat_character_name(name)
+        reply = fight_seat(s, char, int(rest[0]), int(rest[rest.index("--max") + 1]) if "--max" in rest else 90,
+                           float(rest[rest.index("--reach") + 1]) if "--reach" in rest else 4.0)
     elif cmd == "travel":
         if len(rest) < 2:
             die("travel <name> <planet> <point> [--from POINT] [--round-trip] [--wait S]")

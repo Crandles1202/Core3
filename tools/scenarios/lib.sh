@@ -111,3 +111,7 @@ bot_action_status() {
 bot_action_count() { grep -ao "=> #[0-9]* {\"action\":\"$1\"[^}]*\"status\":\"$2\"" "$BOTLOG" | wc -l; }
 
 bot_errors() { grep -a "ERROR" "$BOTLOG" | sed 's/^/   bot: /'; }
+
+# Clear skies before every scenario (the sandstorm scenario sets its own afterwards): a natural Tatooine storm sends
+# Tusken raiders to the outskirts where scenarios park their characters, and a dead character fails everything.
+if [ "${SCENARIO:-}" != "sandstorm" ]; then lab "weatherSet:tatooine:0" 8 >/dev/null 2>&1 || true; fi

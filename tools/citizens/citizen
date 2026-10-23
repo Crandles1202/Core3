@@ -8,6 +8,9 @@ tools/citizens/citizen — the citizens' accounts, characters and directory (Pha
                                             while the character is online (a seat is started and stopped for it)
   citizen status <citizen>                  account, character, skills on the server (needs the server up)
   citizen list                              every persona in tools/citizens/cast/ and whether it has a character
+  citizen outfit <citizen> [--keep]         hand the character the gear its profession needs (weapon in hand, survey
+                                            tool, harvester deeds + wind energy, medpacks); seats it for the hand-over
+                                            unless a seat is up (--keep leaves the seat it started running). Idempotent
   citizen directory                         prints tools/citizens/directory.json (what pilots use to find each other)
 
 The persona file (tools/citizens/cast/<citizen>.md) must carry a "## Character" section of key: value lines:
@@ -217,6 +220,112 @@ def cmd_status(args):
         print(f"  {box}: {' '.join(lines) if lines else 'no answer (server down or character never loaded)'}")
 
 
+# --- outfit: the kit a profession needs on day one, by template path (every path exists in the template table) ---
+RIFLE = "object/weapon/ranged/rifle/rifle_cdef.iff"
+PISTOL = "object/weapon/ranged/pistol/pistol_cdef.iff"
+CARBINE = "object/weapon/ranged/carbine/carbine_cdef.iff"
+SWORD_2H = "object/weapon/melee/2h_sword/2h_sword_cleaver.iff"
+SURVEY_MINERAL = "object/tangible/survey_tool/survey_tool_mineral.iff"
+ORE_DEED = "object/tangible/deed/harvester_deed/harvester_ore_s1_deed.iff"
+MEDPACK = "object/tangible/medicine/crafted/medpack_damage_a.iff"
+SLITHERHORN = "object/tangible/instrument/slitherhorn.iff"
+
+
+def kit_for(fields):
+    """[(template, count, equip)] from the persona's profession and veteran boxes, plus the energy units to give"""
+    boxes = " ".join(fields.get("veteran_list", []))
+    prof = fields.get("profession", "")
+    kit, energy = [], 0
+    weapon = None
+    if "combat_rifleman" in boxes:
+        weapon = RIFLE
+    elif "combat_pistol" in boxes:
+        weapon = PISTOL
+    elif "combat_carbine" in boxes:
+        weapon = CARBINE
+    elif "combat_2hsword" in boxes:
+        weapon = SWORD_2H
+    elif prof.startswith("combat_marksman") or "combat_marksman_master" in boxes:
+        weapon = RIFLE
+    elif prof.startswith("outdoors_scout") or prof.startswith("science_medic"):
+        weapon = CARBINE if prof.startswith("outdoors_scout") else PISTOL
+    if weapon:
+        kit.append((weapon, 1, True))
+    if prof.startswith("crafting_artisan") or "crafting_artisan_survey" in boxes or "crafting_artisan_master" in boxes:
+        deeds = 3 if "crafting_merchant" in boxes else 1   # the gatherer runs several harvesters
+        kit += [(SURVEY_MINERAL, 1, False), (ORE_DEED, deeds, False)]
+        energy = 2000 * deeds
+    if prof.startswith("science_medic"):
+        kit.append((MEDPACK, 5, False))
+    if "social_musician" in boxes:
+        kit.append((SLITHERHORN, 1, False))
+    return kit, energy
+
+
+def seat_is_up(name):
+    sock = os.path.join(LABDIR, "seats", name, "sock")
+    pidfile = os.path.join(LABDIR, "seats", name, "pid")
+    try:
+        os.kill(int(open(pidfile).read()), 0)
+        return os.path.exists(sock)
+    except (OSError, ValueError):
+        return False
+
+
+def cmd_outfit(args):
+    citizen = args[0]
+    keep = "--keep" in args
+    f = character_section(citizen)
+    first = f["first"]
+    kit, energy = kit_for(f)
+    if not kit and not energy:
+        print(f"{citizen}: nothing in the kit for profession {f.get('profession')}")
+        return 0
+    started = False
+    if not seat_is_up(citizen):
+        print(f"seating {first} on {f['account']} for the hand-over …", flush=True)
+        r = subprocess.run([SEAT, "start", f["account"], first, "--name", citizen, "--timeout", "600"], capture_output=True, text=True)
+        if r.returncode != 0:
+            die(f"seat start failed: {(r.stdout + r.stderr).strip().splitlines()[-1:]}")
+        started = True
+    try:
+        have = {}
+        for line in lab(f"inventory:{first}", 10):
+            m = re.search(r"oid=(\d+) path=(\S+)", line)
+            if m:
+                have.setdefault(m.group(2), []).append(m.group(1))
+        for template, count, equip in kit:
+            oids = list(have.get(template, []))
+            missing = count - len(oids)
+            for _ in range(max(0, missing)):
+                lines = lab(f"give:{first}:{template}", 10)
+                m = next((re.search(r"oid=(\d+)", l) for l in lines if "INFO item" in l), None)
+                if not m:
+                    print(f"  FAILED give {template}: {' '.join(lines)[:160]}")
+                    continue
+                oids.append(m.group(1))
+                if template == ORE_DEED:
+                    lab(f"deedValues:{m.group(1)}:120:12000", 10)   # what a crafted deed carries; a lab deed has 0/0
+                print(f"  gave {os.path.basename(template)} (oid {m.group(1)})")
+            if missing <= 0:
+                print(f"  has {count} × {os.path.basename(template)}")
+            if equip and oids:
+                lines = lab(f"equip:{first}:{oids[0]}", 10)
+                print(f"  equipped {os.path.basename(template)}: {' '.join(l for l in lines if 'equip' in l)[:120] or 'no answer'}")
+        if energy:
+            held = sum(1 for p in have if "resource_container" in p)
+            if held:
+                print(f"  has {held} resource container(s); energy not added")
+            else:
+                lines = lab(f"giveResource:{first}:wind:{energy}", 10)
+                print(f"  gave {energy} wind energy: {' '.join(lines)[:120]}")
+    finally:
+        if started and not keep:
+            subprocess.run([SEAT, "stop", citizen], capture_output=True, text=True)
+            print("seat stopped (the hand-over is persisted by the server)")
+    return 0
+
+
 def cmd_list(args):
     directory = load_directory()
     for fn in sorted(os.listdir(CAST_DIR)):
@@ -236,6 +345,8 @@ def main(argv):
         return cmd_new(args)
     if cmd == "status" and args:
         return cmd_status(args)
+    if cmd == "outfit" and args:
+        return cmd_outfit(args)
     if cmd == "list":
         return cmd_list(args)
     if cmd == "directory":
