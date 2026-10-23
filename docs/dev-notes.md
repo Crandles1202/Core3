@@ -1257,3 +1257,46 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   anything read from C++ as `lua_pushnumber` (visibility, HAM, heights) goes through `math.floor` before `%d`. The
   bounty's hunt log line died on a decayed visibility of 1999.6, after the squad was spawned, and the lab tick
   returned nothing — a check that passed when the number was still whole.
+
+### 2026-10-23 — 7.5 the citizens train (alice)
+
+- **Why training first:** Teyla's stored level read 1 against a fighting strength of 12 (her veteran start was awarded
+  unarmed; `calculatePlayerLevel` only runs on a skill award), and her first wake on the new south ground met giant
+  worrts (level 13, pairs) above that strength and found nowhere to hunt. A citizen that never spends its experience
+  never grows; the stock answer is the trainer NPC.
+- **How stock training works** (`screenplays/trainers/trainerConvHandler.lua`, `skillTrainer.lua`, `trainerData.lua`):
+  the trainer's conversation lists the boxes of its `trainerSkills[<type>]` the player can take (`fulfillsSkillPrerequisitesAndXp`)
+  as options `@skl_n:<skill>` under *learn* (option 0 of the intro), then a cost screen (yes = option 0) that pays
+  the credits (cash first, then bank) and calls `LuaSkillManager:awardSkill`. The trainer type is the NPC's mobile
+  template name (`trainer_rifleman`); `AiAgent:getCreatureTemplateName()` reads it. Skill points are not exposed to
+  Lua: `canLearnSkill(pPlayer, skill, false)` is the one check that covers prerequisites, experience and points.
+- **Lab:** `trainable:<char>[:all]` (INFO trainable = buy now; INFO next = prerequisites met, experience short; for the
+  professions the character holds a box of, `all` adds every novice box; `INFO training … level= strength=` summary),
+  `trainers:<planet>:<type>[:x:y]` (trainer NPCs by template within 500 m of each travel point, nearest first, cell-local
+  coordinates indoors), `skillDrop:<char>:<skill>` (`surrenderSkill`; the scenario resets the shared lab character).
+- **Pilot:** perception `training` (`ready` with credits, `next` with experience have/cost, sorted by how close); tool
+  `train(skill)` — lab trainable → nearest trainer by template → walk (`within=3`, indoors too) → the stock conversation
+  over real packets (converse `[0]`, find `@skl_n:<skill>` among the options, converse `[0, i, 0]`) → `hasSkill` read
+  back; the result carries the new level and strength. The tool has an argument and is the 21st, so it is unstrict.
+- **`AiAgent:getCreatureTemplateName()` halted the server** (null `npcTemplate->getTemplateName()`): an AI agent from the
+  world snapshot (oid 16796195, a stock static NPC) has no creature template. The binding now returns "" for those.
+  The symptom was a gdb catchpoint with the Lua oracle printing nothing at all, and every later `swg cmd` answering
+  nothing while `swg status` said HALTED IN GDB — read `swg status` before blaming the oracle.
+- **An indoor path ended under the floor.** `findPath` returns the indoor target itself as the last point, at the z it
+  was asked for (0): the walk's last `DataTransformWithParent` set the character 1.1 m below the room, the position was
+  accepted (the server checks speed, not floors), the travel code never noticed (a ticket terminal needs no line of
+  sight) — and `NpcConversationStartCommand` refused the trainer with its silent GENERALERROR, because
+  `checkLineOfSightInBuilding` casts the ray from the character's cell-local z + 1 through the floor triangles. `pathTo`
+  now gives the last indoor point the floor height of the node before it; `path_within` stops short indoors too (a
+  zero-length ray from inside the NPC is not a line of sight either).
+- **`seat.action(…, timeout=)` is the socket's timeout**, not the action's: the converse action's own wait is its
+  `timeout` field, so the train tool sends the action JSON through `seat.request` directly.
+- Scenario `seat-train`: the lab character with the Scout novice box and 5000 scout + trapping experience trains
+  `outdoors_scout_movement_01` from the square (outdoor trainer, 8 m) and `outdoors_scout_tools_01` from beside the
+  trainers' hall (indoor trainer in cell `meetingb`, through the door); 14 checks, both boxes read back, 1000 credits
+  each, the box gone from `ready` afterwards. Mos Eisley has eight scout trainers near its shuttleport.
+- **What Teyla can train:** nothing yet — the next Rifleman boxes cost 175 000–350 000 rifle experience (she has 1025)
+  and the Scout boxes 1000 scout/trapping/camp experience (she has 0). Her level stays 1 until the first award; the
+  stock grind is the stock grind (XP ×2 already) — whether the citizens get more is Chuck's call. Follow-ups: scout
+  experience from harvesting corpses after a kill (the natural next action for a rifleman), a bazaar `sell` tool for
+  Wex (the bot client already lists and buys), crafting.
