@@ -1894,6 +1894,38 @@ function FbLabTests:creatureHam(oid)
 	return tostring(c:getHAM(0))
 end
 
+-- resourceNear:<planet>:<resource>[:<radius>] → for every travel point of the planet, the best land spot of that resource
+-- within radius m (default 1500, a 250 m grid): where a harvester can stand within a walk of a shuttle.
+function FbLabTests:resourceNear(planet, resource, radius)
+	radius = tonumber(radius) or 1500
+	local env, err = loadIsolated("scripts/managers/planet/planet_manager.lua")
+	local cfg = env ~= nil and env[planet] or nil
+	if cfg == nil or cfg.planetTravelPoints == nil then print("ERROR resourceNear: no travel points for " .. tostring(planet) .. " " .. tostring(err)); return "none" end
+	local points = cfg.planetTravelPoints
+	local n = 0
+	for _, tp in ipairs(points) do
+		local bx, by, bd = nil, nil, 0
+		for dy = -radius, radius, 250 do
+			for dx = -radius, radius, 250 do
+				local x, y = tp.x + dx, tp.y + dy
+				if x > -8191 and x < 8191 and y > -8191 and y < 8191 then
+					local d = getResourceDensityAt(resource, planet, x, y) or 0
+					if d > bd then
+						local water = getWaterHeightAt(planet, x, y)
+						if water == nil or getTerrainHeightAt(planet, x, y) >= water then bx, by, bd = x, y, d end
+					end
+				end
+			end
+		end
+		if bx ~= nil and bd >= 0.1 then
+			n = n + 1
+			print(string.format("INFO resourceNear planet=%s resource=%s point=%s px=%.0f py=%.0f x=%.0f y=%.0f density=%.2f distance=%.0f",
+				planet, resource, tp.name, tp.x, tp.y, bx, by, bd, math.sqrt((bx - tp.x) ^ 2 + (by - tp.y) ^ 2)))
+		end
+	end
+	return tostring(n)
+end
+
 -- pendingTask:<char>:<name>[:cancel] → is a pending task of that name registered on the character (survey, sample,
 -- incapacitationRecovery, …); with cancel it is removed. A survey task left pending makes every later requestsurvey a
 -- silent no-op (RequestSurveyCommand returns SUCCESS without a word).

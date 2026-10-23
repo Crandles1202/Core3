@@ -369,6 +369,25 @@ def seat_tools(seat, files, character_name, seat_name):
                 best = {"name": p["name"], "distance": round(d)}
         return best
 
+    def spots_near_shuttles(resource):
+        """for one resource: the best land spot within 1.5 km of each shuttle point on this planet (a harvester wants a
+        good spot near a town, not the planet's single peak)"""
+        seat_mod = load_seat_module()
+        planet = seat.request({"op": "vars", "path": "/Scene/terrain"}).get("vars")
+        if not isinstance(planet, str):
+            return {"ok": False, "error": "planet unknown (no scene yet)"}
+        rows = []
+        for line in seat_mod.lab(f"resourceNear:{planet}:{resource}", 60).splitlines():
+            if line.startswith("INFO resourceNear "):
+                f = seat_mod.lab_fields(line)
+                rows.append({"shuttle": f.get("point"), "x": float(f.get("x")), "y": float(f.get("y")), "density": float(f.get("density")),
+                             "walk_from_shuttle_m": float(f.get("distance"))})
+        rows.sort(key=lambda r: -r["density"])
+        if not rows:
+            return {"ok": False, "error": f"'{resource}' is below 10% near every shuttle on {planet} (exact name? see resources_here)"}
+        return {"ok": True, "planet": planet, "resource": resource, "spots": rows[:8],
+                "how": "travel_to the shuttle, walk_to the spot (under 2 km), survey, place_harvester"}
+
     def travel_points(planet):
         """the shuttle and starport points of a planet, with positions: where a shuttle can take you"""
         pts = _travel_points(planet)
@@ -642,7 +661,7 @@ def seat_tools(seat, files, character_name, seat_name):
         "say": say, "tell": tell, "emote": emote, "walk_to": walk_to, "travel_to": travel_to,
         "resources_here": resources_here, "survey": survey, "sample": sample, "place_harvester": place_harvester,
         "harvester": harvester, "harvester_status": harvester_status, "my_structures": my_structures,
-        "my_health": my_health, "clone": clone, "my_inventory": my_inventory, "travel_points": travel_points, "creatures_near": creatures_near, "hunt": hunt, "tend_harvesters": tend_harvesters,
+        "my_health": my_health, "clone": clone, "my_inventory": my_inventory, "travel_points": travel_points, "spots_near_shuttles": spots_near_shuttles, "creatures_near": creatures_near, "hunt": hunt, "tend_harvesters": tend_harvesters,
         "remember": remember, "complete_milestone": complete_milestone, "change_plan": change_plan, "rest": rest,
     }
     schema = [
@@ -672,6 +691,8 @@ def seat_tools(seat, files, character_name, seat_name):
          "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},
         {"name": "my_health", "description": "Your condition (fine, incapacitated, dead) and health/action/mind pools as current/max/wounds.",
          "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},
+        {"name": "spots_near_shuttles", "description": "For one resource (exact name from resources_here): the best spot within 1.5 km of each shuttle point on this planet, with density and the walk from the shuttle. A harvester only needs a good spot near a town.",
+         "input_schema": {"type": "object", "properties": {"resource": {"type": "string"}}, "required": ["resource"], "additionalProperties": False}, "strict": True},
         {"name": "travel_points", "description": "The shuttle and starport points of a planet with positions: pick the one nearest a spot, travel_to it, then walk the rest (under 2 km).",
          "input_schema": {"type": "object", "properties": {"planet": {"type": "string"}}, "required": ["planet"], "additionalProperties": False}, "strict": True},
         {"name": "my_inventory", "description": "What you carry, by name with counts (deeds, tools, weapons, resources).",
