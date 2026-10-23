@@ -249,8 +249,9 @@ function FbBounty:price(pPlayer) return math.floor(self:amount(pPlayer) * self.m
 
 -- the fixer's opening: no price on you / a price, and what it costs
 function FbBounty:fixerScreen(pPlayer)
-	if not self:isJedi(pPlayer) or self:amount(pPlayer) == 0 then return "nothing" end
-	if self:isPaid(pPlayer) then return "paid" end
+	if not self:isJedi(pPlayer) then return "nothing" end
+	if self:isPaid(pPlayer) then return "paid" end          -- the price is 0 while the arrangement holds: he remembers
+	if self:amount(pPlayer) == 0 then return "nothing" end
 	return "offer"
 end
 
@@ -290,8 +291,9 @@ end
 
 -- the status report's line
 function FbBounty:statusLine(pPlayer)
-	if not self:isJedi(pPlayer) or self:amount(pPlayer) == 0 then return nil end
+	if not self:isJedi(pPlayer) then return nil end
 	if self:isPaid(pPlayer) then return "@fb_force:bounty_status_paid" end
+	if self:amount(pPlayer) == 0 then return nil end
 	return "@fb_force:bounty_status_active"
 end
 

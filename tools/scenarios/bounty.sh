@@ -52,7 +52,8 @@ lab "attunementFlag:$CHAR:nextHuntAt:0" >/dev/null
 lab "jediMasterTake:$CHAR" >/dev/null
 for t in stillness shadows rank1 rank2; do lab "trainingSet:$CHAR:$t:done" >/dev/null; done   # rank 2; the squad grows at rank 4
 T=$(lab "bountyTick:$CHAR")
-check "hunt_again" "$(grep -q 'hunt=true' <<<"$T" && echo 1 || echo 0)" "$T"
+# the five-minute tick may already have sent this hunt while the lab was setting the state up
+check "hunt_again" "$(grep -q 'hunt=true\|hunters out' <<<"$T" && echo 1 || echo 0)" "$T"
 DARK=$(lab "findNpc:fb_bounty_dark_hunter" | sed -n 's/.*oid=\([0-9]*\).*/\1/p' | sort -n | tail -n1)
 check "dark_jedi_in_the_squad" "$( [ -n "$DARK" ] && echo 1 || echo 0 )" "$(lab "findNpc:fb_bounty_dark_hunter" | head -n1 | cut -c1-140)"
 [ -n "$DARK" ] && lab "killNpc:$CHAR:$DARK" >/dev/null
