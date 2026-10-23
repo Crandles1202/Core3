@@ -22,6 +22,7 @@ lab "attunementSit:$CHAR:stand" >/dev/null
 sleep 3
 lab "attunementReset:$CHAR" >/dev/null
 lab "crystalReset:$NODE" >/dev/null
+lab "takeItems:$CHAR:lightsaber_module" >/dev/null       # a previous run's crystals
 BEFORE=$(lab "findItem:$CHAR:lightsaber_module_force_crystal" | grep -c 'INFO item')
 wait "$BOT_PID"
 # beside the formation, inside its room (cell-local coordinates, 1.5 m off the node)
@@ -48,6 +49,7 @@ H=$(lab "crystalHarvest:$CHAR:$NODE:power")
 check "power_roll_gives_a_crystal" "$(grep -q 'ok=true' <<<"$H" && echo 1 || echo 0)" "$H"
 check "red_grows_only_on_dathomir" "$(lab "crystals" >/dev/null; grep -c 'red = true' "$REPO/MMOCoreORB/bin/scripts/custom_scripts/screenplays/fb_crystals.lua")" "one cave carries red"
 lab "crystalReset:$NODE" >/dev/null
+lab "takeItems:$CHAR:lightsaber_module" >/dev/null       # the crystals count for attunement in the scenarios after this one
 lab "attunementReset:$CHAR" >/dev/null
 wait "$BOT_PID"
 finish

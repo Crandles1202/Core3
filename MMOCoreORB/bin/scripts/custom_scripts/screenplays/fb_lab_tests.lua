@@ -968,6 +968,24 @@ function FbLabTests:heal(charName, pool, amount)
 	return hamLine(charName, pPlayer)
 end
 
+-- takeItems:<char>:<fragment> → destroy every inventory item whose template path contains the fragment (a scenario
+-- cleans up what it handed out: a crystal or holocron left in the shared character's bag counts for attunement)
+function FbLabTests:takeItems(charName, fragment)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pInv = SceneObject(pPlayer):getSlottedObject("inventory")
+	if pInv == nil then print("ERROR no inventory"); return "none" end
+	local taken = 0
+	for i = SceneObject(pInv):getContainerObjectsSize() - 1, 0, -1 do
+		local pItem = SceneObject(pInv):getContainerObject(i)
+		if pItem ~= nil and SceneObject(pItem):getTemplateObjectPath():find(fragment, 1, true) then
+			SceneObject(pItem):destroyObjectFromWorld(true); SceneObject(pItem):destroyObjectFromDatabase(); taken = taken + 1
+		end
+	end
+	print("INFO takeItems char=" .. charName .. " fragment=" .. tostring(fragment) .. " taken=" .. taken)
+	return tostring(taken)
+end
+
 -- revive:<char> → a dead or incapacitated lab character back on its feet with full pools (what a cloning would do,
 -- without the cloner); harmless on a healthy one
 function FbLabTests:revive(charName)

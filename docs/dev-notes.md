@@ -1158,3 +1158,5 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 - A harvestable world object = a server-only object template (`clientTemplateFileName` of a stock look +
   `objectMenuComponent`), spawned with `spawnSceneObject(zone, template, x, z, y, cellOid, qw, qx, qy, qz)`; the
   Lab Remote established the pattern.
+- Scenarios that hand the shared character items that count for attunement (crystals, holocrons) take them back
+  at their end (`takeItems:<char>:<fragment>`), or the attunement scenario's capped-sum check fails on `items`.
