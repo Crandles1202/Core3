@@ -166,6 +166,7 @@ function FbBounty:onHunterDown(pMob, pKiller)
 	local pPlayer = self:ownerOf(pMob)
 	local mine = SceneObject(pMob):getObjectID()
 	deleteData(mine .. ":fbBountyFor")
+	printf("FbBounty: hunter %d down (owner %s)\n", mine, pPlayer ~= nil and CreatureObject(pPlayer):getFirstName() or "-")
 	if pPlayer == nil then return 1 end
 	-- the dying hunter still reads as alive at observer time: count the others
 	local others = 0

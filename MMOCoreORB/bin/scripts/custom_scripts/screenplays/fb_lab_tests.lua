@@ -3101,8 +3101,8 @@ end
 function FbLabTests:bountyTick(charName)
 	local pPlayer = loadedPlayer(charName)
 	if pPlayer == nil then return "offline" end
-	print("INFO bountyTick hunt=" .. tostring(FbBounty:maybe(pPlayer)))
-	bountyLine(charName, pPlayer)
+	local ok, why = FbBounty:due(pPlayer)
+	print("INFO bountyTick hunt=" .. tostring(FbBounty:maybe(pPlayer)) .. " was=" .. tostring(ok) .. "(" .. tostring(why) .. ") " .. FbBounty:status(pPlayer))
 	return "ok"
 end
 -- bountyPay:<char> → pay the fixer without the conversation
