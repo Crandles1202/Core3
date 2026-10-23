@@ -10,7 +10,7 @@ borrowing with a lock; this file carries the intent.
 | Agent | Branch | Task (roadmap item) | Status | Bench | Updated |
 |---|---|---|---|---|---|
 | chuck | — | play-testing, design calls, merges by request | ongoing | as needed | 2026-10-20 |
-| alice | `feature/alice` | Phase 7 Citizens: first batch merged 2026-10-21 (421d50e15d); second batch (7.4 fighting, the cast, crew, playbooks, xp perception, outfit, seat threads) rebased on unstable 2026-10-22 and waiting for the bench (knight holds it) to run its gate, then Chuck runs `bench merge feature/alice`; next: citizens acting between tells (Teyla hunting, Wex harvesters), grouping/follow | gate pending | queued | 2026-10-22 |
+| alice | `feature/alice` | Phase 7 Citizens: first batch merged 2026-10-21 (421d50e15d), second batch merged 2026-10-22 (f1c39d871f: 7.4 fighting, the cast, crew, playbooks, xp perception, outfit, seat threads, pilot and audit fixes); next: a live-world server for the citizens beside the test bench (Chuck's call), then citizens acting between tells (Teyla hunting, Wex harvesters), grouping/follow | merged | no | 2026-10-22 |
 | _(add a row with `swg agent new <name>`)_ | | | | | |
 
 Status words: `planning`, `coding`, `testing` (holds the bench), `gate` (running `swg test all`), `ready to merge`,
