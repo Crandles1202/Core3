@@ -341,7 +341,7 @@ Persisted object fields (`containerVolumeLimit`, …) are only read from the tem
   read `swg status` (HALTED IN GDB) before blaming the Lua. Guarded since 7.5 (returns ""). **An indoor path ends at z 0**
   unless `pathTo` lifts it (it does since 7.5): `findPath` returns the target at the z it was asked for, the walk puts the
   character under the floor, the server accepts it, and an NPC conversation is refused silently (`checkLineOfSightInBuilding`
-  rays from the character's z + 1 through the floor). `seat.action(…, timeout=)` is the socket's wait, not the action's.
+  rays from the character's z + 1 through the floor). `seat.action(…, timeout=)` is the socket's wait, not the action's. One sample start in 51 opens the server's *concentrated sample* window (`@survey:cnode_t`/`gnode_t`) instead of sampling, and row 0 reschedules the sample 25 s out: an unanswered server window reads as a silent timeout, so `tools/seat sample` (`sample_seat`) answers it and retries (gate flake 2026-10-23).
 - **The terrain refuses ±8192** (`TerrainManager::getHeight` out of bounds) with a warning *and a stack trace per call*: a
   scan that touches the planet edge floods the console thread for minutes while `swg status` still says RUNNING. Keep every
   terrain lookup strictly inside the planet; the resource oracle's best spots are land-only (`getWaterHeightAt`).
