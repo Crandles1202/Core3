@@ -1144,3 +1144,14 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 - Wex's pilot died on 2026-10-21 09:13 with a `TimeoutError` in `Senses.gather()`: its seat was still finishing a walk
   that the previous pilot had started (the action lock was held, so `vars`/`objects` waited past the 60 s socket
   timeout). The wake loop now catches a seat timeout, waits 30 s and tries again instead of exiting.
+
+### 2026-10-23 — 4c the bounty
+
+- Stock visibility: `PlayerObject:getVisibility()` / `setVisibility(n)` (Lua), raised by the server on saber and Force
+  use near others, decayed hourly over 21 days (`visibility_manager.lua`: maxVisibility 8000, termThreshold 1500,
+  falloffThreshold 100). `FbBounty` reads it and nothing else; the price and the hunters are ours.
+- Setting a spawned NPC on a player: `AiAgent:setDefender(pPlayer)` (the invasions' pattern) with an AGGRESSIVE +
+  ATTACKABLE + ENEMY pvp mask; `addDefender` exists on AiAgent only, not on a player's CreatureObject.
+- The Mos Eisley cantina is stock building `1082874` (h 38); its main room is cell 3 (`cantina`, oid 1082877, the
+  ambient life's anchor cell); a spot by the north wall at (8, 4) is 4 m from the nearest furniture. The stock
+  mobile library has no male criminal smuggler dress, only the female one and the Binayre Trandoshans.

@@ -11,6 +11,7 @@ borrowing with a lock; this file carries the intent.
 |---|---|---|---|---|---|
 | chuck | — | play-testing, design calls, merges by request | ongoing | as needed | 2026-10-20 |
 | alice | `feature/alice` | Phase 7 Citizens: first batch merged 2026-10-21 (421d50e15d), second batch merged 2026-10-22 (f1c39d871f: 7.4 fighting, the cast, crew, playbooks, xp perception, outfit, seat threads, pilot and audit fixes); next: a live-world server for the citizens beside the test bench (Chuck's call), then citizens acting between tells (Teyla hunting, Wex harvesters), grouping/follow | merged | no | 2026-10-22 |
+| claude (main session) | `feature/bounty` | 4c the bounty | testing | holds while testing | 2026-10-23 |
 | _(add a row with `swg agent new <name>`)_ | | | | | |
 
 Status words: `planning`, `coding`, `testing` (holds the bench), `gate` (running `swg test all`), `ready to merge`,

@@ -744,6 +744,7 @@ includeFile("tasks/tatooine/fb_trials_conv_handlers.lua")   -- Phase 4a.3: the p
 includeFile("tasks/tatooine/fb_jedi_master_conv_handler.lua")   -- Phase 4b.1: Master Ilara Venn (Light Enclave, Yavin 4)
 includeFile("tasks/tatooine/fb_sith_master_conv_handler.lua")   -- Phase 4b.2: Darth Ysanne Vhal (Dark Enclave, Yavin 4)
 includeFile("tasks/tatooine/fb_knight_boss_conv_handler.lua")   -- Phase 4b.4: the Knight trial's beaten enemy
+includeFile("tasks/tatooine/fb_fixer_conv_handler.lua")   -- Phase 4c: the fixer in the Mos Eisley cantina
 includeFile("tasks/tatooine/fb_stim_dealer_conv_handler.lua")
 includeFile("tasks/tatooine/fb_stim_dealer.lua")
 includeFile("tasks/tatooine/fb_armor_droid_conv_handler.lua")
