@@ -1144,6 +1144,22 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 - Wex's pilot died on 2026-10-21 09:13 with a `TimeoutError` in `Senses.gather()`: its seat was still finishing a walk
   that the previous pilot had started (the action lock was held, so `vars`/`objects` waited past the 60 s socket
   timeout). The wake loop now catches a seat timeout, waits 30 s and tries again instead of exiting.
+
+### 2026-10-23 — 4a.0 crystal formations
+
+- Several stock caves share one portal layout: the Tatooine squill cave and the Lok droid engineer's cave are the
+  same POB (room coordinates transfer), the Dathomir rancor cave is the Dantooine crystal hunters' cave mirrored
+  (x negated). `lotsurvey rooms` on each shows it; a cave's world position comes from `objectPos:<any of its cell
+  oids>` (the cell's world position is the building's).
+- Saber crystal colours are `@jedi_spam:saber_color_N`: 0 Red, 1 Dark Red, 2 Light Green, 3 Dark Green, 4 Blue,
+  5 Dark Blue, 6 Yellow, 7 Dark Yellow, 8 Light Purple, 9 Dark Purple, 10 Orange, 11 Brown (12+ are the named
+  rares, 31 the special red). Lua has no colour setter; a loot item with `craftingValues = {{"color", N, N}}` pins
+  it, and `custom_scripts/loot/serverobjects.lua` is included by the stock loot loader, so custom loot items work.
+- A harvestable world object = a server-only object template (`clientTemplateFileName` of a stock look +
+  `objectMenuComponent`), spawned with `spawnSceneObject(zone, template, x, z, y, cellOid, qw, qx, qy, qz)`; the
+  Lab Remote established the pattern.
+- Scenarios that hand the shared character items that count for attunement (crystals, holocrons) take them back
+  at their end (`takeItems:<char>:<fragment>`), or the attunement scenario's capped-sum check fails on `items`.
 - **The first unattended day of the citizens, read back from the logs (2026-10-22 evening):**
   - Teyla was found **dead** at 3947,-4744 (health −263) and her pilot had spent the day resting and asking for a medic:
     `my_health` showed pools only and the model never learned the word for it. Likeliest killer: the `sandstorm`
@@ -1231,3 +1247,13 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 - A lab character shared by every gate accumulates: after a dozen runs its `jedi_general` experience sat at the
   stock cap (90 000) and a Master's reward added nothing. Scenarios that pay experience zero it first (`xpSet`,
   through `awardExperience` by the difference).
+- **A gate is good for one tip.** Three gated branches merged in a row: the first two went in, the third
+  (`feature/crystals`) no longer merged cleanly once the bounty lane was on `unstable` (both had added to
+  `fb_lab_tests.lua`, `screenplays.lua`, `fb_force.stf.txt` and the docs). The owner merges `unstable` into the
+  branch, resolves, and re-gates before Chuck merges; `bench merge` refuses a dirty bench, so a conflicted merge
+  must be finished (committed) before the next one runs. Keep-both resolutions of Lua need a `luac -p` before the
+  commit: the crystals merge lost two `end`s at a hunk border and committed anyway because the shell chain used `;`.
+- Lua 5.3's `%d` refuses a float with a fraction (`bad argument to 'format': number has no integer representation`):
+  anything read from C++ as `lua_pushnumber` (visibility, HAM, heights) goes through `math.floor` before `%d`. The
+  bounty's hunt log line died on a decayed visibility of 1999.6, after the squad was spawned, and the lab tick
+  returned nothing — a check that passed when the number was still whole.

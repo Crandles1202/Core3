@@ -816,6 +816,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkSithMaster()
 		FbLabTests.checkAlignment()
 		FbLabTests.checkKnight()
+		FbLabTests.checkCrystals()
 		FbLabTests.checkBounty()
 	end)
 	if not ok then
@@ -971,6 +972,24 @@ function FbLabTests:heal(charName, pool, amount)
 	if pPlayer == nil then return "offline" end
 	CreatureObject(pPlayer):healDamage(tonumber(amount), poolIndex(pool))
 	return hamLine(charName, pPlayer)
+end
+
+-- takeItems:<char>:<fragment> → destroy every inventory item whose template path contains the fragment (a scenario
+-- cleans up what it handed out: a crystal or holocron left in the shared character's bag counts for attunement)
+function FbLabTests:takeItems(charName, fragment)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pInv = SceneObject(pPlayer):getSlottedObject("inventory")
+	if pInv == nil then print("ERROR no inventory"); return "none" end
+	local taken = 0
+	for i = SceneObject(pInv):getContainerObjectsSize() - 1, 0, -1 do
+		local pItem = SceneObject(pInv):getContainerObject(i)
+		if pItem ~= nil and SceneObject(pItem):getTemplateObjectPath():find(fragment, 1, true) then
+			SceneObject(pItem):destroyObjectFromWorld(true); SceneObject(pItem):destroyObjectFromDatabase(); taken = taken + 1
+		end
+	end
+	print("INFO takeItems char=" .. charName .. " fragment=" .. tostring(fragment) .. " taken=" .. taken)
+	return tostring(taken)
 end
 
 -- xpSet:<char>:<type>:<amount> → that experience pool set to the amount (through awardExperience by the difference,
@@ -3249,6 +3268,69 @@ function FbLabTests.checkKnight()
 			for _, k in ipairs({ "offer", "go", "given", "wait", "report", "done", "spare", "kill", "graduated" }) do need(prefix .. "knight_" .. k) end
 		end
 		check("knight.strings", #missing == 0, #missing == 0 and "every line of the trial" or ("missing: " .. table.concat(missing, ", ")))
+	end
+end
+
+-- ---------------------------------------------------------------- Phase 4a.0: crystal formations
+
+-- crystals → every formation: cave, oid, ready/bare, seconds to regrow; and where each stands (world and cell-local)
+function FbLabTests:crystals()
+	print("INFO crystals " .. FbCrystals:status())
+	for _, pNode in ipairs(FbCrystals:nodes()) do
+		local so = SceneObject(pNode)
+		print(string.format("INFO crystalNode oid=%s zone=%s x=%.1f y=%.1f z=%.1f cell=%s lx=%.2f ly=%.2f lz=%.2f", tostring(so:getObjectID()), so:getZoneName(), so:getWorldPositionX(), so:getWorldPositionY(), so:getWorldPositionZ(), tostring(so:getParentID()), so:getPositionX(), so:getPositionY(), so:getPositionZ()))
+	end
+	return "ok"
+end
+-- crystalHarvest:<char>:<nodeOid>[:power|<colour>] → work the formation as the radial would (a forced roll for the lab)
+function FbLabTests:crystalHarvest(charName, nodeOid, forced)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pNode = getSceneObject(tonumber(nodeOid) or 0)
+	if pNode == nil then print("ERROR no such formation"); return "none" end
+	print("INFO crystalHarvest ok=" .. tostring(FbCrystals:harvest(pPlayer, pNode, forced)) .. " " .. FbCrystals:status())
+	return "ok"
+end
+-- crystalReset:<nodeOid> → the formation regrows now
+function FbLabTests:crystalReset(nodeOid)
+	local pNode = getSceneObject(tonumber(nodeOid) or 0)
+	if pNode == nil then print("ERROR no such formation"); return "none" end
+	FbCrystals:reset(pNode)
+	print("INFO crystalReset " .. FbCrystals:status())
+	return "ok"
+end
+
+function FbLabTests.checkCrystals()
+	check("crystals.loaded", FbCrystals ~= nil and FbCrystals.caves ~= nil)
+	if FbCrystals == nil then return end
+	check("crystals.four_caves", #FbCrystals.caves == 4)
+	local f = io.open("scripts/custom_scripts/object/tangible/fb_crystal_node/fb_crystal_node.lua", "r")
+	check("crystals.node_template_file", f ~= nil); if f ~= nil then f:close() end
+	f = io.open("scripts/custom_scripts/loot/items/fb_crystals.lua", "r")
+	if f ~= nil then
+		local text = f:read("a"); f:close()
+		local missing = {}
+		for n = 0, 11 do if not text:find("addLootItemTemplate(\"fb_crystal_c" .. n .. "\"", 1, true) then missing[#missing + 1] = tostring(n) end end
+		check("crystals.loot_items", #missing == 0, #missing == 0 and "twelve colours" or ("missing colours: " .. table.concat(missing, ", ")))
+	else
+		check("crystals.loot_items", false, "custom_scripts/loot/items/fb_crystals.lua missing")
+	end
+	local grown = 0
+	for _, cave in ipairs(FbCrystals.caves) do
+		if isZoneEnabled(cave.zone) then
+			local pB = getSceneObject(cave.buildingOid)
+			check("crystals." .. cave.key .. ".cave", pB ~= nil, cave.label .. " " .. cave.buildingOid)
+			if pB ~= nil then for _, n in ipairs(cave.nodes) do check("crystals." .. cave.key .. ".room." .. n.room, BuildingObject(pB):getNamedCell(n.room) ~= nil) end end
+			grown = grown + #cave.nodes
+		end
+	end
+	check("crystals.grown", #FbCrystals:nodes() == grown, #FbCrystals:nodes() .. " of " .. grown .. " formations stand")
+	f = io.open("../../tre-src/string/en/fb_force.stf.txt", "r")
+	if f ~= nil then
+		local text = f:read("a"); f:close()
+		local missing = {}
+		for _, k in ipairs({ "radial", "taken", "power", "bare", "bag_full" }) do if not text:find("\ncrystal_" .. k .. " = ", 1, true) then missing[#missing + 1] = k end end
+		check("crystals.strings", #missing == 0, #missing == 0 and "every line" or ("missing: " .. table.concat(missing, ", ")))
 	end
 end
 

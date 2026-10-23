@@ -387,6 +387,12 @@ sith_knight_spare = You let her live. The holocron is yours; so is the question 
 sith_knight_kill = You finished her. The holocron is yours.
 sith_knight_graduated = You are a Knight of the dark. The third rank is yours, and the robe.
 
+# ---- Phase 4a.0: crystal formations
+crystal_radial = Take a crystal
+crystal_taken = You work a crystal free of the rock. It is %TO.
+crystal_power = You work a crystal free of the rock, and it hums in your hand. A power crystal.
+crystal_bare = The rock here is bare where someone has worked it. It will grow again.
+crystal_bag_full = Your hands are full; make room first.
 # ---- Phase 4c: the bounty, the hunters, the fixer
 bounty_placed = Somewhere a price has been put on you. You can feel the eyes.
 bounty_hunted = Hunters. They did not come to talk.

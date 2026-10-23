@@ -51,7 +51,9 @@ local function say(pPlayer, id) CreatureObject(pPlayer):sendSystemMessage("@fb_f
 function FbBounty:isJedi(pPlayer) return pPlayer ~= nil and CreatureObject(pPlayer):hasSkill("force_title_jedi_novice") end
 function FbBounty:visibility(pPlayer)
 	local pGhost = CreatureObject(pPlayer):getPlayerObject()
-	return pGhost ~= nil and PlayerObject(pGhost):getVisibility() or 0
+	-- a whole number: the stock score decays into a fraction (2000 → 1999.6 within a minute), and Lua's %d refuses
+	-- a non-integer float — the second hunt's log line killed the tick after it had spawned the squad (gate 2026-10-23)
+	return math.floor(pGhost ~= nil and PlayerObject(pGhost):getVisibility() or 0)
 end
 function FbBounty:amount(pPlayer) return num(pPlayer, "bounty") end
 function FbBounty:isPaid(pPlayer) return num(pPlayer, "bountyPaidUntil") > os.time() end
@@ -154,7 +156,7 @@ function FbBounty:hunt(pPlayer)
 	if #oids == 0 then return false end
 	setQuestStatus(self:hunterKey(pPlayer), table.concat(oids, ","))
 	say(pPlayer, "hunted")
-	printf("FbBounty: %d hunter(s) sent after %s (visibility %d, bounty %d)\n", #oids, CreatureObject(pPlayer):getFirstName(), self:visibility(pPlayer), self:amount(pPlayer))
+	printf("FbBounty: %d hunter(s) sent after %s (visibility %d, bounty %d)\n", #oids, CreatureObject(pPlayer):getFirstName(), self:visibility(pPlayer), math.floor(self:amount(pPlayer)))
 	return true
 end
 
