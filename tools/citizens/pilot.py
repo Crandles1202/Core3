@@ -275,6 +275,12 @@ class Senses:
             t = threats_of(self.character_name, 150)
             strength = t.get("strength")
             threats = [{k: v for k, v in r.items() if k in ("name", "level", "pack", "distance", "aggressive")} for r in t.get("threats", [])[:6]]
+        training = None
+        if me:
+            tr = trainable_of(self.character_name)
+            if tr.get("ok"):
+                training = {"ready": [f"{r['skill']} ({r['credits']} cr)" for r in tr["ready"]][:6],
+                            "next": [f"{r['skill']} needs {r['xp_type']} {r['xp']}" for r in tr["next"]][:4]}
         position = {"x": round(me["x"], 1), "y": round(me["y"], 1)} if me else None
         if w.get("x") is not None:
             position = {"x": round(float(w["x"]), 1), "y": round(float(w["y"]), 1)}
@@ -294,6 +300,7 @@ class Senses:
             "nearby": near[:12],
             "fighting_strength": strength,
             "threats": threats,
+            "training": training,
         }
 
 
@@ -314,6 +321,29 @@ def threats_of(character_name, radius=150):
         r["pack"] = sum(1 for o in rows if o["name"] == r["name"] and ((o["x"] - r["x"]) ** 2 + (o["y"] - r["y"]) ** 2) ** 0.5 <= 25)
     rows.sort(key=lambda r: r["distance"])
     return {"ok": bool(me), "strength": int(me.get("strength") or 0) if me else None, "threats": rows}
+
+
+def trainable_of(character_name, scope=""):
+    """lab trainable: the skill boxes the character can buy at a trainer right now (ready: prerequisites, experience,
+    skill points) and the ones it is working toward (next: prerequisites met, experience short), with the trainer
+    type, the experience have/cost, credits and points; plus its credits, stored level and fighting strength"""
+    seat_mod = load_seat_module()
+    out = seat_mod.lab(f"trainable:{character_name}" + (f":{scope}" if scope else ""), 20)
+    ready, nxt, summary = [], [], {}
+    for line in out.splitlines():
+        if line.startswith("INFO trainable ") or line.startswith("INFO next "):
+            f = seat_mod.lab_fields(line)
+            row = {"skill": f.get("skill"), "trainer": f.get("trainer"), "xp_type": f.get("xpType"),
+                   "xp": f"{f.get('xpHave')}/{f.get('xpCost')}", "credits": int(f.get("credits") or 0), "points": int(f.get("points") or 0)}
+            (ready if line.startswith("INFO trainable ") else nxt).append(row)
+        elif line.startswith("INFO training "):
+            summary = seat_mod.lab_fields(line)
+    def fraction(r):
+        have, cost = r["xp"].split("/")
+        return float(have) / max(1.0, float(cost))
+    nxt.sort(key=fraction, reverse=True)
+    return {"ok": bool(summary), "ready": ready, "next": nxt, "level": int(summary.get("level") or 0),
+            "strength": int(summary.get("strength") or 0), "cash": int(summary.get("cash") or 0), "bank": int(summary.get("bank") or 0)}
 
 
 def seat_tools(seat, files, character_name, seat_name):
@@ -625,6 +655,63 @@ def seat_tools(seat, files, character_name, seat_name):
         """what would attack you within 150 m, with level and distance, and your own fighting strength"""
         return threats_of(character_name, 150)
 
+    def train(skill):
+        """buy a skill box at its trainer, the way a player does: the box must be ready (lab trainable), the nearest
+        trainer NPC of its type on this planet is found by its mobile template (lab trainers), the character walks to it
+        and talks through the stock conversation (learn → the box → yes); the award is read back server-side"""
+        seat_mod = load_seat_module()
+        skill = (skill or "").strip()
+        t = trainable_of(character_name)
+        if not t["ok"]:
+            return {"ok": False, "error": "could not read your skills from the server"}
+        row = next((r for r in t["ready"] if r["skill"] == skill), None)
+        if row is None:
+            n = next((r for r in t["next"] if r["skill"] == skill), None)
+            if n is not None:
+                return {"ok": False, "error": f"{skill} is not yours yet: {n['xp_type']} experience {n['xp']}; it will cost {n['credits']} credits and {n['points']} skill points"}
+            return {"ok": False, "error": f"{skill} is not a box you can train now", "ready": [r["skill"] for r in t["ready"]][:8],
+                    "next": [f"{r['skill']} ({r['xp_type']} {r['xp']})" for r in t["next"]][:6]}
+        if t["cash"] + t["bank"] < row["credits"]:
+            return {"ok": False, "error": f"{skill} costs {row['credits']} credits and you have {t['cash'] + t['bank']}"}
+        here = seat_mod.where(character_name)
+        if not here:
+            return {"ok": False, "error": "could not read where you are"}
+        trainers = [seat_mod.lab_fields(l) for l in seat_mod.lab(f"trainers:{here['zone']}:{row['trainer']}:{here['x']:.0f}:{here['y']:.0f}", 60).splitlines()
+                    if l.startswith("INFO trainer ")]
+        if not trainers:
+            return {"ok": False, "error": f"no {row['trainer'].replace('trainer_', '')} trainer near any shuttle point on {here['zone']}; travel to another world's big city"}
+        tr = trainers[0]
+        name = (tr.get("name") or "").replace("_", " ")
+        dist = float(tr.get("distance") or 0)
+        if dist > MAX_WALK_M:
+            return {"ok": False, "error": f"the nearest {row['trainer'].replace('trainer_', '')} trainer, {name}, stands {dist:.0f} m away by {tr.get('point')}: travel_to that point first"}
+        cell = int(tr.get("cell") or 0)
+        if cell:
+            w = seat_mod.walk_seat(seat, character_name, float(tr["localX"]), float(tr["localY"]), cell=cell)
+        else:
+            w = seat_mod.walk_seat(seat, character_name, float(tr["x"]), float(tr["y"]), within=3)
+        if not w.get("ok"):
+            return {"ok": False, "error": f"could not reach {name}: {seat_mod.action_error(w)}"}
+        npc = int(tr["oid"])
+        c = seat.action("converse", npc=npc, options=[0], timeout=12)
+        if not c.get("ok"):
+            return {"ok": False, "error": f"{name} would not talk: {seat_mod.action_error(c)}"}
+        opts = seat.request({"op": "vars", "path": "/Conversation/options"}).get("vars") or []
+        want = f"@skl_n:{skill}"
+        if want not in opts:
+            offered = [o.split(":", 1)[1] for o in opts if isinstance(o, str) and o.startswith("@skl_n:")]
+            return {"ok": False, "error": f"{name} did not offer {skill}", "offered": offered, "said": seat.request({"op": "vars", "path": "/Conversation/message"}).get("vars")}
+        c = seat.action("converse", npc=npc, options=[0, opts.index(want), 0], timeout=12)
+        line = next((l for l in seat_mod.lab(f"hasSkill:{character_name}:{skill}", 8).splitlines() if l.startswith("INFO hasSkill")), "")
+        has = "has=true" in line
+        after = trainable_of(character_name)
+        result = {"ok": has, "skill": skill, "trainer": name, "indoors": bool(cell), "paid": row["credits"] if has else 0,
+                  "level": after["level"], "fighting_strength": after["strength"], "ready_now": [r["skill"] for r in after["ready"]][:8]}
+        if not has:
+            result["error"] = f"{name} did not grant {skill}: " + (seat_mod.action_error(c) if not c.get("ok") else
+                              str(seat.request({"op": "vars", "path": "/Conversation/message"}).get("vars")))
+        return result
+
     def _escape(reason):
         """walk away from a fight toward the nearest travel point (a town), at most 300 m in this leg — a character
         that stops attacking and stands still is finished by whatever it was fighting (Teyla, 2026-10-23)"""
@@ -761,6 +848,7 @@ def seat_tools(seat, files, character_name, seat_name):
         "harvester": harvester, "harvester_status": harvester_status, "my_structures": my_structures,
         "my_health": my_health, "clone": clone, "my_inventory": my_inventory, "travel_points": travel_points, "spots_near_shuttles": spots_near_shuttles, "creatures_near": creatures_near, "hunt": hunt, "tend_harvesters": tend_harvesters,
         "threats_near": threats_near,
+        "train": train,
         "remember": remember, "complete_milestone": complete_milestone, "change_plan": change_plan, "rest": rest,
     }
     schema = [
@@ -792,6 +880,8 @@ def seat_tools(seat, files, character_name, seat_name):
          "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},
         {"name": "threats_near", "description": "What would attack you within 150 m (aggressive creatures and NPCs, wild creatures stronger than you) with level and distance, and your own fighting strength. Hunt only when it is empty; with anything in it, walk 300 m toward town first.",
          "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},
+        {"name": "train", "description": "Buy a skill box at its trainer (the exact name from \"training\" → \"ready\" in your perception, e.g. outdoors_scout_movement_01): walks to the nearest trainer of that profession in this city and pays the credits. This is how you grow stronger; a box in \"next\" needs more experience first.",
+         "input_schema": {"type": "object", "properties": {"skill": {"type": "string"}}, "required": ["skill"]}},
         {"name": "spots_near_shuttles", "description": "For one resource (exact name from resources_here): the best spot within 1.5 km of each shuttle point on this planet, with density and the walk from the shuttle. A harvester only needs a good spot near a town.",
          "input_schema": {"type": "object", "properties": {"resource": {"type": "string"}}, "required": ["resource"], "additionalProperties": False}, "strict": True},
         {"name": "travel_points", "description": "The shuttle and starport points of a planet with positions: pick the one nearest a spot, travel_to it, then walk the rest (under 2 km).",
@@ -838,6 +928,9 @@ If "condition" says dead, call clone before anything else; incapacitated, wait a
 attack you where you stand, each with its level against your "fighting_strength": with anything in it, walk 300 m toward
 town before any other work; never hunt there. hunt itself refuses prey above your strength and walks you toward town
 after a retreat — read its log and do not send it again at the same spot.
+"training" lists the skill boxes you can buy right now ("ready", with the credits) and what you are working toward
+("next", experience have/cost): when a box is ready and you can pay, call train with its name before anything else —
+that is how a character grows, and your fighting_strength and level follow it.
 When nothing needs you, work your current milestone ("now") before resting: a combat skill grows by hunting creatures
 you can take near where you are (walk a leg through open ground outside town, creatures_near, then hunt; "xp" in the perception shows amount/cap per type, so you
 can see whether it pays), a gatherer tends harvesters, a crafter samples and keeps resources, and anyone with nothing

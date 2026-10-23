@@ -1069,6 +1069,16 @@ function FbLabTests:skill(charName, skillName)
 	return tostring(CreatureObject(pPlayer):hasSkill(skillName))
 end
 
+-- skillDrop:<char>:<skillName> → surrender a skill box (SkillManager::surrenderSkill: experience is not refunded; a box
+-- another held box depends on stays). The training scenario resets the shared lab character with it.
+function FbLabTests:skillDrop(charName, skillName)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	if CreatureObject(pPlayer):hasSkill(skillName) then CreatureObject(pPlayer):surrenderSkill(skillName) end
+	print("INFO skillDrop char=" .. charName .. " skill=" .. skillName .. " has=" .. tostring(CreatureObject(pPlayer):hasSkill(skillName)))
+	return tostring(not CreatureObject(pPlayer):hasSkill(skillName))
+end
+
 -- hasSkill:<char>:<skillName> → whether a loaded character has that skill box (7.2: citizen status)
 function FbLabTests:hasSkill(charName, skillName)
 	local pPlayer = loadedPlayer(charName)
