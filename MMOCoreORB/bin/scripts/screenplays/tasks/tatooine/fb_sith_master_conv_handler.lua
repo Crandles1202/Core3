@@ -23,6 +23,10 @@ function fbSithMasterConvoHandler:runScreenHandlers(pConvTemplate, pPlayer, pNpc
 		FbKnight:give(pPlayer)
 	elseif screenID == "knight_done" and FbKnight ~= nil then
 		FbKnight:graduate(pPlayer)
+	elseif screenID == "comp_take" and FbCompanion ~= nil then
+		FbCompanion:give(pPlayer)
+	elseif screenID == "comp_betray_do" and FbCompanion ~= nil then
+		FbCompanion:betray(pPlayer)
 	elseif screenID:sub(1, 5) == "told_" then
 		FbSithMaster:told(pPlayer, screenID:sub(6))
 	elseif screenID:sub(1, 7) == "reward_" then

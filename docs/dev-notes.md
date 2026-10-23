@@ -1257,3 +1257,11 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   anything read from C++ as `lua_pushnumber` (visibility, HAM, heights) goes through `math.floor` before `%d`. The
   bounty's hunt log line died on a decayed visibility of 1999.6, after the squad was spawned, and the lab tick
   returned nothing — a check that passed when the number was still whole.
+
+### 2026-10-23 — 4b.5 the companion
+
+- **A story NPC that follows, fights and persists = a stock hireling pet.** `giveControlDevice(pDatapad, "object/intangible/pet/pet_control.iff", "<mobile template name>", -1, true)` (what the GCW recruiters hand out) makes a `PetControlDevice` of type FACTIONPET with an AiAgent of our template in it; the datapad radial calls (44) and stores (59) it, the pet follows, crosses zones, is stored at logout and called again. Lua had no way to call or store one or to reach the creature inside: `callControlDevice`, `storeControlDevice` (forced, no 60 s faction-pet delay) and `getControlledObject` are new DirectorManager globals. A stored pet has no zone (`getZoneName() == ""`), which is how `FbCompanion:isOut` reads it. The device's shown name is `setCustomObjectName`; the creature's is the template's `customName`.
+- Stock pets do **not** attack what attacks their owner on their own (only on the pet commands); a `DAMAGERECEIVED` observer on the player with `AiAgent(pPet):setDefender(pAttacker)` does it.
+- A pet's stage change is a new device: store, destroy device and creature (`destroyObjectFromWorld` + `destroyObjectFromDatabase` on both), give the next template, call it.
+- Permanent stat bonus from Lua: `setBaseHAM(pool, …)` **and** `setMaxHAM(pool, …)` (the max is not recomputed from the base); pools 0 / 3 / 6.
+- A worktree's `MMOCoreORB/build` is a link to the bench's build tree: `~/bin/build` from a worktree configures and builds the **bench's** sources, not the worktree's. C++ on a branch compiles when `bench use` deploys it. A syntax-only check before that: the bench's `compile_commands.json` entry for the file, `-o` dropped, the source path swapped for the worktree's, `-I<worktree>/MMOCoreORB/src` first so the changed headers win, `-fsyntax-only`.

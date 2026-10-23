@@ -544,6 +544,9 @@ void DirectorManager::initializeLuaEngine(Lua* luaEngine) {
 	luaEngine->registerFunction("setZoneWeather", setZoneWeather);
 	luaEngine->registerFunction("awardSkill", awardSkill);
 	luaEngine->registerFunction("awardSkillUnchecked", awardSkillUnchecked);
+	luaEngine->registerFunction("callControlDevice", callControlDevice);
+	luaEngine->registerFunction("storeControlDevice", storeControlDevice);
+	luaEngine->registerFunction("getControlledObject", getControlledObject);
 	luaEngine->registerFunction("getCityRegionAt", getCityRegionAt);
 	luaEngine->registerFunction("setDungeonTicketAttributes", setDungeonTicketAttributes);
 	luaEngine->registerFunction("setQuestStatus", setQuestStatus);
@@ -4853,6 +4856,88 @@ int DirectorManager::awardSkillUnchecked(lua_State* L) {
 
 	bool ok = SkillManager::instance()->awardSkill(skillName, creature, true, false, true, true);
 	lua_pushboolean(L, ok);
+
+	return 1;
+}
+
+// callControlDevice(pDevice, pPlayer) / storeControlDevice(pDevice, pPlayer) / getControlledObject(pDevice): a pet or
+// vehicle control device driven from Lua (Final Boss 4b.5: the companion is a stock hireling pet; the lab and the
+// screenplay call it out and put it away without the datapad radial). store is forced (no 60 s faction-pet delay).
+int DirectorManager::callControlDevice(lua_State* L) {
+	if (checkArgumentCount(L, 2) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::callControlDevice";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	SceneObject* deviceObj = (SceneObject*)lua_touserdata(L, -2);
+	CreatureObject* player = (CreatureObject*)lua_touserdata(L, -1);
+
+	if (deviceObj == nullptr || player == nullptr || !deviceObj->isControlDevice()) {
+		lua_pushboolean(L, false);
+		return 1;
+	}
+
+	ControlDevice* device = cast<ControlDevice*>(deviceObj);
+	Locker locker(device);
+	Locker crossLocker(player, device);
+	device->callObject(player);
+	lua_pushboolean(L, true);
+
+	return 1;
+}
+
+int DirectorManager::storeControlDevice(lua_State* L) {
+	if (checkArgumentCount(L, 2) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::storeControlDevice";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	SceneObject* deviceObj = (SceneObject*)lua_touserdata(L, -2);
+	CreatureObject* player = (CreatureObject*)lua_touserdata(L, -1);
+
+	if (deviceObj == nullptr || player == nullptr || !deviceObj->isControlDevice()) {
+		lua_pushboolean(L, false);
+		return 1;
+	}
+
+	ControlDevice* device = cast<ControlDevice*>(deviceObj);
+	Locker locker(device);
+	Locker crossLocker(player, device);
+	device->storeObject(player, true);
+	lua_pushboolean(L, true);
+
+	return 1;
+}
+
+int DirectorManager::getControlledObject(lua_State* L) {
+	if (checkArgumentCount(L, 1) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::getControlledObject";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	SceneObject* deviceObj = (SceneObject*)lua_touserdata(L, -1);
+
+	if (deviceObj == nullptr || !deviceObj->isControlDevice()) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	ControlDevice* device = cast<ControlDevice*>(deviceObj);
+	ManagedReference<TangibleObject*> controlled = device->getControlledObject();
+
+	if (controlled == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	controlled->_setUpdated(true);
+	lua_pushlightuserdata(L, controlled.get());
 
 	return 1;
 }

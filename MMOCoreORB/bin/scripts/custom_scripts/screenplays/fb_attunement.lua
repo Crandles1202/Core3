@@ -204,6 +204,7 @@ function FbAttunement:onEnterArea(pArea, pCreature)
 	self:grant(pCreature, "places", "visit:" .. key, kind == "shrine" and 3 or 8, "stir_place")
 	if kind == "shrine" then self:startMeditationWatch(pCreature, key) end
 	if kind == "shrine" and FbTrials ~= nil then FbTrials:onShrine(pCreature, key) end
+	if kind == "shrine" and FbCompanion ~= nil then FbCompanion:onShrine(pCreature, key) end   -- 4b.5: the Padawan's trials
 	self:maybeVisit(pCreature)
 	return 0
 end
@@ -370,6 +371,7 @@ function FbAttunement:onIncap(pPlayer, pAttacker)
 	if pPlayer == nil then return 0 end
 	self:setFlag(pPlayer, "incapAt", os.time())
 	if FbBounty ~= nil then FbBounty:onPlayerDown(pPlayer) end   -- 4c: the hunters leave
+	if FbCompanion ~= nil then FbCompanion:onIncap(pPlayer, pAttacker) end   -- 4b.5: the companion's word, or the turned apprentice's win
 	return 0
 end
 
@@ -395,6 +397,7 @@ function FbAttunement:onKill(pPlayer, pVictim)
 	if FbMasters ~= nil then FbMasters.onKill(pPlayer, pVictim) end   -- 4b.1/4b.2: the Masters' kill tasks
 	if FbAlignment ~= nil then FbAlignment:onKill(pPlayer, pVictim) end   -- 4b.3: the score
 	if FbBounty ~= nil then FbBounty:maybe(pPlayer) end   -- 4c: a fight may bring the hunters
+	if FbCompanion ~= nil then FbCompanion:onKill(pPlayer, pVictim) end   -- 4b.5: the companion grows with the kills it sees
 	-- the fight may still be on: look again in 20 s
 	createEvent(20000, "FbAttunement", "maybeVisitLater", pPlayer, "")
 	return 0
@@ -522,6 +525,10 @@ function FbAttunement:showStatus(pPlayer)
 	end
 	if FbBounty ~= nil then
 		local line = FbBounty:statusLine(pPlayer)
+		if line ~= nil then CreatureObject(pPlayer):sendSystemMessage(line) end
+	end
+	if FbCompanion ~= nil then
+		local line = FbCompanion:statusLine(pPlayer)
 		if line ~= nil then CreatureObject(pPlayer):sendSystemMessage(line) end
 	end
 	local lore = self:loreCount(pPlayer)

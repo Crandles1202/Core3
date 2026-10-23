@@ -816,6 +816,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkSithMaster()
 		FbLabTests.checkAlignment()
 		FbLabTests.checkKnight()
+		FbLabTests.checkCompanion()
 		FbLabTests.checkCrystals()
 		FbLabTests.checkBounty()
 	end)
@@ -3268,6 +3269,94 @@ function FbLabTests.checkKnight()
 			for _, k in ipairs({ "offer", "go", "given", "wait", "report", "done", "spare", "kill", "graduated" }) do need(prefix .. "knight_" .. k) end
 		end
 		check("knight.strings", #missing == 0, #missing == 0 and "every line of the trial" or ("missing: " .. table.concat(missing, ", ")))
+	end
+end
+
+-- ---------------------------------------------------------------- Phase 4b.5: the companion
+
+local function companionLine(charName, pPlayer)
+	local m = FbMasters ~= nil and FbMasters.of(pPlayer) or nil
+	local _, pPet = FbCompanion:isOut(pPlayer)
+	print("INFO companion char=" .. charName .. " " .. FbCompanion:status(pPlayer)
+		.. " petName=" .. (pPet and tostring(SceneObject(pPet):getCustomObjectName()) or "-")
+		.. " petCombat=" .. (pPet and tostring(CreatureObject(pPet):isInCombat()) or "-")
+		.. " screen=" .. tostring(m and m:screenFor(pPlayer) or "-")
+		.. " align=" .. tostring(FbAlignment and FbAlignment:score(pPlayer) or "-")
+		.. " statusLine=" .. tostring(FbCompanion:statusLine(pPlayer) or "-"))
+end
+-- companion:<char> → the companion's state, the pet, the Master's opening screen
+function FbLabTests:companion(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	companionLine(charName, pPlayer)
+	return "ok"
+end
+local function companionDo(name, fn)
+	FbLabTests[name] = function(self, charName, a, b)
+		local pPlayer = loadedPlayer(charName)
+		if pPlayer == nil then return "offline" end
+		print("INFO " .. name .. " ok=" .. tostring(fn(pPlayer, a, b)))
+		companionLine(charName, pPlayer)
+		return "ok"
+	end
+end
+-- companionGive:<char> → taken from the Master without the conversation; companionCall / companionStore → the pet out / away
+companionDo("companionGive", function(p) return FbCompanion:give(p) end)
+companionDo("companionCall", function(p) return FbCompanion:call(p) end)
+companionDo("companionStore", function(p) return FbCompanion:store(p) end)
+-- companionKills:<char>:<n> → n kills credited with the companion out (the stages follow)
+companionDo("companionKills", function(p, n) return FbCompanion:credit(p, tonumber(n) or 1) end)
+-- companionDefend:<char>:<attackerOid> → as if the attacker hit the character: the companion goes for it
+companionDo("companionDefend", function(p, oid) local pMob = getSceneObject(tonumber(oid) or 0); if pMob == nil then return false end; FbCompanion:onDamage(p, pMob, 1); return true end)
+-- companionSpeak:<char>:<kind> → one line of that kind (idle, fight, kill, down, shrine, farewell, betray_last)
+companionDo("companionSpeak", function(p, kind) local _, d = FbCompanion:sideOf(p); return d ~= nil and FbCompanion:speak(p, kind, d[kind] or 1) end)
+-- companionTrialGive:<char>, companionShrine:<char>:<shrineKey>, companionKnight:<char> → the light capstone
+companionDo("companionTrialGive", function(p) return FbCompanion:trialGive(p) end)
+companionDo("companionShrine", function(p, key) FbCompanion:onShrine(p, key); return true end)
+companionDo("companionKnight", function(p) return FbCompanion:knight(p) end)
+-- companionBetray:<char>, companionTurn:<char> (the turn now, whatever the day's roll), companionLose:<char> (the turned apprentice wins)
+companionDo("companionBetray", function(p) return FbCompanion:betray(p) end)
+companionDo("companionTurn", function(p) return FbCompanion:turn(p) end)
+companionDo("companionLose", function(p) local pT = FbCompanion:turnedOf(p); if pT == nil then return false end; FbCompanion:onIncap(p, pT); return true end)
+companionDo("companionReset", function(p) FbCompanion:reset(p); return true end)
+
+function FbLabTests.checkCompanion()
+	check("companion.loaded", FbCompanion ~= nil and FbCompanion.sides ~= nil)
+	if FbCompanion == nil then return end
+	for side, d in pairs(FbCompanion.sides) do
+		local files = { table.unpack(d.stages) }
+		if d.turned ~= nil then files[#files + 1] = d.turned end
+		for _, name in ipairs(files) do
+			local f = io.open("scripts/mobile/quest/tatooine/" .. name .. ".lua", "r")
+			check("companion." .. side .. "." .. name, f ~= nil, name .. ".lua"); if f ~= nil then f:close() end
+		end
+	end
+	local function fileText(path) local f = io.open(path, "r"); if f == nil then return nil end; local t = f:read("a"); f:close(); return t end
+	local conv = { light = fileText("scripts/mobile/conversations/tasks/fb_jedi_master_conv.lua"), dark = fileText("scripts/mobile/conversations/tasks/fb_sith_master_conv.lua") }
+	local screens = { light = { "comp_offer", "comp_take", "comp_later", "comp_has", "comp_trial_offer", "comp_trial_go", "comp_trial_wait", "comp_trial_report", "comp_knighted", "comp_knighted_after" },
+		dark = { "comp_offer", "comp_take", "comp_later", "comp_dark_has", "comp_betray_ask", "comp_betray_do", "comp_betrayed_after", "comp_turned_wait", "comp_former_after", "comp_slain_after" } }
+	for side, list in pairs(screens) do
+		local missing = {}
+		for _, id in ipairs(list) do if conv[side] == nil or not conv[side]:find('screen("' .. id .. '"', 1, true) then missing[#missing + 1] = id end end
+		check("companion." .. side .. ".screens", #missing == 0, #missing == 0 and "every screen" or ("missing: " .. table.concat(missing, ", ")))
+	end
+	local hooks = fileText("scripts/custom_scripts/screenplays/fb_attunement.lua") or ""
+	local masters = fileText("scripts/custom_scripts/screenplays/fb_masters.lua") or ""
+	check("companion.hooks", hooks:find("FbCompanion:onKill", 1, true) ~= nil and hooks:find("FbCompanion:onIncap", 1, true) ~= nil and hooks:find("FbCompanion:onShrine", 1, true) ~= nil
+		and masters:find("FbCompanion:screenFor", 1, true) ~= nil and masters:find("FbCompanion:onLogin", 1, true) ~= nil and masters:find("FbCompanion:reset", 1, true) ~= nil, "attunement kill/incap/shrine, Masters screen/login/reset")
+	check("companion.bindings", type(callControlDevice) == "function" and type(storeControlDevice) == "function" and type(getControlledObject) == "function", "callControlDevice / storeControlDevice / getControlledObject (DirectorManager)")
+	local text = fileText("../../tre-src/string/en/fb_force.stf.txt")
+	if text ~= nil then
+		local missing = {}
+		local function need(k) if not text:find("\n" .. k .. " = ", 1, true) then missing[#missing + 1] = k end end
+		for _, k in ipairs({ "offer", "take", "later", "has", "trial_offer", "trial_go", "trial_wait", "trial_report", "knighted", "knighted_after" }) do need("master_comp_" .. k) end
+		for _, k in ipairs({ "offer", "take", "later", "has", "betray_ask", "betray_do", "betrayed_after", "turned_wait", "former_after", "slain_after" }) do need("sith_comp_" .. k) end
+		for _, k in ipairs({ "light_given", "light_stage2", "light_stage3", "light_trial_given", "light_trial_shrine", "light_trial_ready", "light_knighted", "dark_given", "dark_stage2", "dark_stage3", "dark_betrayed", "dark_turned", "dark_lost", "dark_slain", "dark_escaped",
+			"status_light", "status_dark", "status_knighted", "status_betrayed", "status_hunted", "status_former", "status_slain", "light_down_1", "light_shrine_1", "light_farewell_1", "dark_down_1", "dark_betray_last_1", "dark_turn_1", "dark_win_1" }) do need("comp_" .. k) end
+		for side, d in pairs(FbCompanion.sides) do
+			for _, kind in ipairs({ "idle", "fight", "kill" }) do for n = 1, d[kind] do need("comp_" .. side .. "_" .. kind .. "_" .. n) end end
+		end
+		check("companion.strings", #missing == 0, #missing == 0 and "every line" or ("missing: " .. table.concat(missing, ", ")))
 	end
 end
 
