@@ -1064,11 +1064,11 @@ end
 function FbLabTests:where(charName)
 	local pPlayer = loadedPlayer(charName)
 	if pPlayer == nil then return "offline" end
-	local line = string.format("INFO where char=%s oid=%d zone=%s x=%.1f z=%.1f y=%.1f cell=%d lx=%.2f ly=%.2f posture=%d combat=%s incap=%s dead=%s", charName,
+	local line = string.format("INFO where char=%s oid=%d zone=%s x=%.1f z=%.1f y=%.1f cell=%d lx=%.2f ly=%.2f posture=%d combat=%s incap=%s dead=%s swimming=%s", charName,
 		SceneObject(pPlayer):getObjectID(), SceneObject(pPlayer):getZoneName(),
 		SceneObject(pPlayer):getWorldPositionX(), SceneObject(pPlayer):getWorldPositionZ(), SceneObject(pPlayer):getWorldPositionY(),
 		SceneObject(pPlayer):getParentID(), SceneObject(pPlayer):getPositionX(), SceneObject(pPlayer):getPositionY(), CreatureObject(pPlayer):getPosture(),
-		tostring(CreatureObject(pPlayer):isInCombat()), tostring(CreatureObject(pPlayer):isIncapacitated()), tostring(CreatureObject(pPlayer):isDead()))
+		tostring(CreatureObject(pPlayer):isInCombat()), tostring(CreatureObject(pPlayer):isIncapacitated()), tostring(CreatureObject(pPlayer):isDead()), tostring(CreatureObject(pPlayer):hasState(262144) == 1))
 	print(line)
 	return line
 end
@@ -2134,7 +2134,8 @@ function FbLabTests:terrainHeights(planet, pts)
 		local x, y = pair:match("^%s*(-?[%d%.]+)%s*,%s*(-?[%d%.]+)%s*$")
 		if x ~= nil then
 			n = n + 1
-			print(string.format("INFO terrain x=%s y=%s z=%.2f", x, y, getTerrainHeightAt(planet, tonumber(x), tonumber(y))))
+			local z, water = getTerrainHeightAt(planet, tonumber(x), tonumber(y)), getWaterHeightAt(planet, tonumber(x), tonumber(y))
+			print(string.format("INFO terrain x=%s y=%s z=%.2f water=%s", x, y, z, water and string.format("%.2f", water) or "-"))
 		end
 	end
 	return tostring(n)

@@ -1175,3 +1175,14 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
     server's `where` line and says "indoors" when it is.
   - The API caps **strict tools at 20**; adding `clone` made 21 and both pilots died on a 400 at their first wake. Tools
     without arguments go unstrict, and a decider exception is now a 120 s wait, not the end of the pilot.
+  - **Wex walked into the sea.** His "best spot" for Bomide (−3072, −3648 on Corellia) is 37 m under water: the
+    server snaps a walking player to `findClosestWorldFloor`, which on open water is the surface (z −1.0), sets the
+    SWIMMING state, and `SurveySession::startSurvey` then refuses with `@error_message:survey_swimming` — a string-id
+    system message the bot client does not decode, so the seat saw "no SurveyMessage within 10 s" and nothing else.
+    The lab character surveyed fine at the same spot because a teleport sets z to the terrain and never swims. Found by
+    comparing the two characters' `where` lines (z −1.0 vs −37.6). Fixes: `getWaterHeightAt(zone, x, y)` Lua binding,
+    the resource oracle's best spots skip underwater points, `terrainHeights` prints `water=`, `where` prints
+    `swimming=` (`hasState(0x40000)`; the binding returns a number, compare with 1), the pilot's condition says
+    "swimming … walk back to land". `pendingTask:<char>:<name>[:cancel]` oracle (new exact-name bindings
+    `hasPendingTaskNamed` / `cancelPendingTaskNamed`; the stock Lua ones build `screenplay:key` names) came out of the
+    first, wrong theory and stays as a lab tool.

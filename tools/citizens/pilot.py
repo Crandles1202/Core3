@@ -232,7 +232,13 @@ class Senses:
 
     @staticmethod
     def condition_of(f):
-        return "dead (clone first)" if f.get("dead") == "true" else "incapacitated" if f.get("incap") == "true" else "fine"
+        if f.get("dead") == "true":
+            return "dead (clone first)"
+        if f.get("incap") == "true":
+            return "incapacitated"
+        if f.get("swimming") == "true":
+            return "swimming in open water: nothing can be surveyed, sampled or placed here; walk back to land first"
+        return "fine"
 
     def gather(self):
         ping = self.seat.request({"op": "ping"})
@@ -412,6 +418,8 @@ def seat_tools(seat, files, character_name, seat_name):
             return "dead: you cannot move or act until you clone (tool clone)"
         if f.get("incap") == "true":
             return "incapacitated: wait a minute, you get up on your own"
+        if f.get("swimming") == "true":
+            return "swimming in open water: walk back to land before surveying, sampling or placing"
         return "fine" if f else None
 
     def my_health(returning=None):

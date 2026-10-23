@@ -528,6 +528,7 @@ void DirectorManager::initializeLuaEngine(Lua* luaEngine) {
 	luaEngine->registerFunction("getGCWDiscount", getGCWDiscount);
 	luaEngine->registerFunction("getTerrainHeight", getTerrainHeight);
 	luaEngine->registerFunction("getTerrainHeightAt", getTerrainHeightAt);
+	luaEngine->registerFunction("getWaterHeightAt", getWaterHeightAt);
 	luaEngine->registerFunction("findPath", findPath);
 	luaEngine->registerFunction("getResourceSpawns", getResourceSpawns);
 	luaEngine->registerFunction("getResourceDensityAt", getResourceDensityAt);
@@ -4114,6 +4115,36 @@ int DirectorManager::getTerrainHeightAt(lua_State* L) {
 	return 1;
 }
 
+// Final Boss (Phase 7.6a): getWaterHeightAt(zoneName, x, y) → the water surface height at that point, or nil where there is
+// no water. A player who walks onto the sea is snapped to the surface and swims (DataTransform → findClosestWorldFloor),
+// and a swimmer can neither survey nor sample nor place anything; the resource oracle keeps its best spots on land.
+int DirectorManager::getWaterHeightAt(lua_State* L) {
+	if (checkArgumentCount(L, 3) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::getWaterHeightAt";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	float y = lua_tonumber(L, -1);
+	float x = lua_tonumber(L, -2);
+	String zoneName = lua_tostring(L, -3);
+
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	Zone* zone = zoneServer != nullptr ? zoneServer->getZone(zoneName) : nullptr;
+	PlanetManager* planetManager = zone != nullptr ? zone->getPlanetManager() : nullptr;
+	TerrainManager* terrainManager = planetManager != nullptr ? planetManager->getTerrainManager() : nullptr;
+
+	float waterHeight = 0;
+	if (terrainManager == nullptr || !terrainManager->getWaterHeight(x, y, waterHeight)) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	lua_pushnumber(L, waterHeight);
+	return 1;
+}
+
 // Final Boss (Phase 7.1): the AI pathfinder for Lua. findPath(zoneName, x1, y1, x2, y2) returns a table of
 // {x, z, y} waypoints from the first point to the second over the terrain (no cells: outdoor to outdoor),
 // each z the terrain height there, or nil when the zone is unknown or no path exists. A seat walks it.
@@ -4562,12 +4593,20 @@ int DirectorManager::harvesterAddToHopper(lua_State* L) {
 static void fbPushResourceBestSpots(lua_State* L, ResourceSpawn* spawn, const String& zoneName) {
 	const float lo = -8192.f, hi = 8192.f;
 	const float coarse = 256.f;
+	// a best spot under the sea is no use to anyone (Wex walked 2.6 km into Corellia's ocean after one): land only
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	Zone* zone = zoneServer != nullptr ? zoneServer->getZone(zoneName) : nullptr;
+	TerrainManager* terrainManager = (zone != nullptr && zone->getPlanetManager() != nullptr) ? zone->getPlanetManager()->getTerrainManager() : nullptr;
+	auto underwater = [&](float x, float y) -> bool {
+		float water = 0;
+		return terrainManager != nullptr && terrainManager->getWaterHeight(x, y, water) && zone->getHeight(x, y) < water;
+	};
 	// top three coarse peaks, kept apart by at least 1 km
 	Vector<Vector3> peaks;
 	for (float y = lo; y <= hi; y += coarse) {
 		for (float x = lo; x <= hi; x += coarse) {
 			float d = spawn->getDensityAt(zoneName, x, y);
-			if (d <= 0.05f)
+			if (d <= 0.05f || underwater(x, y))
 				continue;
 			bool nearExisting = false;
 			for (int i = 0; i < peaks.size(); ++i) {
@@ -4603,7 +4642,7 @@ static void fbPushResourceBestSpots(lua_State* L, ResourceSpawn* spawn, const St
 				if (x < lo || x > hi || y < lo || y > hi)
 					continue;
 				float d = spawn->getDensityAt(zoneName, x, y);
-				if (d > best.getZ())
+				if (d > best.getZ() && !underwater(x, y))
 					best = Vector3(x, y, d);
 			}
 		}
