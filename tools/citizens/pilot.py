@@ -351,6 +351,31 @@ def seat_tools(seat, files, character_name, seat_name):
     def _names_of(otype):
         return sorted({o["name"] for o in _objects() if o["type"] == otype})
 
+    def _travel_points(planet):
+        seat_mod = load_seat_module()
+        pts = []
+        for line in seat_mod.lab(f"travelPoints:{planet}", 20).splitlines():
+            if line.startswith("INFO travelpoint "):
+                f = seat_mod.lab_fields(line)
+                pts.append({"name": f.get("name"), "x": float(f.get("x")), "y": float(f.get("y")),
+                            "interplanetary": f.get("interplanetary") == "1"})
+        return pts
+
+    def _nearest_point(pts, x, y):
+        best = None
+        for p in pts:
+            d = ((p["x"] - x) ** 2 + (p["y"] - y) ** 2) ** 0.5
+            if best is None or d < best["distance"]:
+                best = {"name": p["name"], "distance": round(d)}
+        return best
+
+    def travel_points(planet):
+        """the shuttle and starport points of a planet, with positions: where a shuttle can take you"""
+        pts = _travel_points(planet)
+        if not pts:
+            return {"ok": False, "error": f"no travel points on '{planet}' (planet names: tatooine, corellia, naboo, …)"}
+        return {"ok": True, "planet": planet, "points": pts}
+
     def resources_here(resource_class):
         """the resource oracle for the planet the character is on (the citizens' spreadsheet)"""
         seat_mod = load_seat_module()
@@ -358,6 +383,7 @@ def seat_tools(seat, files, character_name, seat_name):
         if not isinstance(planet, str):
             return {"ok": False, "error": "planet unknown (no scene yet)"}
         rows = []
+        shuttles = _travel_points(planet)
         want = (resource_class or "").strip().lower()
         tool_code = RESOURCE_TOOLS.get(want)
         # a known class word selects by the survey tool that finds it; any other word is a text filter on the oracle
@@ -369,11 +395,18 @@ def seat_tools(seat, files, character_name, seat_name):
                     continue
                 if tool_code is None and tool < 0 and want != "all":
                     continue   # creature resources (hides, meat, bone) come from hunting, not from a survey tool
+                spots = []
+                for spot in (f.get("best") or "").split(";"):
+                    v = spot.split(",")
+                    if len(v) >= 3:
+                        sx, sy = float(v[0]), float(v[1])
+                        spots.append({"x": sx, "y": sy, "density": float(v[2]), "nearest_shuttle": _nearest_point(shuttles, sx, sy)})
                 best = (f.get("best") or "").split(";")[0].split(",")
                 attrs = dict(kv.split("=", 1) for kv in (f.get("attrs") or "").split(",") if "=" in kv)
                 rows.append({"name": f.get("name"), "class": f.get("class"), "family": f.get("family"),
                              "tool": TOOL_NAMES.get(tool, "none (hunted)"),
                              "best": {"x": float(best[0]), "y": float(best[1]), "density": float(best[2])} if len(best) >= 3 else None,
+                             "spots": spots,
                              "attributes": attrs})
         return {"ok": True, "planet": planet, "resources": rows[:40]}
 
@@ -609,7 +642,7 @@ def seat_tools(seat, files, character_name, seat_name):
         "say": say, "tell": tell, "emote": emote, "walk_to": walk_to, "travel_to": travel_to,
         "resources_here": resources_here, "survey": survey, "sample": sample, "place_harvester": place_harvester,
         "harvester": harvester, "harvester_status": harvester_status, "my_structures": my_structures,
-        "my_health": my_health, "clone": clone, "my_inventory": my_inventory, "creatures_near": creatures_near, "hunt": hunt, "tend_harvesters": tend_harvesters,
+        "my_health": my_health, "clone": clone, "my_inventory": my_inventory, "travel_points": travel_points, "creatures_near": creatures_near, "hunt": hunt, "tend_harvesters": tend_harvesters,
         "remember": remember, "complete_milestone": complete_milestone, "change_plan": change_plan, "rest": rest,
     }
     schema = [
@@ -623,7 +656,7 @@ def seat_tools(seat, files, character_name, seat_name):
          "input_schema": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "required": ["x", "y"], "additionalProperties": False}, "strict": True},
         {"name": "travel_to", "description": "Take the shuttle to a travel point: walk to the nearest terminal, buy a ticket (a few hundred credits), board when the shuttle lands. Points are named like Mos_Eisley_Starport, Coronet_Starport, Theed_Starport, Bestine_Shuttleport; another planet needs a starport on both ends. Takes minutes.",
          "input_schema": {"type": "object", "properties": {"planet": {"type": "string"}, "point": {"type": "string"}}, "required": ["planet", "point"], "additionalProperties": False}, "strict": True},
-        {"name": "resources_here", "description": "What resources are currently spawning on this planet (name, class, best spot and density, stats). Class filter by the survey tool that finds it: mineral, chemical, flora, gas, water, wind, solar, geothermal, fusion; empty = everything a tool can find; 'all' adds creature resources (hides, meat: hunted, not surveyed). Use the exact name from here with survey.",
+        {"name": "resources_here", "description": "What resources are currently spawning on this planet (name, class, best spot and density, stats). Class filter by the survey tool that finds it: mineral, chemical, flora, gas, water, wind, solar, geothermal, fusion; empty = everything a tool can find; 'all' adds creature resources (hides, meat: hunted, not surveyed). Each resource lists up to three land spots with the nearest shuttle point and its distance: travel_to that point, then walk. Use the exact name from here with survey.",
          "input_schema": {"type": "object", "properties": {"resource_class": {"type": "string"}}, "required": ["resource_class"], "additionalProperties": False}, "strict": True},
         {"name": "survey", "description": "Survey a resource (exact name from resources_here, or a unique fragment) with the survey tool you carry: how rich it is around you and the best nearby point. A mineral tool only finds minerals.",
          "input_schema": {"type": "object", "properties": {"resource": {"type": "string"}}, "required": ["resource"], "additionalProperties": False}, "strict": True},
@@ -639,6 +672,8 @@ def seat_tools(seat, files, character_name, seat_name):
          "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},
         {"name": "my_health", "description": "Your condition (fine, incapacitated, dead) and health/action/mind pools as current/max/wounds.",
          "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},
+        {"name": "travel_points", "description": "The shuttle and starport points of a planet with positions: pick the one nearest a spot, travel_to it, then walk the rest (under 2 km).",
+         "input_schema": {"type": "object", "properties": {"planet": {"type": "string"}}, "required": ["planet"], "additionalProperties": False}, "strict": True},
         {"name": "my_inventory", "description": "What you carry, by name with counts (deeds, tools, weapons, resources).",
          "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},
         {"name": "clone", "description": "When you are dead: revive at the closest cloning facility. Nothing else works until you do.",
