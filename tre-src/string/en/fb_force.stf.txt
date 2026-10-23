@@ -393,3 +393,17 @@ crystal_taken = You work a crystal free of the rock. It is %TO.
 crystal_power = You work a crystal free of the rock, and it hums in your hand. A power crystal.
 crystal_bare = The rock here is bare where someone has worked it. It will grow again.
 crystal_bag_full = Your hands are full; make room first.
+# ---- Phase 4c: the bounty, the hunters, the fixer
+bounty_placed = Somewhere a price has been put on you. You can feel the eyes.
+bounty_hunted = Hunters. They did not come to talk.
+bounty_squad_down = The hunters are down. There will be others; the price did not die with them.
+bounty_paid = Dax Ventrell takes %DI credits and the price comes off your head. For a while.
+bounty_short = You do not have that kind of money on you.
+bounty_status_active = There is a price on your head, and someone is collecting it.
+bounty_status_paid = The price on your head has been paid off, for now.
+fixer_nothing = You have the look of someone who wants something. I only deal in one thing, and you do not have the problem it fixes.
+fixer_paid = We have an arrangement, you and I. Come back when it runs out.
+fixer_offer = I know who you are, and I know what the people who want you are willing to pay. I can make the paper go away. Costs more than the paper is worth. That is how it works.
+fixer_price = Dax Ventrell wants %DI credits.
+fixer_pay = Pleasure. Walk slower for a while; you were drawing eyes.
+fixer_refuse = Then keep running. It is good for the legs.

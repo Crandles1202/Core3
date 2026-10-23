@@ -308,10 +308,10 @@ This phase has more sub-phases than the others because it's the most ambitious c
 
 #### 4c — NPC bounty hunters
 
-- **4c.1 \[M\] Visibility system.** Canonical SWG mechanic — actions raise your "visibility". Using saber in public, killing imperial NPCs as a Jedi, etc. High visibility → bounty placed.  
-- **4c.2 \[M\] NPC bounty hunter spawns.** When a bounty is active, NPC BH(s) hunt the player. Bounty hunter difficulty scales with player level and visibility. Defeat one → cooldown before next.  
-- **4c.3 \[S\] Bounty hunter NPC tracking missions for BH profession players.** BH players can take NPC bounty contracts independently — gives the BH profession solo content too.  
-- **4c.4 \[M\] Dark Jedi spawns hunt light-aligned players** and vice versa, at high alignment. Adds risk to picking a side hard.
+- **4c.1 \[M\] Visibility system.** ✅ 2026-10-23 — stock visibility is the score, the terminal threshold puts the price on (scenario `bounty`). Canonical SWG mechanic — actions raise your "visibility". Using saber in public, killing imperial NPCs as a Jedi, etc. High visibility → bounty placed.  
+- **4c.2 \[M\] NPC bounty hunter spawns.** ✅ 2026-10-23 — hunters by level and rank at the trigger and a five-minute tick, cooldowns, the fixer in the Mos Eisley cantina. When a bounty is active, NPC BH(s) hunt the player. Bounty hunter difficulty scales with player level and visibility. Defeat one → cooldown before next.  
+- **4c.3 \[S\] Bounty hunter NPC tracking missions for BH profession players.** Stock already does this (a visible Jedi is listed on the bounty terminals); nothing added on a solo server. BH players can take NPC bounty contracts independently — gives the BH profession solo content too.  
+- **4c.4 \[M\] Dark Jedi spawns hunt light-aligned players** ✅ 2026-10-23 — at |alignment| ≥ 60 one hunter of the squad is a Force user of the other side. And vice versa, at high alignment. Adds risk to picking a side hard.
 
 **Branch:** `feature/jedi-rework`. Depends on Phase 3 (living galaxy) for ambient world.
 

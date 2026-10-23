@@ -309,6 +309,11 @@ FbLabTests.eventNpcs = {
 	fb_vision_exar_kun = { conversation = false, spawnedAtBoot = false }, -- Phase 4a.4
 	fb_hunter_chief = { spawnedAtBoot = false, convoFile = "scripts/mobile/conversations/tasks/fb_knight_boss_conv.lua" },      -- Phase 4b.4
 	fb_nightsister_witch = { spawnedAtBoot = false, convoFile = "scripts/mobile/conversations/tasks/fb_knight_boss_conv.lua" }, -- Phase 4b.4
+	fb_bounty_thug = { conversation = false, spawnedAtBoot = false },        -- Phase 4c
+	fb_bounty_hunter = { conversation = false, spawnedAtBoot = false },      -- Phase 4c
+	fb_bounty_veteran = { conversation = false, spawnedAtBoot = false },     -- Phase 4c
+	fb_bounty_dark_hunter = { conversation = false, spawnedAtBoot = false }, -- Phase 4c
+	fb_bounty_light_hunter = { conversation = false, spawnedAtBoot = false }, -- Phase 4c
 }
 
 function FbLabTests.checkNpc(npc)
@@ -812,6 +817,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkAlignment()
 		FbLabTests.checkKnight()
 		FbLabTests.checkCrystals()
+		FbLabTests.checkBounty()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)
@@ -986,6 +992,20 @@ function FbLabTests:takeItems(charName, fragment)
 	return tostring(taken)
 end
 
+-- xpSet:<char>:<type>:<amount> → that experience pool set to the amount (through awardExperience by the difference,
+-- so the stock caps apply: a reused character hit the jedi_general cap and a Master's reward could not add)
+function FbLabTests:xpSet(charName, xpType, amount)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pGhost = CreatureObject(pPlayer):getPlayerObject()
+	if pGhost == nil then print("ERROR " .. charName .. " has no player object"); return "none" end
+	local have = PlayerObject(pGhost):getExperience(xpType)
+	local want = tonumber(amount) or 0
+	if want ~= have then CreatureObject(pPlayer):awardExperience(xpType, want - have, false) end
+	print(string.format("INFO xpSet char=%s type=%s was=%d now=%d", charName, tostring(xpType), have, PlayerObject(pGhost):getExperience(xpType)))
+	return "ok"
+end
+
 -- revive:<char> → a dead or incapacitated lab character back on its feet with full pools (what a cloning would do,
 -- without the cloner); harmless on a healthy one
 function FbLabTests:revive(charName)
@@ -995,11 +1015,11 @@ function FbLabTests:revive(charName)
 	local was = string.format("dead=%s incap=%s posture=%d", tostring(c:isDead()), tostring(c:isIncapacitated()), c:getPosture())
 	-- only a character that is down: a seated one must stay seated across a login (the shrine meditation and the
 	-- Masters' sit tasks count on it; standing everyone up at every login failed all of them, gate 2026-10-22)
+	c:clearCombatState(true)   -- always: a lab character left "in combat" is refused a hunt, a talk, a sit
 	if not (c:isDead() or c:isIncapacitated() or c:getPosture() == 13 or c:getPosture() == 14) then
-		print("INFO revive char=" .. charName .. " not needed (" .. was .. ")")
+		print("INFO revive char=" .. charName .. " not needed (" .. was .. "), combat cleared")
 		return "ok"
 	end
-	c:clearCombatState(true)
 	for _, pool in ipairs({ 0, 3, 6 }) do c:setHAM(pool, c:getMaxHAM(pool)) end
 	-- a real posture change: setPosture is a no-op when the posture already reads upright, and the locomotion
 	-- (what every queued command checks) is only recomputed on a change — a character that died kept
@@ -1083,11 +1103,11 @@ end
 function FbLabTests:where(charName)
 	local pPlayer = loadedPlayer(charName)
 	if pPlayer == nil then return "offline" end
-	local line = string.format("INFO where char=%s oid=%d zone=%s x=%.1f z=%.1f y=%.1f cell=%d lx=%.2f ly=%.2f posture=%d combat=%s incap=%s dead=%s", charName,
+	local line = string.format("INFO where char=%s oid=%d zone=%s x=%.1f z=%.1f y=%.1f cell=%d lx=%.2f ly=%.2f posture=%d combat=%s incap=%s dead=%s swimming=%s", charName,
 		SceneObject(pPlayer):getObjectID(), SceneObject(pPlayer):getZoneName(),
 		SceneObject(pPlayer):getWorldPositionX(), SceneObject(pPlayer):getWorldPositionZ(), SceneObject(pPlayer):getWorldPositionY(),
 		SceneObject(pPlayer):getParentID(), SceneObject(pPlayer):getPositionX(), SceneObject(pPlayer):getPositionY(), CreatureObject(pPlayer):getPosture(),
-		tostring(CreatureObject(pPlayer):isInCombat()), tostring(CreatureObject(pPlayer):isIncapacitated()), tostring(CreatureObject(pPlayer):isDead()))
+		tostring(CreatureObject(pPlayer):isInCombat()), tostring(CreatureObject(pPlayer):isIncapacitated()), tostring(CreatureObject(pPlayer):isDead()), tostring(CreatureObject(pPlayer):hasState(262144) == 1))
 	print(line)
 	return line
 end
@@ -1591,7 +1611,8 @@ end
 -- objectAlive:<oid> → 1 if the object resolves and is in a zone, else 0
 function FbLabTests:objectAlive(oid)
 	local p = getSceneObject(tonumber(oid))
-	local alive = (p ~= nil and SceneObject(p):getZoneName() ~= "") and 1 or 0
+	-- a corpse is still an object in the zone for a while: a dead creature counts as not alive
+	local alive = (p ~= nil and SceneObject(p):getZoneName() ~= "" and not (SceneObject(p):isCreatureObject() and CreatureObject(p):isDead())) and 1 or 0
 	print(string.format("INFO object oid=%s alive=%d", tostring(oid), alive))
 	return tostring(alive)
 end
@@ -1901,6 +1922,136 @@ function FbLabTests:placement(filter)
 	return tostring(fails)
 end
 
+-- creatureHam:<oid> → health/action/mind of any creature (an NPC or a wild animal, by oid): how a fight is going
+function FbLabTests:creatureHam(oid)
+	local p = getSceneObject(tonumber(oid))
+	if p == nil or not SceneObject(p):isCreatureObject() then print("ERROR creatureHam: no creature " .. tostring(oid)); return "none" end
+	local c = CreatureObject(p)
+	print(string.format("INFO creatureHam oid=%s name=%s level=%d health=%d/%d action=%d/%d mind=%d/%d dead=%s incap=%s", tostring(oid),
+		(SceneObject(p):getDisplayedName():gsub(" ", "_")), c:getLevel(), c:getHAM(0), c:getMaxHAM(0), c:getHAM(3), c:getMaxHAM(3), c:getHAM(6), c:getMaxHAM(6),
+		tostring(c:isDead()), tostring(c:isIncapacitated())))
+	return tostring(c:getHAM(0))
+end
+
+-- A character's fighting strength for the pilot: the level the server computes from a weapon line
+-- (PlayerManager::calculatePlayerLevel: private_<weapon>_combat_difficulty / 100 + 1, capped at 25), taken over every
+-- line. The stored level is only recomputed when a skill box is awarded, so a veteran start made unarmed reads level 1
+-- for ever (Teyla: level 1, rifle difficulty 1150 = strength 12).
+local STRENGTH_LINES = { "unarmed", "onehandmelee", "twohandmelee", "polearm", "pistol", "carbine", "rifle", "heavyweapon" }
+local function fightingStrength(pPlayer)
+	local best = 0
+	for _, w in ipairs(STRENGTH_LINES) do
+		local mod = CreatureObject(pPlayer):getSkillMod("private_" .. w .. "_combat_difficulty") or 0
+		if mod > best then best = mod end
+	end
+	return math.min(25, math.floor(best / 100) + 1)
+end
+
+-- threats:<char>[:<radius>] → every live AI agent within radius (default 150 m) that is aggressive to the character
+-- (isAggressiveTo: aggressive creatures, enemy factions) or a wild creature above its strength: name, level, distance;
+-- first an INFO me line with the character's stored level and fighting strength. Five level-19 Tusken raiders of the
+-- story camp at 3985,-4770 took Teyla's 1100 health in one tick while she shot a worrt (2026-10-23): the pilot never
+-- saw them because the perception listed creatures, not NPCs.
+function FbLabTests:threats(charName, radius)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	radius = tonumber(radius) or 150
+	local zone = SceneObject(pPlayer):getZoneName()
+	local px, py = SceneObject(pPlayer):getWorldPositionX(), SceneObject(pPlayer):getWorldPositionY()
+	local strength = fightingStrength(pPlayer)
+	print(string.format("INFO me char=%s level=%d strength=%d x=%.1f y=%.1f", charName, CreatureObject(pPlayer):getLevel(), strength, px, py))
+	local objects = getObjectsInRange(zone, px, py, radius)
+	if objects == nil then print("ERROR threats: no zone " .. tostring(zone)); return "none" end
+	local n = 0
+	for _, o in ipairs(objects) do
+		if o.type == 0x400 or o.type == 0x401 then
+			local p = getSceneObject(o.oid)
+			if p ~= nil and SceneObject(p):isAiAgent() and not CreatureObject(p):isDead() then
+				local level = CreatureObject(p):getLevel()
+				local aggressive = AiAgent(p):isAggressiveTo(pPlayer)
+				if aggressive or (o.type == 0x400 and level > strength) then
+					n = n + 1
+					local d = math.sqrt((o.x - px) ^ 2 + (o.y - py) ^ 2)
+					print(string.format("INFO threat oid=%d name=%s template=%s level=%d distance=%.0f aggressive=%s x=%.1f y=%.1f",
+						o.oid, (o.name or ""):gsub("%s", "_"), tostring(o.template), level, d, tostring(aggressive), o.x, o.y))
+				end
+			end
+		end
+	end
+	print(string.format("INFO threats char=%s radius=%d count=%d strength=%d", charName, radius, n, strength))
+	return tostring(n)
+end
+
+-- resourceNear:<planet>:<resource>[:<radius>] → for every travel point of the planet, the best buildable land spot of that
+-- resource within radius m (default 1500, a 250 m grid): where a harvester can stand within a walk of a shuttle.
+function FbLabTests:resourceNear(planet, resource, radius)
+	radius = tonumber(radius) or 1500
+	local env, err = loadIsolated("scripts/managers/planet/planet_manager.lua")
+	local cfg = env ~= nil and env[planet] or nil
+	if cfg == nil or cfg.planetTravelPoints == nil then print("ERROR resourceNear: no travel points for " .. tostring(planet) .. " " .. tostring(err)); return "none" end
+	local points = cfg.planetTravelPoints
+	local n = 0
+	for _, tp in ipairs(points) do
+		local bx, by, bd = nil, nil, 0
+		for dy = -radius, radius, 250 do
+			for dx = -radius, radius, 250 do
+				local x, y = tp.x + dx, tp.y + dy
+				if x > -8191 and x < 8191 and y > -8191 and y < 8191 then
+					local d = getResourceDensityAt(resource, planet, x, y) or 0
+					if d > bd then
+						-- land, and a lot may be placed there (a town's no-build belt reaches 700–900 m past its walls)
+						local water = getWaterHeightAt(planet, x, y)
+						if (water == nil or getTerrainHeightAt(planet, x, y) >= water) and isBuildingPermittedAt(planet, x, y) then bx, by, bd = x, y, d end
+					end
+				end
+			end
+		end
+		if bx ~= nil and bd >= 0.1 then
+			n = n + 1
+			print(string.format("INFO resourceNear planet=%s resource=%s point=%s px=%.0f py=%.0f x=%.0f y=%.0f density=%.2f distance=%.0f",
+				planet, resource, tp.name, tp.x, tp.y, bx, by, bd, math.sqrt((bx - tp.x) ^ 2 + (by - tp.y) ^ 2)))
+		end
+	end
+	return tostring(n)
+end
+
+-- canBuildNear:<planet>:<x>:<y>[:<radius>] → is a structure permitted at x,y and, if not, the nearest permitted land point
+-- within radius m (default 200, 25 m rings): where to step to when a placement is refused as not_permitted.
+function FbLabTests:canBuildNear(planet, x, y, radius)
+	x, y, radius = tonumber(x), tonumber(y), tonumber(radius) or 200
+	if planet == nil or x == nil or y == nil then print("ERROR canBuildNear: planet x y [radius]"); return "none" end
+	local function ok(px, py)
+		if px <= -8191 or px >= 8191 or py <= -8191 or py >= 8191 then return false end
+		local water = getWaterHeightAt(planet, px, py)
+		return isBuildingPermittedAt(planet, px, py) and (water == nil or getTerrainHeightAt(planet, px, py) >= water)
+	end
+	if ok(x, y) then print(string.format("INFO canBuildNear planet=%s x=%.0f y=%.0f permitted=true", planet, x, y)); return "true" end
+	for r = 25, radius, 25 do
+		for k = 0, 15 do
+			local px, py = x + r * math.cos(k * math.pi / 8), y + r * math.sin(k * math.pi / 8)
+			if ok(px, py) then
+				print(string.format("INFO canBuildNear planet=%s x=%.0f y=%.0f permitted=false nearestX=%.0f nearestY=%.0f distance=%d", planet, x, y, px, py, r))
+				return "false"
+			end
+		end
+	end
+	print(string.format("INFO canBuildNear planet=%s x=%.0f y=%.0f permitted=false nearest=none within %d m", planet, x, y, radius))
+	return "false"
+end
+
+-- pendingTask:<char>:<name>[:cancel] → is a pending task of that name registered on the character (survey, sample,
+-- incapacitationRecovery, …); with cancel it is removed. A survey task left pending makes every later requestsurvey a
+-- silent no-op (RequestSurveyCommand returns SUCCESS without a word).
+function FbLabTests:pendingTask(charName, taskName, cancel)
+	local pPlayer = getPlayerByName(charName)
+	if pPlayer == nil then print("ERROR pendingTask: no player " .. tostring(charName)); return "none" end
+	local had = SceneObject(pPlayer):hasPendingTaskNamed(taskName)
+	if cancel == "cancel" and had then SceneObject(pPlayer):cancelPendingTaskNamed(taskName) end
+	print(string.format("INFO pendingTask char=%s task=%s pending=%s%s", charName, taskName, tostring(had),
+		(cancel == "cancel" and had) and " cancelled=true" or ""))
+	return tostring(had)
+end
+
 -- spawnNpcAt:<template>:<planet>:<x>:<y>[:<cell>[:<z>]] → a mobile for placement experiments (recorded
 -- like any FB spawn; remove with destroyObject)
 function FbLabTests:spawnNpcAt(template, planet, x, y, cell, z)
@@ -2140,7 +2291,8 @@ function FbLabTests:terrainHeights(planet, pts)
 		local x, y = pair:match("^%s*(-?[%d%.]+)%s*,%s*(-?[%d%.]+)%s*$")
 		if x ~= nil then
 			n = n + 1
-			print(string.format("INFO terrain x=%s y=%s z=%.2f", x, y, getTerrainHeightAt(planet, tonumber(x), tonumber(y))))
+			local z, water = getTerrainHeightAt(planet, tonumber(x), tonumber(y)), getWaterHeightAt(planet, tonumber(x), tonumber(y))
+			print(string.format("INFO terrain x=%s y=%s z=%.2f water=%s", x, y, z, water and string.format("%.2f", water) or "-"))
 		end
 	end
 	return tostring(n)
@@ -2207,6 +2359,31 @@ function FbLabTests:pathTo(a, b, c, d, e, f, g)
 	else
 		path = findPath(planet, x1, y1, x2, y2)
 	end
+	if path == nil and cell1 ~= 0 and cell2 == 0 then
+		-- the pathfinder leaves a building only for a target close to it (the cloning facility to a spot 190 m away
+		-- failed, 30 m away worked): step out first — a world point near the building the mesh can reach — then walk on
+		local pCell = getSceneObject(cell1)
+		local pBuilding = pCell ~= nil and SceneObject(pCell):getParent() or nil
+		if pBuilding ~= nil then
+			local bx, by = SceneObject(pBuilding):getWorldPositionX(), SceneObject(pBuilding):getWorldPositionY()
+			for _, r in ipairs({ 30, 45, 60 }) do
+				for k = 0, 7 do
+					local ex, ey = bx + r * math.cos(k * math.pi / 4), by + r * math.sin(k * math.pi / 4)
+					local out = findPath(planet, x1, y1, ex, ey, cell1, 0)
+					if out ~= nil and #out > 0 then
+						local on = findPath(planet, ex, ey, x2, y2)
+						if on ~= nil and #on > 0 then
+							path = out
+							for i = 1, #on do path[#path + 1] = on[i] end
+							print(string.format("INFO pathTo: left the building via %.1f,%.1f", ex, ey))
+							break
+						end
+					end
+				end
+				if path ~= nil then break end
+			end
+		end
+	end
 	if path == nil then print(string.format("ERROR pathTo: no path on %s from %.1f,%.1f (cell %d) to %.1f,%.1f (cell %d)", planet, x1, y1, cell1, x2, y2, cell2)); return "none" end
 	local parts, length, px, py, pc = {}, 0, x1, y1, cell1
 	for i, pt in ipairs(path) do
@@ -2227,9 +2404,14 @@ function FbLabTests:objectsNear(planet, x, y, range, otype)
 	local objects = otype and getObjectsInRange(planet, x, y, range, otype) or getObjectsInRange(planet, x, y, range)
 	if objects == nil then print("ERROR objectsNear: no zone " .. tostring(planet)); return "none" end
 	for _, o in ipairs(objects) do
-		print(string.format("INFO object oid=%d type=0x%x template=%s name=%s x=%.1f y=%.1f z=%.1f cell=%d cellName=%s building=%d localX=%.2f localY=%.2f localZ=%.2f",
+		local level = ""
+		if o.type == 0x400 or o.type == 0x401 then   -- a creature or an NPC: its level too (the pilot picks prey by it)
+			local p = getSceneObject(o.oid)
+			if p ~= nil and SceneObject(p):isCreatureObject() then level = " level=" .. CreatureObject(p):getLevel() end
+		end
+		print(string.format("INFO object oid=%d type=0x%x template=%s name=%s x=%.1f y=%.1f z=%.1f cell=%d cellName=%s building=%d localX=%.2f localY=%.2f localZ=%.2f%s",
 			o.oid, o.type, o.template, (o.name or ""):gsub("%s", "_"), o.x, o.y, o.z, o.cell, o.cellName ~= "" and o.cellName or "-", o.building,
-			o.localX or 0, o.localY or 0, o.localZ or 0))
+			o.localX or 0, o.localY or 0, o.localZ or 0, level))
 	end
 	return tostring(#objects)
 end
@@ -3149,6 +3331,77 @@ function FbLabTests.checkCrystals()
 		local missing = {}
 		for _, k in ipairs({ "radial", "taken", "power", "bare", "bag_full" }) do if not text:find("\ncrystal_" .. k .. " = ", 1, true) then missing[#missing + 1] = k end end
 		check("crystals.strings", #missing == 0, #missing == 0 and "every line" or ("missing: " .. table.concat(missing, ", ")))
+	end
+end
+
+-- ---------------------------------------------------------------- Phase 4c: the bounty
+
+local function bountyLine(charName, pPlayer) print("INFO bounty char=" .. charName .. " " .. FbBounty:status(pPlayer)) end
+function FbLabTests:bounty(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	FbBounty:updateAmount(pPlayer)
+	bountyLine(charName, pPlayer)
+	print("INFO bounty fixerScreen=" .. FbBounty:fixerScreen(pPlayer) .. " fixer=" .. tostring(FbBounty:fixerNpc() ~= nil))
+	return "ok"
+end
+-- bountySet:<char>:<visibility> → the stock visibility set to that value (what saber and Force use raise)
+function FbLabTests:bountySet(charName, vis)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pGhost = CreatureObject(pPlayer):getPlayerObject()
+	if pGhost ~= nil then PlayerObject(pGhost):setVisibility(tonumber(vis) or 0) end
+	FbBounty:updateAmount(pPlayer)
+	bountyLine(charName, pPlayer)
+	return "ok"
+end
+-- bountyTick:<char> → the trigger once, now (a hunt if one is due)
+function FbLabTests:bountyTick(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local ok, why = FbBounty:due(pPlayer)
+	print("INFO bountyTick hunt=" .. tostring(FbBounty:maybe(pPlayer)) .. " was=" .. tostring(ok) .. "(" .. tostring(why) .. ") " .. FbBounty:status(pPlayer))
+	return "ok"
+end
+-- bountyPay:<char> → pay the fixer without the conversation
+function FbLabTests:bountyPay(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	print("INFO bountyPay paid=" .. tostring(FbBounty:pay(pPlayer)))
+	bountyLine(charName, pPlayer)
+	return "ok"
+end
+-- bountyClear:<char> → the price, the pause, the cooldown and the hunters gone; visibility to 0
+function FbLabTests:bountyClear(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	FbBounty:reset(pPlayer)
+	local pGhost = CreatureObject(pPlayer):getPlayerObject()
+	if pGhost ~= nil then PlayerObject(pGhost):setVisibility(0) end
+	bountyLine(charName, pPlayer)
+	return "ok"
+end
+
+function FbLabTests.checkBounty()
+	check("bounty.loaded", FbBounty ~= nil and FbBounty.tiers ~= nil)
+	if FbBounty == nil then return end
+	for _, t in ipairs(FbBounty.tiers) do
+		local mf = io.open("scripts/mobile/quest/tatooine/" .. t.template .. ".lua", "r")
+		check("bounty.tier." .. t.template, mf ~= nil); if mf ~= nil then mf:close() end
+	end
+	for side, t in pairs(FbBounty.forceHunters) do
+		local mf = io.open("scripts/mobile/quest/tatooine/" .. t .. ".lua", "r")
+		check("bounty.forcehunter." .. side, mf ~= nil, t); if mf ~= nil then mf:close() end
+	end
+	if isZoneEnabled(FbBounty.fixer.zone) then check("bounty.fixer_stands", FbBounty:fixerNpc() ~= nil, FbBounty.fixer.room .. " of " .. FbBounty.fixer.buildingOid) end
+	local f = io.open("../../tre-src/string/en/fb_force.stf.txt", "r")
+	if f ~= nil then
+		local text = f:read("a"); f:close()
+		local missing = {}
+		local function need(k) if not text:find("\n" .. k .. " = ", 1, true) then missing[#missing + 1] = k end end
+		for _, k in ipairs({ "placed", "hunted", "squad_down", "paid", "short", "status_active", "status_paid" }) do need("bounty_" .. k) end
+		for _, k in ipairs({ "nothing", "paid", "offer", "price", "pay", "refuse" }) do need("fixer_" .. k) end
+		check("bounty.strings", #missing == 0, #missing == 0 and "every line" or ("missing: " .. table.concat(missing, ", ")))
 	end
 end
 

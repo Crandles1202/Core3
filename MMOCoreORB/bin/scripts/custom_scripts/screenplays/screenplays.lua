@@ -11,4 +11,5 @@ includeFile("../custom_scripts/screenplays/fb_alignment.lua")    -- Phase 4b.3: 
 includeFile("../custom_scripts/screenplays/fb_masters.lua")      -- Phase 4b.1/4b.2: the Jedi and Sith Masters in the Yavin 4 enclaves
 includeFile("../custom_scripts/screenplays/fb_knight.lua")       -- Phase 4b.4: the Knight trial
 includeFile("../custom_scripts/screenplays/fb_crystals.lua")     -- Phase 4a.0: crystal formations in four caves
+includeFile("../custom_scripts/screenplays/fb_bounty.lua")       -- Phase 4c: the bounty on a visible Jedi
 includeFile("../custom_scripts/screenplays/fb_player_login.lua")   -- wraps PlayerTriggers:playerLoggedIn
