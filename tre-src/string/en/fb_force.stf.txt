@@ -358,3 +358,31 @@ sith_rank1_progress = Maulers ended: %DI of 5.
 sith_promoted = You hold the %DI rank of the dark.
 sith_turn = You wear their robe and you came down here anyway. I know why. They taught you to want nothing and you want. Say the word and you are mine, and what they gave you goes back up the stairs without you.
 sith_turned = Done. Their lessons are gone and you are at the bottom of my stairs, where you belong for now. The novice's rank of the dark is yours. Kneel.
+
+# ---- Phase 4b.4: the Knight trial
+knight_boss_nothing = It looks through you and says nothing.
+knight_boss_yield = Enough. You have it. Take the thing and go, or finish it; I am past caring which.
+knight_boss_spared = It gets up slowly, does not look back, and is gone.
+knight_boss_killed = It does not try to stop you.
+knight_light_yield = Enough. Enough. Take what you came for.
+knight_dark_yield = Enough. I know what you are. Take it, then, or take the rest of me with it.
+
+master_knight_offer = There is one thing left between you and the title, and it is not sat for. The crystal hunters in the cave on Dantooine took a holocron that belongs here. Go down into that cave, all the way down, and bring it back. The one who holds it will not give it up. Decide what to do with him when you have him.
+master_knight_go = Go, then. The map shows the cave. Come back whole.
+master_knight_given = The crystal hunters' cave on Dantooine is on your map. The holocron is at the bottom of it.
+master_knight_wait = The holocron is still in the cave. So is the one who holds it.
+master_knight_report = You have it. And you came back, which is the other half. Give it here.
+master_knight_done = Knight. The word will not feel like yours for a year. Wear it anyway.
+master_knight_spare = You let him go. The holocron is yours.
+master_knight_kill = You finished it. The holocron is yours; so is the memory.
+master_knight_graduated = You are a Knight of the light. The third rank is yours, and the robe.
+
+sith_knight_offer = One thing left before the title, and it is not sat for. The Nightsisters on Dathomir keep a holocron in their stronghold that they do not understand. Walk in through the front, take it from the elder who holds it, and decide what she is worth to you when she is on her knees.
+sith_knight_go = Go. The map shows the walls. Do not come back without it.
+sith_knight_given = The Nightsister stronghold on Dathomir is on your map. The elder holds the holocron inside the walls.
+sith_knight_wait = The elder still has it. Go back.
+sith_knight_report = You have it. Give it here. And then tell me what you did with her, because I can see it on you either way.
+sith_knight_done = Knight. They use the same word up there. It means something different in your mouth now.
+sith_knight_spare = You let her live. The holocron is yours; so is the question of why.
+sith_knight_kill = You finished her. The holocron is yours.
+sith_knight_graduated = You are a Knight of the dark. The third rank is yours, and the robe.

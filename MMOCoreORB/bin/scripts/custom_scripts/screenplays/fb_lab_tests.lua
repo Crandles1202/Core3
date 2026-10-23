@@ -216,7 +216,7 @@ function FbLabTests.discoverNpcs()
 		npcs[#npcs + 1] = {
 			template = t,
 			mobileFile = FbLabTests.mobileDir .. "/" .. t .. ".lua",
-			convoFile = FbLabTests.convoDir .. "/" .. t .. "_conv.lua",
+			convoFile = ((FbLabTests.eventNpcs or {})[t] or {}).convoFile or (FbLabTests.convoDir .. "/" .. t .. "_conv.lua"),   -- eventNpcs may name a shared one
 		}
 	end
 	return npcs
@@ -307,6 +307,8 @@ FbLabTests.eventNpcs = {
 	fb_vision_luke = { conversation = false, spawnedAtBoot = false },   -- Phase 4a.4
 	fb_vision_vader = { conversation = false, spawnedAtBoot = false },  -- Phase 4a.4
 	fb_vision_exar_kun = { conversation = false, spawnedAtBoot = false }, -- Phase 4a.4
+	fb_hunter_chief = { spawnedAtBoot = false, convoFile = "scripts/mobile/conversations/tasks/fb_knight_boss_conv.lua" },      -- Phase 4b.4
+	fb_nightsister_witch = { spawnedAtBoot = false, convoFile = "scripts/mobile/conversations/tasks/fb_knight_boss_conv.lua" }, -- Phase 4b.4
 }
 
 function FbLabTests.checkNpc(npc)
@@ -328,6 +330,9 @@ function FbLabTests.checkNpc(npc)
 		Creature = { new = function(self, t) return t end },
 		CreatureTemplates = { addCreatureTemplate = function() end },
 		includeFile = function() end,
+		-- the stock templates build their attack lists with merge(table, table, …); the attack groups are
+		-- unknown here (they read as 0) and are skipped
+		merge = function(...) local r = {}; for _, t in ipairs({ ... }) do if type(t) == "table" then for _, v in ipairs(t) do r[#r + 1] = v end end end; return r end,
 	}, { __index = function(_, k) local v = _G[k]; if v == nil then return 0 end; return v end })
 	local mchunk, merr = loadfile(npc.mobileFile, "t", mobEnv)
 	if mchunk ~= nil then
@@ -805,6 +810,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkJediMaster()
 		FbLabTests.checkSithMaster()
 		FbLabTests.checkAlignment()
+		FbLabTests.checkKnight()
 	end)
 	if not ok then
 		report("FAIL", "runAll.crashed", err)
@@ -942,6 +948,35 @@ function FbLabTests:heal(charName, pool, amount)
 	if pPlayer == nil then return "offline" end
 	CreatureObject(pPlayer):healDamage(tonumber(amount), poolIndex(pool))
 	return hamLine(charName, pPlayer)
+end
+
+-- revive:<char> → a dead or incapacitated lab character back on its feet with full pools (what a cloning would do,
+-- without the cloner); harmless on a healthy one
+function FbLabTests:revive(charName)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local c = CreatureObject(pPlayer)
+	local was = string.format("dead=%s incap=%s posture=%d", tostring(c:isDead()), tostring(c:isIncapacitated()), c:getPosture())
+	-- only a character that is down: a seated one must stay seated across a login (the shrine meditation and the
+	-- Masters' sit tasks count on it; standing everyone up at every login failed all of them, gate 2026-10-22)
+	if not (c:isDead() or c:isIncapacitated() or c:getPosture() == 13 or c:getPosture() == 14) then
+		print("INFO revive char=" .. charName .. " not needed (" .. was .. ")")
+		return "ok"
+	end
+	c:clearCombatState(true)
+	for _, pool in ipairs({ 0, 3, 6 }) do c:setHAM(pool, c:getMaxHAM(pool)) end
+	-- a real posture change: setPosture is a no-op when the posture already reads upright, and the locomotion
+	-- (what every queued command checks) is only recomputed on a change — a character that died kept
+	-- locomotion DEAD under an upright posture and could not start a talk (CommandQueueRemove error=1 state=20)
+	c:setPosture(1)
+	c:setPosture(0)
+	-- the transient states a character can be left in: a talk is refused with INVALIDSTATE while any is set
+	-- (SITTINGONCHAIR 0x80000 survived a stand and cost a gate, 2026-10-22; CreatureState.h)
+	for _, st in ipairs({ 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x400, 0x1000, 0x2000, 0x4000, 0x8000, 0x10000, 0x20000, 0x80000, 0x100000 }) do
+		if c:hasState(st) then c:clearState(st) end
+	end
+	print("INFO revive char=" .. charName .. " was " .. was .. " now dead=" .. tostring(c:isDead()) .. " posture=" .. c:getPosture())
+	return "ok"
 end
 
 -- wound:<char>:<pool>:<amount> → set wounds on a pool, then print ham
@@ -2900,6 +2935,99 @@ function FbLabTests.checkAlignment()
 end
 function FbLabTests.checkSithMaster() checkMaster(FbSithMaster, "sithmaster") end
 
+-- ---------------------------------------------------------------- Phase 4b.4: the Knight trial
+
+local function knightLine(charName, pPlayer)
+	print("INFO knight char=" .. charName .. " " .. FbKnight:status(pPlayer) .. " frsRank=" .. tostring(PlayerObject(CreatureObject(pPlayer):getPlayerObject()):getFrsRank()) .. " align=" .. tostring(FbAlignment ~= nil and FbAlignment:score(pPlayer) or 0))
+end
+function FbLabTests:knight(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	knightLine(charName, pPlayer)
+	local m = FbMasters.of(pPlayer)
+	print("INFO knight screen=" .. tostring(m ~= nil and m:screenFor(pPlayer) or "-"))
+	return "ok"
+end
+-- knightGive:<char> → the trial given without the conversation (the enemy spawns at its place)
+function FbLabTests:knightGive(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	print("INFO knightGive given=" .. tostring(FbKnight:give(pPlayer)))
+	knightLine(charName, pPlayer)
+	return "ok"
+end
+-- knightBossHere:<char> → the student's enemy moved beside the student (the bot does not walk a cave)
+function FbLabTests:knightBossHere(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pBoss = FbKnight:ensureBoss(pPlayer)
+	if pBoss == nil then print("ERROR no enemy"); return "none" end
+	-- harmless before it stands beside a lab character: a level-125 aggressive enemy two metres from a fresh
+	-- character killed it in two seconds (gate 2026-10-22), and a dead character failed every scenario after
+	if not FbKnight:yielded(pBoss) then FbKnight:yield(pBoss) end
+	local so = SceneObject(pPlayer)
+	local x, y, zone, cell = so:getWorldPositionX() + 2.5, so:getWorldPositionY(), so:getZoneName(), so:getParentID()
+	local z = cell == 0 and getTerrainHeightAt(zone, x, y) or so:getWorldPositionZ()
+	if cell == 0 then SceneObject(pBoss):switchZone(zone, x, z, y, 0) else SceneObject(pBoss):switchZone(zone, so:getPositionX() + 2.5, so:getPositionZ(), so:getPositionY(), cell) end
+	AiAgent(pBoss):setHomeLocation(x, z, y, nil)
+	print("INFO knightBossHere oid=" .. tostring(SceneObject(pBoss):getObjectID()) .. " los=" .. tostring(AiAgent(pBoss):checkLineOfSight(pPlayer)))
+	return "ok"
+end
+-- knightYield:<char> → the enemy yields now, as the damage observer would below a quarter of its health
+function FbLabTests:knightYield(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pBoss = FbKnight:bossOf(pPlayer)
+	if pBoss == nil then print("ERROR no enemy"); return "none" end
+	print("INFO knightYield yielded=" .. tostring(FbKnight:yield(pBoss)))
+	knightLine(charName, pPlayer)
+	return "ok"
+end
+-- knightChoose:<char>:spare|kill → the choice without the conversation
+function FbLabTests:knightChoose(charName, choice)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pBoss = FbKnight:bossOf(pPlayer)
+	if pBoss == nil then print("ERROR no enemy"); return "none" end
+	if not FbKnight:yielded(pBoss) then FbKnight:yield(pBoss) end
+	local ok = choice == "kill" and FbKnight:execute(pPlayer, pBoss) or FbKnight:spare(pPlayer, pBoss)
+	print("INFO knightChoose choice=" .. tostring(choice) .. " ok=" .. tostring(ok))
+	knightLine(charName, pPlayer)
+	return "ok"
+end
+-- knightGraduate:<char> → the report without the conversation
+function FbLabTests:knightGraduate(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	print("INFO knightGraduate ok=" .. tostring(FbKnight:graduate(pPlayer)))
+	knightLine(charName, pPlayer)
+	return "ok"
+end
+
+function FbLabTests.checkKnight()
+	check("knight.loaded", FbKnight ~= nil and FbKnight.sides ~= nil)
+	if FbKnight == nil then return end
+	for side, d in pairs(FbKnight.sides) do
+		local mf = io.open("scripts/mobile/quest/tatooine/" .. d.boss .. ".lua", "r")
+		check("knight." .. side .. ".enemy_file", mf ~= nil, d.boss); if mf ~= nil then mf:close() end
+		if isZoneEnabled(d.zone) and d.buildingOid ~= nil then
+			local pB = getSceneObject(d.buildingOid)
+			check("knight." .. side .. ".place", pB ~= nil and BuildingObject(pB):getNamedCell(d.room) ~= nil, d.room .. " of " .. d.buildingOid)
+		end
+	end
+	local f = io.open("../../tre-src/string/en/fb_force.stf.txt", "r")
+	if f ~= nil then
+		local text = f:read("a"); f:close()
+		local missing = {}
+		local function need(k) if not text:find("\n" .. k .. " = ", 1, true) then missing[#missing + 1] = k end end
+		for _, k in ipairs({ "boss_nothing", "boss_yield", "boss_spared", "boss_killed", "light_yield", "dark_yield" }) do need("knight_" .. k) end
+		for _, prefix in ipairs({ "master_", "sith_" }) do
+			for _, k in ipairs({ "offer", "go", "given", "wait", "report", "done", "spare", "kill", "graduated" }) do need(prefix .. "knight_" .. k) end
+		end
+		check("knight.strings", #missing == 0, #missing == 0 and "every line of the trial" or ("missing: " .. table.concat(missing, ", ")))
+	end
+end
+
 function FbLabTests.checkTrials()
 	check("trials.loaded", FbTrials ~= nil and FbTrialPrisoner ~= nil and FbTrialSpirit ~= nil and FbTrialDuel ~= nil)
 	if FbTrials == nil then return end
@@ -2922,7 +3050,8 @@ function FbLabTests:attunementSit(charName, stand)
 	local pPlayer = loadedPlayer(charName)
 	if pPlayer == nil then return "offline" end
 	CreatureObject(pPlayer):setPosture(stand == "stand" and 0 or 8)
-	print("INFO attunementSit posture=" .. CreatureObject(pPlayer):getPosture())
+	if stand == "stand" and CreatureObject(pPlayer):hasState(0x80000) then CreatureObject(pPlayer):clearState(0x80000) end   -- SITTINGONCHAIR outlives the posture
+	print("INFO attunementSit posture=" .. CreatureObject(pPlayer):getPosture() .. " onChair=" .. tostring(CreatureObject(pPlayer):hasState(0x80000)))
 	return tostring(CreatureObject(pPlayer):getPosture())
 end
 

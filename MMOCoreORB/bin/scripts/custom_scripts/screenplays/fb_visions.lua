@@ -191,7 +191,7 @@ function FbVisions:appear(pPlayer, args)
 				FbLabTests.registryAdd({ oid = n:getObjectID(), zone = self.zone, cell = 0, x = spots[i][1], y = spots[i][2], z = 0, template = f.template, src = "fb_visions", name = n:getObjectName() })
 			end
 			-- the figure sweeps itself if the dreamer never wakes (server hiccup, logout); by oid, the pointer may be dead
-			createEvent(180000, "FbVisions", "sweepFigure", nil, tostring(n:getObjectID()))
+			createEvent(180000, "FbVisions", "sweepFigure", pPlayer, tostring(n:getObjectID()))   -- keyed to the dreamer: a nil object never fires
 		end
 	end
 	-- writeData holds numbers only (a string reads back as 0): the cast goes into the screenplay data
@@ -248,7 +248,7 @@ function FbVisions:finish(pPlayer, aborted)
 	for i = 1, 2 do
 		local foid = readData(oid .. ":fbVisionFigure:" .. i)
 		if foid ~= nil and foid ~= 0 then
-			FbVisions.sweepFigure(nil, tostring(foid))
+			FbVisions:sweepFigure(nil, tostring(foid))
 			deleteData(oid .. ":fbVisionFigure:" .. i)
 		end
 	end
@@ -265,7 +265,7 @@ end
 
 -- sweepFigure(nil, "<oid>"): an event's object pointer may be dead by the time it fires (a swept figure panicked
 -- the Lua state the first time), so the figure is looked up by its id
-function FbVisions.sweepFigure(_, args)
+function FbVisions:sweepFigure(pObj, args)   -- called as play:fn(pObject, args): self first
 	local oid = tonumber(args)
 	if oid == nil or oid == 0 then return end
 	local pNpc = getSceneObject(oid)

@@ -1015,7 +1015,17 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   error. The visions' cast went that way and every vision ended at once. Strings go into screenplay data
   (`writeScreenPlayData`) or quest status. An event scheduled with an object pointer (`createEvent(ms, play,
   fn, pObj, "")`) panics the Lua state if the object is gone by then: pass the oid as the string argument and
-  `getSceneObject` it.
+  `getSceneObject` it — **keyed to a long-lived object such as the player**: `createEvent` with a nil object
+  builds a task that never runs (4b.4's spared enemy stayed; the visions' 180 s figure sweep had the same hole).
+  `createServerEvent` is the object-less form, for persistent server-wide events. And the handler runs as
+  `Play:fn(pObject, args)` — self first — so a dot-defined `function Play.fn(_, args)` reads the object as
+  `args` and the id is lost (the spared enemy stayed a second time).
+- **A dead lab character looks alive and cannot talk.** The server reports a refused queued command to the client
+  as `CommandQueueRemove count=N error=E state=S`; `error=1` with `state=20` is the locomotion check (20 = DEAD,
+  19 = INCAPACITATED, `CreatureLocomotion.h`). Locomotion is recomputed only on a real posture change, so a revive
+  that sets an already-upright posture leaves it DEAD; the lab's `revive` toggles the posture. And the open desert
+  at (4100, −4700) east of Mos Eisley is Tusken ground: a level-one character parked there dies within a minute,
+  which is what every "did not start a conversation" of the Knight gate was. Scenarios park at a shrine.
 
 ### 2026-10-21 — 4b.1 the Jedi Master
 
@@ -1065,3 +1075,14 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   gates the offer on `PlayerObject:getExperience("jedi_general")`, `reward` promotes. The stock FRS XP thresholds
   (5000, 15000, 25000, …) are the numbers used. Surrendering the old side's boxes on the turn is
   `CreatureObject:surrenderSkill(name)` (the binding passes verify/notify/… = true).
+
+### 2026-10-22 — 4b.4 the Knight trial
+
+- Stock places with interiors and ids: the Dantooine crystal hunters' cave is building `8535482` (cells 1–9, oids
+  8535483…8535491; rooms r1–r9, `lotsurvey rooms object/building/general/shared_dantooine_force_crystal_hunter_sd_cave.iff`),
+  the stock spawns sit in r1–r4; the Nightsister stronghold is outdoors (every stock spawn cell 0) around
+  (−4052, −161) on Dathomir, open ground at (−4040, −100). A yielding enemy = `DAMAGERECEIVED` observer on the
+  mobile (`onBossHit(pBoss, pAttacker, damage)`, return 1 to drop the observer), then `clearCombatState(true)`,
+  `setPvpStatusBitmask(0)`, AI off, `setOptionBit(CONVERSABLE)` — the conversation template is on the mobile from
+  the start, the bit decides whether it talks. The stock Knight unlock (`JediTrials:unlockJediKnight`) sets the
+  Jedi state 4/8 and the Knight title but also forces faction overt; ours leaves faction alone.

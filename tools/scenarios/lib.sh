@@ -83,10 +83,16 @@ bot() {
 bot_bg() { bot "$@" & BOT_PID=$!; }
 
 # wait_online [seconds]  → 0 once the server reports $CHAR online
+_revived=0
 wait_online() {
 	local i
 	for i in $(seq 1 "${1:-40}"); do
-		lab "isOnline:$CHAR" 5 | grep -aq "^INFO online" && return 0
+		if lab "isOnline:$CHAR" 5 | grep -aq "^INFO online"; then
+			# the character is shared by every scenario of a gate: one left dead by an earlier one (the Knight trial's
+			# enemy, 2026-10-22) failed everything after it, so the first login of a scenario puts it back on its feet
+			lab "revive:$CHAR" 5 >/dev/null 2>&1   # every login: a wandering raider can kill a parked character between sessions
+			return 0
+		fi
 		sleep 1
 	done
 	return 1

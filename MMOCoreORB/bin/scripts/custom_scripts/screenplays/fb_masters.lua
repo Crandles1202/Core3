@@ -95,7 +95,11 @@ function FbMasterBase:screenFor(pPlayer)
 	if m == nil and self:alignment(pPlayer) ~= self.side then return "otherdoor" end
 	if not self:isStudent(pPlayer) then return "offer" end
 	local t = self:currentTask(pPlayer)
-	if t == nil then return "trained" end
+	if t == nil then
+		-- the tasks are done: the Knight trial (4b.4), then the ladder's end for now
+		if FbKnight ~= nil then local k = FbKnight:screenFor(pPlayer, self); if k ~= nil then return k end end
+		return "trained"
+	end
 	if t.rank ~= nil and self:get(pPlayer, "told:" .. t.id) == nil and self:jediXp(pPlayer) < (t.xp or 0) then return "rank_wait_xp" end
 	if self:get(pPlayer, "ready:" .. t.id) ~= nil then return "done_" .. t.id end
 	if self:get(pPlayer, "told:" .. t.id) == nil then return "train_" .. t.id end
@@ -323,8 +327,8 @@ function FbMasters.of(pPlayer)
 	return nil
 end
 function FbMasters.onKill(pPlayer, pVictim) for _, m in ipairs(FbMasters) do m:onKill(pPlayer, pVictim) end end
-function FbMasters.onLogin(pPlayer) for _, m in ipairs(FbMasters) do m:onLogin(pPlayer) end end
-function FbMasters.reset(pPlayer) for _, m in ipairs(FbMasters) do m:reset(pPlayer) end end
+function FbMasters.onLogin(pPlayer) for _, m in ipairs(FbMasters) do m:onLogin(pPlayer) end; if FbKnight ~= nil then FbKnight:onLogin(pPlayer) end end
+function FbMasters.reset(pPlayer) for _, m in ipairs(FbMasters) do m:reset(pPlayer) end; if FbKnight ~= nil then FbKnight:reset(pPlayer) end end
 
 -- ---------------------------------------------------------------- boot
 
