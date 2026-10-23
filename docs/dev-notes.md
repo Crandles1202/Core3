@@ -1196,3 +1196,7 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
     while the server says "a rill", so Teyla's hunt for "rill" never matched anything standing in front of her.
     `creatures_near` now joins the client's view to the server's `objectsNear` scan by oid and uses the server's names.
     Decoding the CREO3 name in the client would be the proper fix (follow-up).
+  - **Teyla's hunts "timed out" while her rifle XP climbed**: she was killing the worrts (a level 5 minor worrt, 143 health,
+    died 30 s into a manual `seat fight` watched with the new `creatureHam:<oid>` oracle), but `objectAlive` answered
+    alive=1 for the corpse — it only checked that the object was still in the zone, and a dead creature stays there for
+    a while. It now counts a dead creature as not alive, so the fight loop sees the kill, loots and moves on.

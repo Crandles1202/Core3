@@ -1572,7 +1572,8 @@ end
 -- objectAlive:<oid> → 1 if the object resolves and is in a zone, else 0
 function FbLabTests:objectAlive(oid)
 	local p = getSceneObject(tonumber(oid))
-	local alive = (p ~= nil and SceneObject(p):getZoneName() ~= "") and 1 or 0
+	-- a corpse is still an object in the zone for a while: a dead creature counts as not alive
+	local alive = (p ~= nil and SceneObject(p):getZoneName() ~= "" and not (SceneObject(p):isCreatureObject() and CreatureObject(p):isDead())) and 1 or 0
 	print(string.format("INFO object oid=%s alive=%d", tostring(oid), alive))
 	return tostring(alive)
 end
