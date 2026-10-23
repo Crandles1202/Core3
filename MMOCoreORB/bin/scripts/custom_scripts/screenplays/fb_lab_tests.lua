@@ -1894,8 +1894,8 @@ function FbLabTests:creatureHam(oid)
 	return tostring(c:getHAM(0))
 end
 
--- resourceNear:<planet>:<resource>[:<radius>] → for every travel point of the planet, the best land spot of that resource
--- within radius m (default 1500, a 250 m grid): where a harvester can stand within a walk of a shuttle.
+-- resourceNear:<planet>:<resource>[:<radius>] → for every travel point of the planet, the best buildable land spot of that
+-- resource within radius m (default 1500, a 250 m grid): where a harvester can stand within a walk of a shuttle.
 function FbLabTests:resourceNear(planet, resource, radius)
 	radius = tonumber(radius) or 1500
 	local env, err = loadIsolated("scripts/managers/planet/planet_manager.lua")
@@ -1911,8 +1911,9 @@ function FbLabTests:resourceNear(planet, resource, radius)
 				if x > -8191 and x < 8191 and y > -8191 and y < 8191 then
 					local d = getResourceDensityAt(resource, planet, x, y) or 0
 					if d > bd then
+						-- land, and a lot may be placed there (a town's no-build belt reaches 700–900 m past its walls)
 						local water = getWaterHeightAt(planet, x, y)
-						if water == nil or getTerrainHeightAt(planet, x, y) >= water then bx, by, bd = x, y, d end
+						if (water == nil or getTerrainHeightAt(planet, x, y) >= water) and isBuildingPermittedAt(planet, x, y) then bx, by, bd = x, y, d end
 					end
 				end
 			end
