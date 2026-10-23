@@ -4598,6 +4598,9 @@ static void fbPushResourceBestSpots(lua_State* L, ResourceSpawn* spawn, const St
 	Zone* zone = zoneServer != nullptr ? zoneServer->getZone(zoneName) : nullptr;
 	TerrainManager* terrainManager = (zone != nullptr && zone->getPlanetManager() != nullptr) ? zone->getPlanetManager()->getTerrainManager() : nullptr;
 	auto underwater = [&](float x, float y) -> bool {
+		// the terrain refuses the very edge (±8192) with a warning and a stack trace per call: never ask there
+		if (x <= lo || x >= hi || y <= lo || y >= hi)
+			return false;
 		float water = 0;
 		return terrainManager != nullptr && terrainManager->getWaterHeight(x, y, water) && zone->getHeight(x, y) < water;
 	};
