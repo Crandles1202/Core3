@@ -10,8 +10,8 @@ NAME="labfight-$$"
 X0=3700; Y0=-4700
 [ -n "$CHAR" ] || die "no Lab* character on account $BOT_USER (run: swg test bot)"
 
-RAT=""
-cleanup() { [ -n "$RAT" ] && lab "destroyObject:$RAT" >/dev/null 2>&1; "$SEAT" stop "$NAME" >/dev/null 2>&1 || true; }
+RAT=""; RAIDER=""
+cleanup() { [ -n "$RAT" ] && lab "destroyObject:$RAT" >/dev/null 2>&1; [ -n "$RAIDER" ] && lab "destroyObject:$RAIDER" >/dev/null 2>&1; "$SEAT" stop "$NAME" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 OUT=$("$SEAT" start "$BOT_USER" "$CHAR" --name "$NAME" --timeout 600 2>&1); RC=$?
@@ -40,6 +40,18 @@ check_eq "rat_dead_on_server" "${ALIVE:-1}" "0" "alive=${ALIVE:-?}"
 check "corpse_looted" "$( grep -q '"looted": true' <<<"$FIGHT" && echo 1 || echo 0 )" "loot all sent on the corpse"
 HAM=$(lab "ham:$CHAR" 8 | grep -a '^INFO ham' | head -n1)
 check "character_standing" "$( grep -q 'incap=true\|dead=true' <<<"$(lab "where:$CHAR" 8)" && echo 0 || echo 1 )" "$(grep -o 'health=[0-9/]*' <<<"$HAM")"
+# the threat oracle the pilot's hunt asks before every fight: a Tusken raider 110 m north is aggressive and level 19
+RAIDER=$(lab "spawnNpcAt:tusken_raider:tatooine:$X0:$((Y0 + 110)):0" | sed -n 's/.*oid=\([0-9]*\).*/\1/p' | head -n1)
+check "raider_spawned" "$( [ -n "$RAIDER" ] && echo 1 || echo 0 )" "tusken_raider oid ${RAIDER:-none} 110 m north"
+TH=$(lab "threats:$CHAR:150" 10)
+ME=$(grep -a '^INFO me ' <<<"$TH" | head -n1)
+STRENGTH=$(sed -n 's/.*strength=\([0-9]*\).*/\1/p' <<<"$ME")
+check "threats_strength" "$( [ "${STRENGTH:-0}" -ge 1 ] && echo 1 || echo 0 )" "$ME"
+ROW=$(grep -a '^INFO threat ' <<<"$TH" | grep -a "oid=$RAIDER" | head -n1)
+check "raider_is_a_threat" "$( grep -q 'aggressive=true' <<<"$ROW" && echo 1 || echo 0 )" "${ROW:-no threat row for the raider}"
+check "threat_level_read" "$( grep -q 'level=19' <<<"$ROW" && echo 1 || echo 0 )" "$(grep -o 'level=[0-9]*' <<<"$ROW")"
+LVL=$(lab "objectsNear:tatooine:$X0:$((Y0 + 110)):5:1025" 8 | grep -a "oid=$RAIDER" | grep -o 'level=[0-9]*' | head -n1)
+check_eq "objectsNear_level" "${LVL:-none}" "level=19" "the object scan carries the level the pilot picks prey by"
 cleanup   # the creature too: a leftover level-10 rat at the shared desert spot kills the next scenario's character
 trap - EXIT
 finish

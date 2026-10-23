@@ -270,6 +270,11 @@ class Senses:
                     near.append({"oid": o["oid"], "name": names.get(o["oid"], o["name"]), "player": o["type"] == 0x409, "distance": round(d, 1)})
             near.sort(key=lambda n: n["distance"])
         w = self.where_fields()
+        threats, strength = [], None
+        if me and isinstance(planet, str):
+            t = threats_of(self.character_name, 150)
+            strength = t.get("strength")
+            threats = [{k: v for k, v in r.items() if k in ("name", "level", "distance", "aggressive")} for r in t.get("threats", [])[:6]]
         position = {"x": round(me["x"], 1), "y": round(me["y"], 1)} if me else None
         if w.get("x") is not None:
             position = {"x": round(float(w["x"]), 1), "y": round(float(w["y"]), 1)}
@@ -287,7 +292,26 @@ class Senses:
             "tells": tells[-12:],
             "system": [s for s in system if not s.startswith("@") or "combat" in s][-8:],
             "nearby": near[:12],
+            "fighting_strength": strength,
+            "threats": threats,
         }
+
+
+def threats_of(character_name, radius=150):
+    """what would attack the character within radius (lab threats: aggressive AI agents, wild creatures above its
+    strength) and its fighting strength: the level its best weapon line earns (the stored level goes stale)"""
+    seat_mod = load_seat_module()
+    out = seat_mod.lab(f"threats:{character_name}:{int(radius)}", 15)
+    me = next((seat_mod.lab_fields(l) for l in out.splitlines() if l.startswith("INFO me ")), {})
+    rows = []
+    for line in out.splitlines():
+        if line.startswith("INFO threat "):
+            f = seat_mod.lab_fields(line)
+            rows.append({"oid": int(f.get("oid") or 0), "name": (f.get("name") or "").replace("_", " "), "level": int(f.get("level") or 0),
+                         "distance": int(float(f.get("distance") or 0)), "aggressive": f.get("aggressive") == "true",
+                         "x": float(f.get("x") or 0), "y": float(f.get("y") or 0)})
+    rows.sort(key=lambda r: r["distance"])
+    return {"ok": bool(me), "strength": int(me.get("strength") or 0) if me else None, "threats": rows}
 
 
 def seat_tools(seat, files, character_name, seat_name):
@@ -567,38 +591,77 @@ def seat_tools(seat, files, character_name, seat_name):
                 nm, tpl = f.get("name") or "", f.get("template") or ""
                 if "droid" in tpl or "3po" in tpl or "/r2" in tpl or "/r3" in tpl or "/r4" in tpl or "/r5" in tpl or "(" in nm:
                     continue   # droids and named NPCs are not game
-                server[int(f.get("oid") or 0)] = (nm.replace("_", " "), float(f.get("x")), float(f.get("y")))
+                server[int(f.get("oid") or 0)] = (nm.replace("_", " "), float(f.get("x")), float(f.get("y")), int(f.get("level") or 0))
         frag = (name_fragment or "").lower()
         out, seen = [], set()
         for o in objs:
             if o["type"] != 0x400 or o["oid"] not in server:
                 continue
-            nm, sx, sy = server[o["oid"]]
+            nm, sx, sy, lvl = server[o["oid"]]
             if frag and frag not in nm.lower():
                 continue
             d = ((o["x"] - me["x"]) ** 2 + (o["y"] - me["y"]) ** 2) ** 0.5
             if d <= 80:
                 seen.add(o["oid"])
-                out.append({"oid": o["oid"], "name": nm, "distance": round(d, 1), "x": round(o["x"], 1), "y": round(o["y"], 1)})
+                pack = sum(1 for (n2, x2, y2, _l) in server.values() if n2 == nm and ((x2 - sx) ** 2 + (y2 - sy) ** 2) ** 0.5 <= 25)
+                out.append({"oid": o["oid"], "name": nm, "level": lvl, "pack": pack, "distance": round(d, 1), "x": round(o["x"], 1), "y": round(o["y"], 1)})
         out.sort(key=lambda c: c["distance"])
         result = {"ok": True, "creatures": out[:12]}
         if not out:
             far = []
-            for oid, (nm, x, y) in server.items():
+            for oid, (nm, x, y, lvl) in server.items():
                 if oid in seen or (frag and frag not in nm.lower()):
                     continue
-                far.append({"name": nm, "distance": round(((x - me["x"]) ** 2 + (y - me["y"]) ** 2) ** 0.5), "x": x, "y": y})
+                far.append({"name": nm, "level": lvl, "distance": round(((x - me["x"]) ** 2 + (y - me["y"]) ** 2) ** 0.5), "x": x, "y": y})
             far.sort(key=lambda c: c["distance"])
             result["farther"] = far[:8]
             result["hint"] = ("walk_to one of these, then hunt" if far else
                               "nothing roams within 300 m; creatures appear around a player who keeps moving through open ground outside town: walk a 150 m leg and look again")
         return result
 
+    def threats_near():
+        """what would attack you within 150 m, with level and distance, and your own fighting strength"""
+        return threats_of(character_name, 150)
+
+    def _escape(reason):
+        """walk away from a fight toward the nearest travel point (a town), at most 300 m in this leg — a character
+        that stops attacking and stands still is finished by whatever it was fighting (Teyla, 2026-10-23)"""
+        seat_mod = load_seat_module()
+        objs = _objects()
+        me = next((o for o in objs if o["oid"] == seat.request({"op": "ping"}).get("character")), None)
+        planet = seat.request({"op": "vars", "path": "/Scene/terrain"}).get("vars")
+        if me is None or not isinstance(planet, str):
+            return f"{reason}; could not read where you are"
+        best = None
+        for p in _travel_points(planet):
+            d = ((p["x"] - me["x"]) ** 2 + (p["y"] - me["y"]) ** 2) ** 0.5
+            if best is None or d < best[0]:
+                best = (d, p)
+        if best is None:
+            return f"{reason}; no travel point known to run toward"
+        d, p = best
+        leg = min(d, 300.0)
+        tx = me["x"] + (p["x"] - me["x"]) / d * leg if d > 0 else me["x"]
+        ty = me["y"] + (p["y"] - me["y"]) / d * leg if d > 0 else me["y"]
+        w = seat_mod.walk_seat(seat, character_name, round(tx, 1), round(ty, 1), within=15)
+        if not w.get("ok"):
+            return f"{reason}; could not walk away: {seat_mod.action_error(w)}"
+        return f"{reason}; walked {leg:.0f} m toward {p['name']}"
+
     def hunt(name_fragment, kills):
-        """the fighter's loop: nearest matching creature, walk to 20 m, fight, loot; up to `kills` times"""
+        """the fighter's loop: nearest matching creature you can take, walk to 20 m, fight, loot; up to `kills` times.
+        Refuses while something that would attack you stands within 120 m, skips prey above your strength (or a pack of
+        it), and walks you toward town after a retreat"""
         seat_mod = load_seat_module()
         done, log = 0, []
+        strength = 1
         for _ in range(max(1, min(int(kills), 5))):
+            th = threats_of(character_name, 150)
+            strength = th.get("strength") or 1
+            danger = [t for t in th["threats"] if t["aggressive"] and t["distance"] <= 120 and t["level"] * 2 > strength]
+            if danger:
+                t = danger[0]
+                log.append(_escape(f"danger: {t['name']} (level {t['level']}) {t['distance']} m away would attack you")); break
             near = creatures_near(name_fragment)
             if near.get("ok") and not near["creatures"] and near.get("farther"):
                 # nothing in view but the server knows one roaming farther out: walk there and look again
@@ -610,7 +673,12 @@ def seat_tools(seat, files, character_name, seat_name):
                 near = creatures_near(name_fragment)
             if not near.get("ok") or not near["creatures"]:
                 log.append("nothing matching in view" + (" or within 300 m" if near.get("ok") else "")); break
-            c = near["creatures"][0]
+            prey = [c for c in near["creatures"] if c["level"] <= strength and (c.get("pack", 1) <= 2 or c["level"] * 2 <= strength)]
+            if not prey:
+                skipped = "; ".join(f"{c['name']} level {c['level']}" + (f" in a pack of {c['pack']}" if c.get("pack", 1) > 1 else "")
+                                    for c in near["creatures"][:4])
+                log.append(f"too strong for you (your strength {strength}): {skipped}"); break
+            c = prey[0]
             if c["distance"] > 22:
                 w = seat_mod.walk_seat(seat, character_name, c["x"], c["y"], within=18)
                 if not w.get("ok"):
@@ -620,8 +688,8 @@ def seat_tools(seat, files, character_name, seat_name):
             if r["verdict"] == "killed":
                 done += 1
             elif r["verdict"] == "retreat":
-                break
-        result = {"ok": done > 0, "kills": done, "log": log, "health": my_health().get("health")}
+                log.append(_escape("retreat")); break
+        result = {"ok": done > 0, "kills": done, "strength": strength, "log": log, "health": my_health().get("health")}
         if done == 0:
             result["error"] = "no kill: " + ("; ".join(str(l) for l in log[-3:]) or "nothing matching to hunt")
         return result
@@ -687,6 +755,7 @@ def seat_tools(seat, files, character_name, seat_name):
         "resources_here": resources_here, "survey": survey, "sample": sample, "place_harvester": place_harvester,
         "harvester": harvester, "harvester_status": harvester_status, "my_structures": my_structures,
         "my_health": my_health, "clone": clone, "my_inventory": my_inventory, "travel_points": travel_points, "spots_near_shuttles": spots_near_shuttles, "creatures_near": creatures_near, "hunt": hunt, "tend_harvesters": tend_harvesters,
+        "threats_near": threats_near,
         "remember": remember, "complete_milestone": complete_milestone, "change_plan": change_plan, "rest": rest,
     }
     schema = [
@@ -715,6 +784,8 @@ def seat_tools(seat, files, character_name, seat_name):
         {"name": "my_structures", "description": "The structures you own (oid, planet, position, active) and the lots you have left.",
          "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},
         {"name": "my_health", "description": "Your condition (fine, incapacitated, dead) and health/action/mind pools as current/max/wounds.",
+         "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},
+        {"name": "threats_near", "description": "What would attack you within 150 m (aggressive creatures and NPCs, wild creatures stronger than you) with level and distance, and your own fighting strength. Hunt only when it is empty; with anything in it, walk 300 m toward town first.",
          "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},
         {"name": "spots_near_shuttles", "description": "For one resource (exact name from resources_here): the best spot within 1.5 km of each shuttle point on this planet, with density and the walk from the shuttle. A harvester only needs a good spot near a town.",
          "input_schema": {"type": "object", "properties": {"resource": {"type": "string"}}, "required": ["resource"], "additionalProperties": False}, "strict": True},
@@ -758,7 +829,10 @@ announce your own name unless asked who you are; people see your name over your 
 doing (your "now"), not "on my way somewhere".
 Your life plan is a commitment: work its milestones in order and do not abandon it on a whim; change_plan only for a
 reason your character would give out loud, and expect it to be reviewed. Keep your memory honest and short.
-If "condition" says dead, call clone before anything else; incapacitated, wait a minute.
+If "condition" says dead, call clone before anything else; incapacitated, wait a minute. "threats" lists what would
+attack you where you stand, each with its level against your "fighting_strength": with anything in it, walk 300 m toward
+town before any other work; never hunt there. hunt itself refuses prey above your strength and walks you toward town
+after a retreat — read its log and do not send it again at the same spot.
 When nothing needs you, work your current milestone ("now") before resting: a combat skill grows by hunting creatures
 you can take near where you are (walk a leg through open ground outside town, creatures_near, then hunt; "xp" in the perception shows amount/cap per type, so you
 can see whether it pays), a gatherer tends harvesters, a crafter samples and keeps resources, and anyone with nothing

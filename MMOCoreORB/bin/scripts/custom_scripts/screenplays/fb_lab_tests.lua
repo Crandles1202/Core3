@@ -1894,6 +1894,55 @@ function FbLabTests:creatureHam(oid)
 	return tostring(c:getHAM(0))
 end
 
+-- A character's fighting strength for the pilot: the level the server computes from a weapon line
+-- (PlayerManager::calculatePlayerLevel: private_<weapon>_combat_difficulty / 100 + 1, capped at 25), taken over every
+-- line. The stored level is only recomputed when a skill box is awarded, so a veteran start made unarmed reads level 1
+-- for ever (Teyla: level 1, rifle difficulty 1150 = strength 12).
+local STRENGTH_LINES = { "unarmed", "onehandmelee", "twohandmelee", "polearm", "pistol", "carbine", "rifle", "heavyweapon" }
+local function fightingStrength(pPlayer)
+	local best = 0
+	for _, w in ipairs(STRENGTH_LINES) do
+		local mod = CreatureObject(pPlayer):getSkillMod("private_" .. w .. "_combat_difficulty") or 0
+		if mod > best then best = mod end
+	end
+	return math.min(25, math.floor(best / 100) + 1)
+end
+
+-- threats:<char>[:<radius>] → every live AI agent within radius (default 150 m) that is aggressive to the character
+-- (isAggressiveTo: aggressive creatures, enemy factions) or a wild creature above its strength: name, level, distance;
+-- first an INFO me line with the character's stored level and fighting strength. Five level-19 Tusken raiders of the
+-- story camp at 3985,-4770 took Teyla's 1100 health in one tick while she shot a worrt (2026-10-23): the pilot never
+-- saw them because the perception listed creatures, not NPCs.
+function FbLabTests:threats(charName, radius)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	radius = tonumber(radius) or 150
+	local zone = SceneObject(pPlayer):getZoneName()
+	local px, py = SceneObject(pPlayer):getWorldPositionX(), SceneObject(pPlayer):getWorldPositionY()
+	local strength = fightingStrength(pPlayer)
+	print(string.format("INFO me char=%s level=%d strength=%d x=%.1f y=%.1f", charName, CreatureObject(pPlayer):getLevel(), strength, px, py))
+	local objects = getObjectsInRange(zone, px, py, radius)
+	if objects == nil then print("ERROR threats: no zone " .. tostring(zone)); return "none" end
+	local n = 0
+	for _, o in ipairs(objects) do
+		if o.type == 0x400 or o.type == 0x401 then
+			local p = getSceneObject(o.oid)
+			if p ~= nil and SceneObject(p):isAiAgent() and not CreatureObject(p):isDead() then
+				local level = CreatureObject(p):getLevel()
+				local aggressive = AiAgent(p):isAggressiveTo(pPlayer)
+				if aggressive or (o.type == 0x400 and level > strength) then
+					n = n + 1
+					local d = math.sqrt((o.x - px) ^ 2 + (o.y - py) ^ 2)
+					print(string.format("INFO threat oid=%d name=%s template=%s level=%d distance=%.0f aggressive=%s x=%.1f y=%.1f",
+						o.oid, (o.name or ""):gsub("%s", "_"), tostring(o.template), level, d, tostring(aggressive), o.x, o.y))
+				end
+			end
+		end
+	end
+	print(string.format("INFO threats char=%s radius=%d count=%d strength=%d", charName, radius, n, strength))
+	return tostring(n)
+end
+
 -- resourceNear:<planet>:<resource>[:<radius>] → for every travel point of the planet, the best buildable land spot of that
 -- resource within radius m (default 1500, a 250 m grid): where a harvester can stand within a walk of a shuttle.
 function FbLabTests:resourceNear(planet, resource, radius)
@@ -2316,9 +2365,14 @@ function FbLabTests:objectsNear(planet, x, y, range, otype)
 	local objects = otype and getObjectsInRange(planet, x, y, range, otype) or getObjectsInRange(planet, x, y, range)
 	if objects == nil then print("ERROR objectsNear: no zone " .. tostring(planet)); return "none" end
 	for _, o in ipairs(objects) do
-		print(string.format("INFO object oid=%d type=0x%x template=%s name=%s x=%.1f y=%.1f z=%.1f cell=%d cellName=%s building=%d localX=%.2f localY=%.2f localZ=%.2f",
+		local level = ""
+		if o.type == 0x400 or o.type == 0x401 then   -- a creature or an NPC: its level too (the pilot picks prey by it)
+			local p = getSceneObject(o.oid)
+			if p ~= nil and SceneObject(p):isCreatureObject() then level = " level=" .. CreatureObject(p):getLevel() end
+		end
+		print(string.format("INFO object oid=%d type=0x%x template=%s name=%s x=%.1f y=%.1f z=%.1f cell=%d cellName=%s building=%d localX=%.2f localY=%.2f localZ=%.2f%s",
 			o.oid, o.type, o.template, (o.name or ""):gsub("%s", "_"), o.x, o.y, o.z, o.cell, o.cellName ~= "" and o.cellName or "-", o.building,
-			o.localX or 0, o.localY or 0, o.localZ or 0))
+			o.localX or 0, o.localY or 0, o.localZ or 0, level))
 	end
 	return tostring(#objects)
 end

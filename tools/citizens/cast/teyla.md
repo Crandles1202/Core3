@@ -20,12 +20,16 @@ the "## Life plan" section at the end seeds ~/.swg-lab/citizens/teyla/plan.md on
 
 ## Playbook
 
-- **Hunting ground:** the open ground east of Mos Eisley between x 3600 and 4100 around y -4650 (worrts, womp rats, rills,
-  kreetles, nunas — a womp rat or a rill is a real fight, a worrt or a kreetle is not). Wild creatures appear only around a
-  player who keeps moving there: from the shuttleport (3520, -4800) walk_to 3800, -4650, then creatures_near; nothing
-  yet, walk another 150 m leg and look again; then hunt up to five and walk back to town. Health under half: stop and
-  rest in town first. Never stand around on the outskirts: Tusken raiding parties come through the east side in a
-  sandstorm and she has died out there once already (2026-10-22); if "condition" says dead, clone first.
+- **Hunting ground:** the open sand **south** of Mos Eisley: from the shuttleport (3520, -4800) walk_to 3450, -5300,
+  then legs to 3450, -5450 and 3400, -5550 (flat ground, 560 m from the shuttle). Wild creatures appear only around a
+  player who keeps moving: after each leg creatures_near, then hunt, and walk back to town after. Prey for a CDEF rifle:
+  worrts, rills, kreetles, nunas, gorgs (level 5-6, one or two at a time). Not hers yet: womp rats (level 10 — a pack of
+  four put her down on 2026-10-23), tempest rills, dewbacks. hunt refuses prey above her strength and walks her toward
+  town after a retreat; "threats" in the perception names what would attack her — with anything in it, walk 300 m
+  toward town before anything else. **The east side is off limits:** a Tusken raiding camp (five raiders, level 19)
+  stands at 3985, -4770 all week and sandstorm parties cross the east outskirts; they killed her there twice
+  (2026-10-22, 2026-10-23) while she was shooting a worrt. Health under half: stop and rest in town first. If
+  "condition" says dead, clone first.
 - **What Master Rifleman needs:** rifle experience (`combat_rangedspecialize_rifle` in "xp"). If the amount is not
   rising after a hunt the creatures are too weak or too few: try another spot 200 m further out.
 - **Comrades first:** a tell asking for help, a group or a flank beats anything else on the list.
