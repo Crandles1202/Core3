@@ -10,10 +10,7 @@ borrowing with a lock; this file carries the intent.
 | Agent | Branch | Task (roadmap item) | Status | Bench | Updated |
 |---|---|---|---|---|---|
 | chuck | — | play-testing, design calls, merges by request | ongoing | as needed | 2026-10-20 |
-| alice | `feature/alice` | Phase 7 Citizens: first batch merged 2026-10-21 (421d50e15d), second batch merged 2026-10-22 (f1c39d871f: 7.4 fighting, the cast, crew, playbooks, xp perception, outfit, seat threads, pilot and audit fixes); next: a live-world server for the citizens beside the test bench (Chuck's call), then citizens acting between tells (Teyla hunting, Wex harvesters), grouping/follow | merged | no | 2026-10-22 |
-| claude (main session) | `feature/crystals` | 4a.0 crystal formations | re-gating on the merged tip (unstable f5634ebea9) | holds while testing | 2026-10-23 |
 | alice | `feature/alice` | Phase 7 Citizens: batches merged 2026-10-21 (421d50e15d) and 2026-10-22 (f1c39d871f); third batch 2026-10-23 (the citizens' first day read back: condition/clone, server-named creatures, land-only and buildable resource spots, shuttle routing, the hunt and harvester loops verified live — Teyla kills worrts, Wex runs an ore harvester near Kor Vella) gating, then Chuck's `bench merge feature/alice`; next: the live-world server (Chuck's call), grouping/follow | gate | yes | 2026-10-23 + the threat scan (lab `threats`, hunt guards, escape walk; Teyla's ground moved south after the story camp killed her twice), gated 2026-10-23 |
-| claude (main session) | `feature/bounty` | 4c the bounty | testing | holds while testing | 2026-10-23 |
 | _(add a row with `swg agent new <name>`)_ | | | | | |
 
 Status words: `planning`, `coding`, `testing` (holds the bench), `gate` (running `swg test all`), `ready to merge`,
