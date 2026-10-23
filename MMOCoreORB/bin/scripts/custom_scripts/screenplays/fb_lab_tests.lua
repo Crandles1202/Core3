@@ -1882,6 +1882,17 @@ function FbLabTests:placement(filter)
 	return tostring(fails)
 end
 
+-- creatureHam:<oid> → health/action/mind of any creature (an NPC or a wild animal, by oid): how a fight is going
+function FbLabTests:creatureHam(oid)
+	local p = getSceneObject(tonumber(oid))
+	if p == nil or not SceneObject(p):isCreatureObject() then print("ERROR creatureHam: no creature " .. tostring(oid)); return "none" end
+	local c = CreatureObject(p)
+	print(string.format("INFO creatureHam oid=%s name=%s level=%d health=%d/%d action=%d/%d mind=%d/%d dead=%s incap=%s", tostring(oid),
+		(SceneObject(p):getDisplayedName():gsub(" ", "_")), c:getLevel(), c:getHAM(0), c:getMaxHAM(0), c:getHAM(3), c:getMaxHAM(3), c:getHAM(6), c:getMaxHAM(6),
+		tostring(c:isDead()), tostring(c:isIncapacitated())))
+	return tostring(c:getHAM(0))
+end
+
 -- pendingTask:<char>:<name>[:cancel] → is a pending task of that name registered on the character (survey, sample,
 -- incapacitationRecovery, …); with cancel it is removed. A survey task left pending makes every later requestsurvey a
 -- silent no-op (RequestSurveyCommand returns SUCCESS without a word).
