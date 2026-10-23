@@ -453,6 +453,20 @@ def seat_tools(seat, files, character_name, seat_name):
         deed = _find_object(deed_fragment, 0x800002) or _find_object(deed_fragment)
         if deed is None:
             return {"ok": False, "error": f"no deed matching '{deed_fragment}' in the inventory", "deeds_carried": _names_of(0x800002)}
+        # the server refuses a no-build spot with a bare not_permitted: ask first, and name the nearest spot that works
+        seat_mod = load_seat_module()
+        planet = seat.request({"op": "vars", "path": "/Scene/terrain"}).get("vars")
+        if isinstance(planet, str):
+            line = next((l for l in seat_mod.lab(f"canBuildNear:{planet}:{float(x):.0f}:{float(y):.0f}", 20).splitlines() if l.startswith("INFO canBuildNear")), "")
+            f = seat_mod.lab_fields(line)
+            if f.get("permitted") == "false":
+                r = {"ok": False, "error": f"no structure may stand at {float(x):.0f},{float(y):.0f} (a town's no-build belt, water or a protected area)"}
+                if f.get("nearestX"):
+                    r["nearest_permitted"] = {"x": float(f["nearestX"]), "y": float(f["nearestY"]), "distance": float(f.get("distance") or 0)}
+                    r["hint"] = "walk_to that point and place there (the resource hardly changes over such a distance)"
+                else:
+                    r["hint"] = "nothing within 200 m is buildable; use another spot from spots_near_shuttles"
+                return r
         return seat.action("place", deed=deed["oid"], x=float(x), y=float(y), angle=0)
 
     def harvester(oid, op, resource, amount):

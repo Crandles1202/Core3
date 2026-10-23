@@ -1927,6 +1927,30 @@ function FbLabTests:resourceNear(planet, resource, radius)
 	return tostring(n)
 end
 
+-- canBuildNear:<planet>:<x>:<y>[:<radius>] → is a structure permitted at x,y and, if not, the nearest permitted land point
+-- within radius m (default 200, 25 m rings): where to step to when a placement is refused as not_permitted.
+function FbLabTests:canBuildNear(planet, x, y, radius)
+	x, y, radius = tonumber(x), tonumber(y), tonumber(radius) or 200
+	if planet == nil or x == nil or y == nil then print("ERROR canBuildNear: planet x y [radius]"); return "none" end
+	local function ok(px, py)
+		if px <= -8191 or px >= 8191 or py <= -8191 or py >= 8191 then return false end
+		local water = getWaterHeightAt(planet, px, py)
+		return isBuildingPermittedAt(planet, px, py) and (water == nil or getTerrainHeightAt(planet, px, py) >= water)
+	end
+	if ok(x, y) then print(string.format("INFO canBuildNear planet=%s x=%.0f y=%.0f permitted=true", planet, x, y)); return "true" end
+	for r = 25, radius, 25 do
+		for k = 0, 15 do
+			local px, py = x + r * math.cos(k * math.pi / 8), y + r * math.sin(k * math.pi / 8)
+			if ok(px, py) then
+				print(string.format("INFO canBuildNear planet=%s x=%.0f y=%.0f permitted=false nearestX=%.0f nearestY=%.0f distance=%d", planet, x, y, px, py, r))
+				return "false"
+			end
+		end
+	end
+	print(string.format("INFO canBuildNear planet=%s x=%.0f y=%.0f permitted=false nearest=none within %d m", planet, x, y, radius))
+	return "false"
+end
+
 -- pendingTask:<char>:<name>[:cancel] → is a pending task of that name registered on the character (survey, sample,
 -- incapacitationRecovery, …); with cancel it is removed. A survey task left pending makes every later requestsurvey a
 -- silent no-op (RequestSurveyCommand returns SUCCESS without a word).
