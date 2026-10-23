@@ -32,7 +32,8 @@ HUNTER=$(lab "findNpc:fb_bounty_thug" | sed -n 's/.*oid=\([0-9]*\).*/\1/p' | sor
 check "thug_for_a_low_level" "$( [ -n "$HUNTER" ] && echo 1 || echo 0 )" "$(lab "findNpc:fb_bounty_thug" | head -n1 | cut -c1-140)"
 check "second_tick_waits" "$(lab "bountyTick:$CHAR" | grep -q 'hunt=false' && echo 1 || echo 0)"
 sleep 6
-check "hunter_closes_in" "$(lab "objectPos:$HUNTER" | grep -q 'combat=true' && echo 1 || lab "where:$CHAR" | grep -q 'combat=true' && echo 1 || echo 0)" "$(lab "objectPos:$HUNTER" | sed 's/.*zone=/zone=/' | cut -c1-90); $(lab "where:$CHAR" | sed 's/.*combat=/combat=/' | cut -c1-30)"
+HC=0; { lab "objectPos:$HUNTER" | grep -q 'combat=true' || lab "where:$CHAR" | grep -q 'combat=true'; } && HC=1
+check "hunter_closes_in" "$HC" "$(lab "objectPos:$HUNTER" | sed 's/.*zone=/zone=/' | cut -c1-90); $(lab "where:$CHAR" | sed 's/.*combat=/combat=/' | cut -c1-30)"
 lab "killNpc:$CHAR:$HUNTER" >/dev/null
 lab "revive:$CHAR" >/dev/null                          # a level-30 hunter can drop a lab character in seconds
 sleep 3
@@ -58,25 +59,27 @@ check "dark_jedi_in_the_squad" "$( [ -n "$DARK" ] && echo 1 || echo 0 )" "$(lab 
 lab "revive:$CHAR" >/dev/null
 sleep 3
 check "squad_down_again" "$(lab "bounty:$CHAR" | grep -q 'hunters=0' && echo 1 || echo 0)" "$(lab "bounty:$CHAR" | head -n1)"
-wait "$BOT_PID"
-
-# --- D: the fixer: the price plus the markup, then nothing hunts ---------------------------------------------------
+# the fixer's price and the purse, read while the character is still online
 CASH0=$(lab_kv "cash:$CHAR" cash)
 lab "cashSet:$CHAR:50000" >/dev/null
 PRICE=$(lab "bounty:$CHAR" | sed -n 's/.*price=\([0-9]*\).*/\1/p' | head -n1)
+wait "$BOT_PID"
+
+# --- D: the fixer: the price plus the markup, then nothing hunts (checks inside the talking session) ----------------
 sleep 8
-bot_bg --wait 14 --converse "$FIXER" --options 0 --wait 3
+bot_bg --wait 14 --converse "$FIXER" --options 0 --wait 30
 wait_online || die "$CHAR never came back online"
 lab "gotoNpc:$CHAR:fb_fixer" >/dev/null
-wait "$BOT_PID"
-check_eq "paid_in_conversation" "$(bot_action_status converse)" "ok" "$(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tail -n1 | cut -c1-160)"
+sleep 22                                               # the talk happens 14 s into the session
 B=$(lab "bounty:$CHAR" | head -n1)
 check "price_cleared_and_paused" "$(grep -q 'bounty=0 ' <<<"$B" && grep -q 'paid=true' <<<"$B" && grep -q 'due=false(no bounty)' <<<"$B" && echo 1 || echo 0)" "$B"
 check_eq "charged_the_markup" "$(( 50000 - $(lab_kv "cash:$CHAR" cash) ))" "$PRICE" "price $PRICE; cash now $(lab_kv "cash:$CHAR" cash)"
-check "client_got_the_receipt" "$(grep -aq 'fb_force:bounty_paid\|fixer_price' "$BOTLOG" && echo 1 || echo 0)" "$(grep -a 'bounty_paid\|fixer_' "$BOTLOG" | cut -c1-80 | tail -n1)"
 check_eq "fixer_knows_the_arrangement" "$(lab "bounty:$CHAR" | sed -n 's/.*fixerScreen=\([a-z]*\).*/\1/p')" "paid"
-check_eq "status_says_paid" "$(lab "attunementStatus:$CHAR" >/dev/null; lab "bounty:$CHAR" | grep -c 'paid=true')" "1"
+check "status_says_paid" "$(grep -q 'statusLine=@fb_force:bounty_status_paid' <<<"$B" && echo 1 || echo 0)" "$B"
 [ -n "${CASH0:-}" ] && lab "cashSet:$CHAR:$CASH0" >/dev/null
+wait "$BOT_PID"
+check_eq "paid_in_conversation" "$(bot_action_status converse)" "ok" "$(grep -ao '=> #[0-9]* {"action":"converse"[^}]*}' "$BOTLOG" | tail -n1 | cut -c1-160)"
+check "client_got_the_receipt" "$(grep -aq 'fb_force:bounty_paid\|fixer_price' "$BOTLOG" && echo 1 || echo 0)" "$(grep -a 'bounty_paid\|fixer_' "$BOTLOG" | cut -c1-80 | tail -n1)"
 lab "bountyClear:$CHAR" >/dev/null
 lab "attunementReset:$CHAR" >/dev/null
 finish

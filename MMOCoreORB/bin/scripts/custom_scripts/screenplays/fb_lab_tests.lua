@@ -982,11 +982,11 @@ function FbLabTests:revive(charName)
 	local was = string.format("dead=%s incap=%s posture=%d", tostring(c:isDead()), tostring(c:isIncapacitated()), c:getPosture())
 	-- only a character that is down: a seated one must stay seated across a login (the shrine meditation and the
 	-- Masters' sit tasks count on it; standing everyone up at every login failed all of them, gate 2026-10-22)
+	c:clearCombatState(true)   -- always: a lab character left "in combat" is refused a hunt, a talk, a sit
 	if not (c:isDead() or c:isIncapacitated() or c:getPosture() == 13 or c:getPosture() == 14) then
-		print("INFO revive char=" .. charName .. " not needed (" .. was .. ")")
+		print("INFO revive char=" .. charName .. " not needed (" .. was .. "), combat cleared")
 		return "ok"
 	end
-	c:clearCombatState(true)
 	for _, pool in ipairs({ 0, 3, 6 }) do c:setHAM(pool, c:getMaxHAM(pool)) end
 	-- a real posture change: setPosture is a no-op when the posture already reads upright, and the locomotion
 	-- (what every queued command checks) is only recomputed on a change — a character that died kept

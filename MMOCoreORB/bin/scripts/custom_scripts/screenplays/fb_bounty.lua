@@ -35,9 +35,9 @@ FbBounty = {
 	deepAt = 60,
 	fixer = {
 		name = "Dax Ventrell", template = "fb_fixer",
-		-- the Mos Eisley cantina (stock building 1082874), its main room `cantina` (cell 1082877), a clear spot by the
-		-- north wall 4 m from the nearest furniture (lotsurvey check), floor −0.9
-		zone = "tatooine", buildingOid = 1082874, room = "cantina", x = 8.0, z = -0.9, y = 4.0, heading = 270,
+		-- the Mos Eisley cantina (stock building 1082874), its main room `cantina` (cell 1082877), beside the bar's
+		-- regulars: (12.8, 3.2) is 8/8 on the placement audit (lab, 2026-10-23; (8, 4) by the wall was 0/8), floor −0.9
+		zone = "tatooine", buildingOid = 1082874, room = "cantina", x = 12.8, z = -0.9, y = 3.2, heading = 200,
 	},
 }
 
@@ -62,6 +62,7 @@ end
 
 -- the price keeps up with the visibility and never comes down on its own
 function FbBounty:updateAmount(pPlayer)
+	if self:visibility(pPlayer) < self.threshold then return self:amount(pPlayer) end   -- no price until the terminals would list you
 	local want = math.floor(self:visibility(pPlayer) * self.creditsPerVisibility)
 	if want > self:amount(pPlayer) then
 		local had = self:amount(pPlayer)
@@ -163,9 +164,13 @@ end
 function FbBounty:onHunterDown(pMob, pKiller)
 	if pMob == nil then return 1 end
 	local pPlayer = self:ownerOf(pMob)
-	deleteData(SceneObject(pMob):getObjectID() .. ":fbBountyFor")
+	local mine = SceneObject(pMob):getObjectID()
+	deleteData(mine .. ":fbBountyFor")
 	if pPlayer == nil then return 1 end
-	if self:liveCount(pPlayer) == 0 then
+	-- the dying hunter still reads as alive at observer time: count the others
+	local others = 0
+	for _, p in ipairs(self:hunters(pPlayer)) do if SceneObject(p):getObjectID() ~= mine then others = others + 1 end end
+	if others == 0 then
 		removeQuestStatus(self:hunterKey(pPlayer))
 		local cd = self:rank(pPlayer) >= 8 and self.masterCooldown or self.cooldown
 		setFlag(pPlayer, "nextHuntAt", os.time() + cd)
@@ -288,9 +293,9 @@ end
 
 function FbBounty:status(pPlayer)
 	local ok, why = self:due(pPlayer)
-	return string.format("jedi=%s visibility=%d bounty=%d price=%d paid=%s hunters=%d squad=%d tier=%s nextHuntIn=%d due=%s(%s)",
-		tostring(self:isJedi(pPlayer)), self:visibility(pPlayer), self:amount(pPlayer), self:price(pPlayer), tostring(self:isPaid(pPlayer)),
-		self:liveCount(pPlayer), self:squadSize(pPlayer), self:tierFor(pPlayer), math.max(0, num(pPlayer, "nextHuntAt") - os.time()), tostring(ok), why)
+	return string.format("jedi=%s visibility=%d bounty=%d price=%d paid=%s hunters=%d squad=%d tier=%s nextHuntIn=%d due=%s(%s) statusLine=%s",
+		tostring(self:isJedi(pPlayer)), math.floor(self:visibility(pPlayer)), math.floor(self:amount(pPlayer)), math.floor(self:price(pPlayer)), tostring(self:isPaid(pPlayer)),
+		self:liveCount(pPlayer), self:squadSize(pPlayer), self:tierFor(pPlayer), math.floor(math.max(0, num(pPlayer, "nextHuntAt") - os.time())), tostring(ok), why, tostring(self:statusLine(pPlayer) or "-"))
 end
 
 -- ---------------------------------------------------------------- boot
