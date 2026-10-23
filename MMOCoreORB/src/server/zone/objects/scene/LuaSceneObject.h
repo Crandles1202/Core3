@@ -111,6 +111,8 @@ namespace scene {
 		int addPendingTask(lua_State* L);
 		int hasPendingTask(lua_State* L);
 		int cancelPendingTask(lua_State* L);
+		int hasPendingTaskNamed(lua_State* L);
+		int cancelPendingTaskNamed(lua_State* L);
 		int getChildObject(lua_State* L);
 		int getContainerOwnerID(lua_State* L);
 		int info(lua_State* L);

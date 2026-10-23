@@ -1144,3 +1144,76 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 - Wex's pilot died on 2026-10-21 09:13 with a `TimeoutError` in `Senses.gather()`: its seat was still finishing a walk
   that the previous pilot had started (the action lock was held, so `vars`/`objects` waited past the 60 s socket
   timeout). The wake loop now catches a seat timeout, waits 30 s and tries again instead of exiting.
+- **The first unattended day of the citizens, read back from the logs (2026-10-22 evening):**
+  - Teyla was found **dead** at 3947,-4744 (health −263) and her pilot had spent the day resting and asking for a medic:
+    `my_health` showed pools only and the model never learned the word for it. Likeliest killer: the `sandstorm`
+    scenario, which every gate runs — twelve Tusken raiders walk in over the east outskirts, exactly where her playbook
+    parked her (knight's lane lost the shared lab character the same way). The perception now carries `condition`
+    (fine / incapacitated / dead), `my_health` says it too, and a `clone` tool answers the revive window
+    (`seat.action("sui", value="0", match="revive")` — the server opens `@base_player:revive_title` on login for a dead
+    character, so cloning works even after a restart). While the citizens live on the test bench, scenario events can
+    and will kill them; the live-world server proposed to Chuck is the real fix.
+  - **Wild creatures spawn only around a player who moves**: `SpawnArea::notifyPositionUpdate` → `tryToSpawn` (every
+    5 s at most, `Core3.Regions.minimumLairSpawnInterval`), lairs placed near the player and never inside the city
+    circle (Mos Eisley: 456 m around 3460,-4768). `objectsNear:tatooine:4010:-4700:600:1024` was empty until Teyla had
+    walked one leg; then worrts, womp rats, a rill and rockmites stood between 3600 and 3830. `creatures_near` now falls
+    back to a server-side 300 m scan (droids and named NPCs filtered out) and says so when nothing roams; Teyla's
+    playbook tells her to walk legs and never to stand on the outskirts.
+  - Wex surveyed "Bihommo" (a Corellian wooly hide: `tool=-1`, hunted, not surveyed) because `resources_here("mineral")`
+    returned nothing — the oracle's text filter matches class names like "Axidite Iron", never the word *mineral*. The
+    pilot now maps the class words to survey-tool codes (`SurveyTool.idl`: mineral 6, chemical 2, …), hides creature
+    resources unless asked for `all`, and `survey` accepts a unique fragment and lists what the tool finds here on a
+    miss. His deed request `harvester_ore` found nothing because the client names the deed
+    `@deed:ore_s1_harvester_deed_name`: object lookup now matches every word of the fragment, and the error lists the
+    deeds carried.
+  - A seat reply nests its error under `result`; the pilot's log line printed `None` for every failed action.
+  - Both citizens cloned themselves on the next wake once the tool existed (Wex had died too, at his Bihommo spot, and
+    cloned in Coronet). Then neither could leave the cloning facility: `findPath` from a cell to the world works only for
+    a target near the building (30 m yes, 190 m no — `findPathFromCellToWorld` ends on the exterior floor mesh), so
+    `pathTo` now steps out first (a reachable world point 30–60 m from the building, eight bearings) and continues with
+    a world path. The client reports cell-local coordinates indoors: the perception's position now comes from the
+    server's `where` line and says "indoors" when it is.
+  - The API caps **strict tools at 20**; adding `clone` made 21 and both pilots died on a 400 at their first wake. Tools
+    without arguments go unstrict, and a decider exception is now a 120 s wait, not the end of the pilot.
+  - **Wex walked into the sea.** His "best spot" for Bomide (−3072, −3648 on Corellia) is 37 m under water: the
+    server snaps a walking player to `findClosestWorldFloor`, which on open water is the surface (z −1.0), sets the
+    SWIMMING state, and `SurveySession::startSurvey` then refuses with `@error_message:survey_swimming` — a string-id
+    system message the bot client does not decode, so the seat saw "no SurveyMessage within 10 s" and nothing else.
+    The lab character surveyed fine at the same spot because a teleport sets z to the terrain and never swims. Found by
+    comparing the two characters' `where` lines (z −1.0 vs −37.6). Fixes: `getWaterHeightAt(zone, x, y)` Lua binding,
+    the resource oracle's best spots skip underwater points, `terrainHeights` prints `water=`, `where` prints
+    `swimming=` (`hasState(0x40000)`; the binding returns a number, compare with 1), the pilot's condition says
+    "swimming … walk back to land". `pendingTask:<char>:<name>[:cancel]` oracle (new exact-name bindings
+    `hasPendingTaskNamed` / `cancelPendingTaskNamed`; the stock Lua ones build `screenplay:key` names) came out of the
+    first, wrong theory and stays as a lab tool.
+  - **Never ask the terrain at the planet edge**: `TerrainManager::getHeight` at x or y = ±8192 prints a WARNING *with a
+    full stack trace* per call; the first land-only `resources` scan touched the edge rows and columns for every
+    spawn and flooded the console thread for nine minutes (the queued `shutdown` ran only after; `swg stop` gave up
+    at 240 s). The scan now stays strictly inside (−8192, 8192). `swg status` reported RUNNING throughout — a flooded
+    console looks healthy from outside.
+  - **The bot client names creatures by appearance template**, not by what the server calls them: the rills east of Mos
+    Eisley are `@monster_name:dune_lizard` in the client's view (`rill.iff` shares the lizard's shared template name)
+    while the server says "a rill", so Teyla's hunt for "rill" never matched anything standing in front of her.
+    `creatures_near` now joins the client's view to the server's `objectsNear` scan by oid and uses the server's names.
+    Decoding the CREO3 name in the client would be the proper fix (follow-up).
+  - **Teyla's hunts "timed out" while her rifle XP climbed**: she was killing the worrts (a level 5 minor worrt, 143 health,
+    died 30 s into a manual `seat fight` watched with the new `creatureHam:<oid>` oracle), but `objectAlive` answered
+    alive=1 for the corpse — it only checked that the object was still in the zone, and a dead creature stays there for
+    a while. It now counts a dead creature as not alive, so the fight loop sees the kill, loots and moves on.
+  - **The story camp killed Teyla, not the worrt** (2026-10-23, after the gates): her memory said a worrt took her
+    from 748 health to −6 in 23 s; a worrt hits for 50. `FbLabTests:story` showed the weekly story event *tusken_raid*
+    live with five raiders camped at 3985,−4770 — the `story-ticker` scenario fires it in every gate, so the camp
+    stands 100 m from her old hunting ground after every bench run, refilled hourly for a week. Tusken raiders are
+    level 19 and hit for 180–190: five of them empty 1100 health in one three-second tick of the fight loop, and the
+    pilot never saw them because the perception listed *creatures* (type 0x400) and the raiders are NPCs. Her server
+    level also read **1**: `calculatePlayerLevel` (`private_<weapon>_combat_difficulty / 100 + 1`, cap 25) is only
+    stored when a skill box is awarded, and the veteran start awarded hers unarmed; her rifle difficulty mod is 1150,
+    so she is really a 12. Fixes: lab `threats:<char>[:<radius>]` (aggressive AI agents and wild creatures above the
+    character's *fighting strength*, computed from the best weapon line; `objectsNear` prints `level=`), the pilot's
+    perception carries `fighting_strength` and `threats` (with `pack`), `creatures_near` rows carry `level` and `pack`,
+    `hunt` refuses to start with a winning threat within 120 m (above the strength alone, or a pack above half of it),
+    skips prey by the same rule and, after a retreat, **walks 300 m toward the nearest travel point** — the old loop
+    stopped attacking and stood still, which is how an incapacitation became a death. Verified live: at the new south
+    ground (3450,−5300) she met three level-10 zucca boars and five aggressive sevorrts, refused, and walked back
+    toward the starport. Her ground is now south of Mos Eisley (`mos_eisley_easy_newbie` circle, outside the `_sw`
+    rectangle's slaver theaters); the east is written off in her playbook.

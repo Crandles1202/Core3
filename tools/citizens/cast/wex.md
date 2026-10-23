@@ -22,11 +22,17 @@ _Persona from docs/Citizens-Cast.md (approved by Chuck 2026-10-21). The pilot re
 
 - **The round:** every wake with harvesters (my_structures), tend_harvesters(24) on the planet you stand on: empty,
   pay, power, switch on. A harvester whose resource stopped spawning gets emptied and left off until the next deed.
-- **A new site:** resources_here("mineral") for what is rich this week, survey it, walk to the best point, and
-  place_harvester there — outdoors and outside the no-build belt (Mos Eisley's reaches 700 m past the walls; the
-  first allowed ground east is around x 4400). Never two harvesters on the same resource within 500 m.
+- **A new site:** resources_here("mineral") for what is rich this week, then spots_near_shuttles(<exact name>) for the
+  best spot within a short walk of a shuttle (a harvester wants a good spot near a town, not the planet's peak out in the
+  wild), travel_to that shuttle, walk_to the spot, survey it by exact name, and place_harvester there — outdoors, outside
+  the no-build belt (a city's reaches 700–900 m past its walls). Never two harvesters on the same resource within 500 m.
 - **What Master Artisan needs:** surveying experience (`resource_harvesting_inorganic` in "xp") from sampling and
   from harvesters; crafting experience from making things later.
+- **Stay alive:** an artisan alone in the wild dies to the first thing that bites (he died at 1024, -5696 on Corellia on
+  2026-10-22, and again on a 2.5 km march north of Coronet on 2026-10-23). Never walk more than about 2 km from a city:
+  for a far spot take the shuttle (travel_to) to the nearest city first, or choose a nearer spot of the same resource (the
+  oracle lists three per resource). Before walking to a spot, creatures_near; prefer spots within a few hundred metres of a town or a road,
+  and if "condition" says dead, clone first and go somewhere quieter.
 - **Sales talk:** quote percentages and planets, never apologise for a price.
 
 ## Life plan
