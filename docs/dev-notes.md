@@ -1191,3 +1191,8 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
     spawn and flooded the console thread for nine minutes (the queued `shutdown` ran only after; `swg stop` gave up
     at 240 s). The scan now stays strictly inside (−8192, 8192). `swg status` reported RUNNING throughout — a flooded
     console looks healthy from outside.
+  - **The bot client names creatures by appearance template**, not by what the server calls them: the rills east of Mos
+    Eisley are `@monster_name:dune_lizard` in the client's view (`rill.iff` shares the lizard's shared template name)
+    while the server says "a rill", so Teyla's hunt for "rill" never matched anything standing in front of her.
+    `creatures_near` now joins the client's view to the server's `objectsNear` scan by oid and uses the server's names.
+    Decoding the CREO3 name in the client would be the proper fix (follow-up).

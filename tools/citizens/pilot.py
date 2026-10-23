@@ -451,37 +451,44 @@ def seat_tools(seat, files, character_name, seat_name):
         return {"ok": True, "cloned": True, "condition": _condition(), "planet": f.get("zone"), "x": f.get("x"), "y": f.get("y")}
 
     def creatures_near(name_fragment):
-        """creatures (not players, not city NPCs) within 80 m, nearest first"""
+        """creatures (not players, not city NPCs) within 80 m, nearest first; the server names them (the bot client
+        only knows a creature's appearance template: a rill shows as "dune_lizard"), joined to the view by oid"""
         objs = _objects()
         me = next((o for o in objs if o["oid"] == seat.request({"op": "ping"}).get("character")), None)
         if me is None:
             return {"ok": False, "error": "no self in view"}
-        out = []
+        seat_mod = load_seat_module()
+        planet = seat.request({"op": "vars", "path": "/Scene/terrain"}).get("vars")
+        server = {}
+        if isinstance(planet, str):
+            for line in seat_mod.lab(f"objectsNear:{planet}:{me['x']:.0f}:{me['y']:.0f}:300:1024", 20).splitlines():
+                if not line.startswith("INFO object "):
+                    continue
+                f = seat_mod.lab_fields(line)
+                nm, tpl = f.get("name") or "", f.get("template") or ""
+                if "droid" in tpl or "3po" in tpl or "/r2" in tpl or "/r3" in tpl or "/r4" in tpl or "/r5" in tpl or "(" in nm:
+                    continue   # droids and named NPCs are not game
+                server[int(f.get("oid") or 0)] = (nm.replace("_", " "), float(f.get("x")), float(f.get("y")))
+        frag = (name_fragment or "").lower()
+        out, seen = [], set()
         for o in objs:
-            if o["type"] != 0x400 or (name_fragment and name_fragment.lower() not in o["name"].lower()):
+            if o["type"] != 0x400 or o["oid"] not in server:
+                continue
+            nm, sx, sy = server[o["oid"]]
+            if frag and frag not in nm.lower():
                 continue
             d = ((o["x"] - me["x"]) ** 2 + (o["y"] - me["y"]) ** 2) ** 0.5
             if d <= 80:
-                out.append({"oid": o["oid"], "name": o["name"], "distance": round(d, 1), "x": round(o["x"], 1), "y": round(o["y"], 1)})
+                seen.add(o["oid"])
+                out.append({"oid": o["oid"], "name": nm, "distance": round(d, 1), "x": round(o["x"], 1), "y": round(o["y"], 1)})
         out.sort(key=lambda c: c["distance"])
         result = {"ok": True, "creatures": out[:12]}
         if not out:
-            # nothing in view: the server knows what roams within 300 m (droids and city NPCs left out)
-            seat_mod = load_seat_module()
-            planet = seat.request({"op": "vars", "path": "/Scene/terrain"}).get("vars")
             far = []
-            if isinstance(planet, str):
-                for line in seat_mod.lab(f"objectsNear:{planet}:{me['x']:.0f}:{me['y']:.0f}:300:1024", 20).splitlines():
-                    if not line.startswith("INFO object "):
-                        continue
-                    f = seat_mod.lab_fields(line)
-                    nm, tpl = f.get("name") or "", f.get("template") or ""
-                    if "droid" in tpl or "3po" in tpl or "/r2" in tpl or "/r3" in tpl or "/r4" in tpl or "/r5" in tpl or "(" in nm:
-                        continue
-                    if name_fragment and name_fragment.lower() not in nm.lower():
-                        continue
-                    x, y = float(f.get("x")), float(f.get("y"))
-                    far.append({"name": nm.replace("_", " "), "distance": round(((x - me["x"]) ** 2 + (y - me["y"]) ** 2) ** 0.5), "x": x, "y": y})
+            for oid, (nm, x, y) in server.items():
+                if oid in seen or (frag and frag not in nm.lower()):
+                    continue
+                far.append({"name": nm, "distance": round(((x - me["x"]) ** 2 + (y - me["y"]) ** 2) ** 0.5), "x": x, "y": y})
             far.sort(key=lambda c: c["distance"])
             result["farther"] = far[:8]
             result["hint"] = ("walk_to one of these, then hunt" if far else
