@@ -1882,6 +1882,19 @@ function FbLabTests:placement(filter)
 	return tostring(fails)
 end
 
+-- pendingTask:<char>:<name>[:cancel] → is a pending task of that name registered on the character (survey, sample,
+-- incapacitationRecovery, …); with cancel it is removed. A survey task left pending makes every later requestsurvey a
+-- silent no-op (RequestSurveyCommand returns SUCCESS without a word).
+function FbLabTests:pendingTask(charName, taskName, cancel)
+	local pPlayer = getPlayerByName(charName)
+	if pPlayer == nil then print("ERROR pendingTask: no player " .. tostring(charName)); return "none" end
+	local had = SceneObject(pPlayer):hasPendingTaskNamed(taskName)
+	if cancel == "cancel" and had then SceneObject(pPlayer):cancelPendingTaskNamed(taskName) end
+	print(string.format("INFO pendingTask char=%s task=%s pending=%s%s", charName, taskName, tostring(had),
+		(cancel == "cancel" and had) and " cancelled=true" or ""))
+	return tostring(had)
+end
+
 -- spawnNpcAt:<template>:<planet>:<x>:<y>[:<cell>[:<z>]] → a mobile for placement experiments (recorded
 -- like any FB spawn; remove with destroyObject)
 function FbLabTests:spawnNpcAt(template, planet, x, y, cell, z)

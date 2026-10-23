@@ -99,6 +99,8 @@ Luna<LuaSceneObject>::RegType LuaSceneObject::Register[] = {
 		{ "addPendingTask", &LuaSceneObject::addPendingTask },
 		{ "hasPendingTask", &LuaSceneObject::hasPendingTask },
 		{ "cancelPendingTask", &LuaSceneObject::cancelPendingTask },
+		{ "hasPendingTaskNamed", &LuaSceneObject::hasPendingTaskNamed },
+		{ "cancelPendingTaskNamed", &LuaSceneObject::cancelPendingTaskNamed },
 		{ "getChildObject", &LuaSceneObject::getChildObject },
 		{ "getContainerOwnerID", &LuaSceneObject::getContainerOwnerID },
 		{ "info", &LuaSceneObject::info },
@@ -989,6 +991,26 @@ int LuaSceneObject::cancelPendingTask(lua_State* L) {
 		realObject->removePendingTask(name);
 	}
 
+	return 0;
+}
+
+// Final Boss (lab): the pending-task bindings above build "<screenplay>:<key>" names, so a C++ task registered under a
+// plain name ("survey", "sample", "incapacitationRecovery") is out of their reach. These two take the exact name.
+int LuaSceneObject::hasPendingTaskNamed(lua_State* L) {
+	String name = lua_tostring(L, -1);
+	lua_pushboolean(L, realObject->containsPendingTask(name));
+	return 1;
+}
+
+int LuaSceneObject::cancelPendingTaskNamed(lua_State* L) {
+	String name = lua_tostring(L, -1);
+	if (realObject->containsPendingTask(name)) {
+		Reference<Task*> task = realObject->getPendingTask(name);
+		if (task != nullptr && task->isScheduled()) {
+			task->cancel();
+		}
+		realObject->removePendingTask(name);
+	}
 	return 0;
 }
 

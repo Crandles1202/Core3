@@ -499,7 +499,10 @@ def seat_tools(seat, files, character_name, seat_name):
                 done += 1
             elif r["verdict"] == "retreat":
                 break
-        return {"ok": done > 0, "kills": done, "log": log, "health": my_health().get("health")}
+        result = {"ok": done > 0, "kills": done, "log": log, "health": my_health().get("health")}
+        if done == 0:
+            result["error"] = "no kill: " + ("; ".join(str(l) for l in log[-3:]) or "nothing matching to hunt")
+        return result
 
     def tend_harvesters(hours_of_reserve):
         """the gatherer's round: every harvester you own on this planet — walk to it, empty every hopper line into
