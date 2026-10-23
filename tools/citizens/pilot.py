@@ -477,7 +477,18 @@ def seat_tools(seat, files, character_name, seat_name):
             fields["amount"] = int(amount)
         elif op == "empty":
             fields["resource"] = int(resource); fields["quantity"] = int(amount)
-        return seat.action("harvester", **fields)
+        if op in ("maintain", "power") and int(amount) <= 0:
+            return {"ok": False, "error": f"{op} needs an amount: credits for maintain, energy units for power (hours wanted × the hourly rate from harvester_status; you carry wind energy)"}
+        reply = seat.action("harvester", **fields)
+        if op == "activate" and reply.get("ok"):
+            # the server accepts the switch and leaves it off when the machine has no power or no resource selected
+            st = harvester_status(oid)
+            if st.get("ok") and str(st.get("active")).lower() in ("false", "0", "none"):
+                why = []
+                if float(st.get("power") or 0) <= 0: why.append("no power: op power with an amount of energy units first")
+                if not (st.get("resource") or st.get("activeResource") or st.get("hopper")): why.append("no resource selected: op resources, then op select")
+                return {"ok": False, "error": "did not switch on (" + ("; ".join(why) or "see harvester_status") + ")", "status": st}
+        return reply
 
     def harvester_status(oid):
         seat_mod = load_seat_module()
