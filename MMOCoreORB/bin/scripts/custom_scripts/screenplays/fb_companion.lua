@@ -513,6 +513,15 @@ function FbCompanion:statusLine(pPlayer)
 	return "@fb_force:comp_status_" .. s
 end
 
+-- a zone change (a vision, a shuttle) stores every pet, as stock does: an active companion is called again a moment later
+function FbCompanion:onVisionEnd(pPlayer)
+	if pPlayer == nil then return end
+	local s = self:state(pPlayer)
+	if s ~= "active" and s ~= "trial" then return end
+	local pDevice = self:deviceOf(pPlayer)
+	if pDevice ~= nil then createEvent(3000, "FbCompanion", "callLater", pPlayer, tostring(SceneObject(pDevice):getObjectID())) end
+end
+
 function FbCompanion:onLogin(pPlayer)
 	if pPlayer == nil or self:state(pPlayer) == nil then return end
 	self:checkAlive(pPlayer)

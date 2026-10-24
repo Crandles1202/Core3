@@ -3008,6 +3008,15 @@ function FbLabTests:visionEnd(charName)
 end
 
 -- visionsReset:<char> → forget every vision seen (the lab shortcuts mark them all seen)
+-- visionsSkip:<char> → every vision marked seen (what attunementAccept / trialsUnlock do): a scenario that sets the path's
+-- flags by hand would otherwise get a vision at its first kill, and the zone change stores the character's pets
+function FbLabTests:visionsSkip(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	FbVisions:skipAll(pPlayer)
+	print("INFO visionsSkip done")
+	return "ok"
+end
 function FbLabTests:visionsReset(charName)
 	local pPlayer = loadedPlayer(charName)
 	if pPlayer == nil then return "offline" end

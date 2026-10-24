@@ -1300,3 +1300,7 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   2026-10-23 20:15, `~/.swg-lab/crashes/gdb-20261023-201505.log`): the stored creature's device reference is not safe to
   follow. Read `FbCompanion:isOut` (zone name non-empty) before any `AiAgent` getter on a pet; `companionProbe` does. A
   server halted at the gdb catchpoint answers no console command, so every lab call after the crash printed nothing.
+- **A zone change stores every pet** (stock `StoreSpawnedChildrenTask`): the Force visions (4a.4) are zone changes, so a
+  companion vanished four seconds after it appeared whenever a kill had made a vision due (the companion scenario set the
+  path flags by hand without marking the visions seen; lab `visionsSkip`). Found only by probing every second after the
+  spawn and reading the server log for the pet's owner. `FbVisions` now calls the companion back when the character returns.

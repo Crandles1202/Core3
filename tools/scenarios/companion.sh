@@ -14,6 +14,7 @@ kv() { lab "companion:$CHAR" | sed -n "s/.*[[:space:]]$1=\([^[:space:]]*\).*/\1/
 light_knight() {
 	lab "attunementReset:$CHAR" >/dev/null
 	lab "attunementFlag:$CHAR:padawan:1" >/dev/null
+	lab "visionsSkip:$CHAR" >/dev/null                  # or the padawan vision fires at the first kill and its zone change stores the pet
 	lab "attunementFlag:$CHAR:alignment:light" >/dev/null
 	lab "alignmentSet:$CHAR:30" >/dev/null
 	lab "skill:$CHAR:force_title_jedi_novice" >/dev/null
@@ -26,6 +27,7 @@ light_knight() {
 dark_knight() {
 	lab "attunementReset:$CHAR" >/dev/null
 	lab "attunementFlag:$CHAR:padawan:1" >/dev/null
+	lab "visionsSkip:$CHAR" >/dev/null                  # or the padawan vision fires at the first kill and its zone change stores the pet
 	lab "attunementFlag:$CHAR:alignment:dark" >/dev/null
 	lab "alignmentSet:$CHAR:-30" >/dev/null
 	lab "skill:$CHAR:force_title_jedi_novice" >/dev/null
