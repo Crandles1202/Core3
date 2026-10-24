@@ -3339,7 +3339,8 @@ function FbLabTests:companionProbe(charName, attackerOid)
 		tostring(out), tostring(a:getLastCommand()), pT and tostring(SceneObject(pT):getObjectID()) or "-", tostring(a:getMovementState()),
 		pF and tostring(SceneObject(pF):getObjectID()) or "-", tostring(CreatureObject(pPet):isInCombat()), tostring(a:getOwner() ~= nil), CreatureObject(pPet):getLevel())
 	local pMob = getSceneObject(tonumber(attackerOid) or 0)
-	if pMob ~= nil then line = line .. " attackableByPet=" .. tostring(AiAgent(pMob):isAttackableBy(pPet)) .. " petAttackableByMob=" .. tostring(AiAgent(pPet):isAttackableBy(pMob)) end
+	line = line .. string.format(" petFaction=%s ownerFaction=%s", tostring(CreatureObject(pPet):getFaction()), tostring(CreatureObject(pPlayer):getFaction()))
+	if pMob ~= nil then line = line .. " attackableByPet=" .. tostring(AiAgent(pMob):isAttackableBy(pPet)) .. " attackableByOwner=" .. tostring(AiAgent(pMob):isAttackableBy(pPlayer)) .. " petAttackableByMob=" .. tostring(AiAgent(pPet):isAttackableBy(pMob)) .. " mobFaction=" .. tostring(CreatureObject(pMob):getFaction()) end
 	print(line)
 	return "ok"
 end
