@@ -1,8 +1,8 @@
 -- fb_companion_dark_turned.lua — Ryka Dathe turned (Phase 4b.5): the fully trained apprentice out of the datapad as an enemy, spawned beside the master and set on them by FbCompanion:turn.
 fb_companion_dark_turned = Creature:new {
 	customName = "Ryka Dathe",
-	randomNameType = NAME_GENERIC,
-	randomNameTag = true,
+	randomNameType = NAME_TAG,
+	randomNameTag = false,
 	mobType = MOB_NPC,
 	socialGroup = "",
 	faction = "",

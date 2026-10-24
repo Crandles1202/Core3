@@ -53,11 +53,11 @@ check_eq "padawan_named" "$(kv petName)" "Mirren Solas"
 check_eq "padawan_level_stage1" "$(kv petLevel)" "25"
 DEVICE=$(kv device); PET=$(kv pet)
 check "device_in_the_datapad" "$( [ -n "$DEVICE" ] && [ "$DEVICE" != "-" ] && echo 1 || echo 0 )" "device $DEVICE pet $PET"
-check "client_got_the_given_line" "$(grep -aq 'fb_force:comp_light_given' "$BOTLOG" && echo 1 || echo 0)" "$(grep -a 'comp_' "$BOTLOG" | cut -c1-80 | tail -n1)"
 lab "companionStore:$CHAR" >/dev/null
 sleep 3
 check_eq "padawan_stored" "$(kv out)" "false"
 wait "$BOT_PID"
+check "client_got_the_given_line" "$(grep -aq 'fb_force:comp_light_given' "$BOTLOG" && echo 1 || echo 0)" "$(grep -a 'comp_' "$BOTLOG" | cut -c1-80 | tail -n1)"
 
 # --- B: called back through the datapad radial (the real packet); kills, stages, the defence, the trials, the knighting
 sleep 6
@@ -85,7 +85,6 @@ check_eq "padawan_defends" "$(kv petCombat)" "true" "$(lab "objectPos:$PET2" | s
 [ -n "$RAIDER" ] && lab "killNpc:$CHAR:$RAIDER" >/dev/null
 lab "revive:$CHAR" >/dev/null
 sleep 2
-check "client_heard_the_padawan" "$(grep -aq "SpatialChat from=$PET2" "$BOTLOG" && echo 1 || echo 0)" "$(grep -a "SpatialChat from=$PET2" "$BOTLOG" | head -n1 | cut -c1-100)"
 lab "companionKills:$CHAR:30" >/dev/null
 sleep 9
 check_eq "stage_three_at_fifty" "$(kv stage)" "3" "$(lab "companion:$CHAR" | head -n1 | cut -c1-200)"
@@ -108,6 +107,7 @@ check_eq "status_says_knighted" "$(kv statusLine)" "@fb_force:comp_status_knight
 lab "takeItems:$CHAR:robe_jedi" >/dev/null
 wait "$BOT_PID"
 check "client_got_the_knighting" "$(grep -aq 'fb_force:comp_light_knighted' "$BOTLOG" && echo 1 || echo 0)" "$(grep -a 'comp_light' "$BOTLOG" | cut -c1-80 | tail -n1)"
+check "client_heard_the_padawan" "$(grep -aq "SpatialChat from=$PET2" "$BOTLOG" && echo 1 || echo 0)" "$(grep -a "SpatialChat from=$PET2" "$BOTLOG" | head -n1 | cut -c1-100)"
 
 # --- C: the dark side: the betrayal; the turn and the loss; the turn and the slaying -----------------------------------
 sleep 6
@@ -143,7 +143,8 @@ sleep 3
 C=$(lab "companion:$CHAR" | head -n1)
 TURNED=$(kv turned)
 check "apprentice_turned_and_hunting" "$(grep -q 'state=turned' <<<"$C" && grep -q 'turnedAlive=true' <<<"$C" && grep -q 'device=- pet=-' <<<"$C" && echo 1 || echo 0)" "$C"
-check "turned_apprentice_beside_you" "$( [ -n "$TURNED" ] && lab "objectPos:$TURNED" | grep -q 'zone=tatooine' && echo 1 || echo 0 )" "$(lab "objectPos:$TURNED" | sed 's/.*zone=/zone=/' | cut -c1-100)"
+TX=$(lab "objectPos:$TURNED" | sed -n 's/.* x=\([-0-9.]*\).*/\1/p' | head -n1); TY=$(lab "objectPos:$TURNED" | sed -n 's/.* y=\([-0-9.]*\).*/\1/p' | head -n1)
+check "turned_apprentice_beside_you" "$( [ -n "$TX" ] && python3 -c "import sys; sys.exit(0 if (($TX-5264)**2+($TY-113)**2)**0.5 < 15 else 1)" && echo 1 || echo 0 )" "$(lab "objectPos:$TURNED" | sed 's/.*zone=/zone=/' | cut -c1-100)"
 check_eq "master_waits_for_the_outcome" "$(kv screen)" "comp_turned_wait"
 CASH0=$(lab_kv "cash:$CHAR" cash)
 lab "cashSet:$CHAR:40000" >/dev/null

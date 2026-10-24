@@ -1,8 +1,8 @@
 -- fb_companion_dark_2.lua — Ryka Dathe, the apprentice companion at stage 2 (Phase 4b.5). A stock hireling pet with our NPC in it; FbCompanion swaps the stage.
 fb_companion_dark_2 = Creature:new {
 	customName = "Ryka Dathe",
-	randomNameType = NAME_GENERIC,
-	randomNameTag = true,
+	randomNameType = NAME_TAG,
+	randomNameTag = false,
 	mobType = MOB_NPC,
 	socialGroup = "",
 	faction = "",

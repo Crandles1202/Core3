@@ -1,8 +1,8 @@
 -- fb_companion_light_2.lua — Mirren Solas, the Padawan companion at stage 2 (Phase 4b.5). A stock hireling pet with our NPC in it; FbCompanion swaps the stage.
 fb_companion_light_2 = Creature:new {
 	customName = "Mirren Solas",
-	randomNameType = NAME_GENERIC,
-	randomNameTag = true,
+	randomNameType = NAME_TAG,
+	randomNameTag = false,
 	mobType = MOB_NPC,
 	socialGroup = "",
 	faction = "",

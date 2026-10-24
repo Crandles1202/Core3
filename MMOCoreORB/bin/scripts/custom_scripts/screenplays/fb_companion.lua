@@ -131,6 +131,8 @@ function FbCompanion:makeDevice(pPlayer, side, stage)
 	local pDevice = giveControlDevice(pDatapad, self.device, d.stages[stage], -1, true)
 	if pDevice == nil then return nil end
 	SceneObject(pDevice):setCustomObjectName(d.name)
+	local pPet = getControlledObject(pDevice)
+	if pPet ~= nil then SceneObject(pPet):setCustomObjectName(d.name) end
 	self:set(pPlayer, "device", SceneObject(pDevice):getObjectID())
 	self:set(pPlayer, "stage", stage)
 	callControlDevice(pDevice, pPlayer)
@@ -187,9 +189,12 @@ end
 function FbCompanion:credit(pPlayer, n)
 	local kills = self:num(pPlayer, "kills") + (n or 1)
 	self:set(pPlayer, "kills", kills)
-	local stage = self:num(pPlayer, "stage")
 	local _, d = self:sideOf(pPlayer)
-	if d ~= nil and stage < 3 and kills >= self.stageKills[stage + 1] then self:advance(pPlayer, stage + 1) end
+	while d ~= nil do
+		local stage = self:num(pPlayer, "stage")
+		if stage >= 3 or kills < self.stageKills[stage + 1] then break end
+		if not self:advance(pPlayer, stage + 1) then break end
+	end
 	return kills
 end
 
@@ -221,7 +226,11 @@ function FbCompanion:onDamage(pPlayer, pAttacker, damage)
 	if not near or pPet == nil then return 0 end
 	if not SceneObject(pAttacker):isCreatureObject() or SceneObject(pAttacker):getObjectID() == SceneObject(pPet):getObjectID() then return 0 end
 	if not CreatureObject(pPet):isInCombat() then
+		-- what PetAttackCommand does: the command target, the defender, the default attack queued
+		AiAgent(pPet):setLastCommandTarget(pAttacker)
 		AiAgent(pPet):setDefender(pAttacker)
+		AiAgent(pPet):selectDefaultAttack()
+		AiAgent(pPet):enqueueAttack()
 		local last = self:num(pPlayer, "fightAt")
 		if os.time() - last >= self.fightCooldown then
 			self:set(pPlayer, "fightAt", os.time())
@@ -366,12 +375,14 @@ end
 function FbCompanion:turn(pPlayer)
 	local s = self:state(pPlayer)
 	if (s ~= "active" and s ~= "hunted") or self:get(pPlayer, "side") ~= "dark" then return false end
-	local so = SceneObject(pPlayer)
-	local zone = so:getZoneName()
-	if zone == "" or so:getParentID() ~= 0 then self:set(pPlayer, "state", "hunted"); return false end   -- indoors: later
+	-- the player's numbers first: removeDevice below re-points the shared SceneObject wrapper (the first version read
+	-- the device's position and the mob's own oid here, and the slain path never resolved)
+	local zone, parent = SceneObject(pPlayer):getZoneName(), SceneObject(pPlayer):getParentID()
+	local playerOid = SceneObject(pPlayer):getObjectID()
+	local px, py, pz = SceneObject(pPlayer):getWorldPositionX(), SceneObject(pPlayer):getWorldPositionY(), SceneObject(pPlayer):getWorldPositionZ()
+	if zone == "" or parent ~= 0 then self:set(pPlayer, "state", "hunted"); return false end   -- indoors: later
 	local _, d = self:sideOf(pPlayer)
 	if s == "active" then self:removeDevice(pPlayer) end
-	local px, py, pz = so:getWorldPositionX(), so:getWorldPositionY(), so:getWorldPositionZ()
 	local a = math.rad(getRandomNumber(360))
 	local x, y = px + 8 * math.cos(a), py + 8 * math.sin(a)
 	local pMob = spawnMobile(zone, d.turned, 0, x, getTerrainHeightAt(zone, x, y), y, 0, 0)
@@ -379,7 +390,7 @@ function FbCompanion:turn(pPlayer)
 	local oid = SceneObject(pMob):getObjectID()
 	AiAgent(pMob):setHomeLocation(px, pz, py, nil)
 	AiAgent(pMob):setDefender(pPlayer)
-	writeData(oid .. ":fbCompanionOf", so:getObjectID())
+	writeData(oid .. ":fbCompanionOf", playerOid)
 	createObserver(OBJECTDESTRUCTION, "FbCompanion", "onTurnedDown", pMob)
 	self:set(pPlayer, "state", "turned")
 	self:set(pPlayer, "turnedOid", oid)
@@ -394,11 +405,14 @@ end
 -- OBJECTDESTRUCTION on the turned apprentice: whoever finished her, the master is rid of her
 function FbCompanion:onTurnedDown(pMob, pKiller)
 	if pMob == nil then return 1 end
-	local pPlayer = getSceneObject(readData(SceneObject(pMob):getObjectID() .. ":fbCompanionOf"))
-	deleteData(SceneObject(pMob):getObjectID() .. ":fbCompanionOf")
-	if pPlayer ~= nil and self:state(pPlayer) == "turned" and SceneObject(pMob):getObjectID() == self:num(pPlayer, "turnedOid") then
+	local mobOid = SceneObject(pMob):getObjectID()
+	local ownerOid = tonumber(readData(mobOid .. ":fbCompanionOf") or 0) or 0
+	local pPlayer = ownerOid ~= 0 and getSceneObject(ownerOid) or nil
+	deleteData(mobOid .. ":fbCompanionOf")
+	if pPlayer ~= nil and not SceneObject(pPlayer):isPlayerCreature() then pPlayer = nil end
+	if pPlayer ~= nil and self:state(pPlayer) == "turned" and mobOid == self:num(pPlayer, "turnedOid") then
 		self:resolveTurn(pPlayer, "slain")
-		createEvent(8000, "FbCompanion", "sweepCorpse", pPlayer, tostring(SceneObject(pMob):getObjectID()))
+		createEvent(8000, "FbCompanion", "sweepCorpse", pPlayer, tostring(mobOid))
 	end
 	return 1
 end
