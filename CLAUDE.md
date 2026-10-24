@@ -280,7 +280,7 @@ Persisted object fields (`containerVolumeLimit`, …) are only read from the tem
   <screenplay>` (or `--spot room,x,y`) tests spots against the furniture boxes — run it for every indoor spot
   and keep it in the scenario (trade-hall does). Stock city files are not a safe source of spots either (their
   Trade Hall "mercenary" point is inside the bar counter).
-- Starting a conversation needs same cell, ≤ 5 m and line of sight to the NPC, and fails silently otherwise.
+- Starting a conversation needs same cell, ≤ 5 m and line of sight to the NPC, and fails silently otherwise. The bot's `converse` therefore asks twice (10 s each) before failing (7.5; four gate flakes on the old single 5 s wait).
   **Before trusting an NPC spot:** `swg cmd "runLuaFunction FbLabTests:placement:<name>"` (line of sight to
   probes 3 m around, height above terrain, drift; `checkPlacement` runs it for every FB spawn in `swg test lua`),
   then `gotoNpc:<char>:<name>` and look at it in the client — the server's collision data misses some decorative

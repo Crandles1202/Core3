@@ -1311,7 +1311,7 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   reports `harvested`. Teyla holds the Scout novice box, so twenty worrts are one scout box (1000) and the first award
   with the rifle in hand recomputes her level from 1 to the real number. Scenario `seat-fight` grants the box and checks
   the corpse and the experience (14 checks).
-- **The bazaar (Wex sells; written while the harvest gate ran, tested after the companion build):** Lua had no way to read
+- **The bazaar (Wex sells; written while the harvest gate ran, verified live 2026-10-24 after the companion lane's night on the bench: `seat-sell` 12/12 — 5000 Vahiide listed for 1500 cr, the 20 cr fee from the bank, retrieved; the only live bug was a `NameError` for the seat module handle in the pilot's new scope):** Lua had no way to read
   a resource stack — `getDisplayedName` on one is the *family* name (`createResource` sets the custom name to
   `getFamilyName()`), the spawn name and units live in `ResourceContainer`, which has no Lua class — so a C++ global
   `getInventoryItems(playerName)` returns every inventory row as `{oid, template, name, type, useCount}` plus
@@ -1327,6 +1327,16 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   lists it; a rules paragraph on pricing. The pilot holds exactly 20 strict tools now (the API's cap): tools without
   arguments and `train`/`sell` go unstrict. Scenario `seat-sell`: a 5000-unit mineral stack and a terminal 30 m away,
   the tool by resource name, the stack gone from the inventory, the fee from the bank, retrieve puts it back.
+- **Two gate flakes made hardier (2026-10-24, with the bazaar build):** (1) the bot's `converse` waited 5 s for the
+  conversation screen; a start the server refuses (same cell, 5 m, line of sight) is silent and a loaded gate server
+  under gdb answers late — four gates in a row flaked there (the broker twice, the Trade Hall keeper, each passing alone).
+  Now 10 s, and when no screen arrives the action sends `npcconversationstart` once more before failing ("asked twice";
+  `ConverseAction.cpp`). (2) `fight_seat` read "looted" as *no error line at all* in the 2 s after `loot all`, so a trailing
+  attack refused after the kill failed `seat-fight.corpse_looted` in the companion gate; now the verdict comes from the
+  loot's own words (`PlayerManager::lootAll` / `LootCommand`: refusals `target_out_of_range`, `no_corpse_permission`,
+  `you_are_full`, `corpse_empty`; `@base_player:corpse_looted` or `prose_coin_loot` confirm; an empty corpse says nothing)
+  and the result carries `lootSaid`. The companion lane added a one-time retry per red scenario to `swg test all` the
+  same night (its branch; a scenario failing twice still fails) — Chuck's to keep or revert.
 - **Gate flake, 2026-10-23 ~21:30:** `schematic-broker-ui` and `schematic-broker` both failed on the bot's converse with
   Dannik Vosa in the Trade Hall ("did not start a conversation within 5s"), the same broker oid twice, right after the
   `sandstorm` scenario; `gotoNpc` reported the teleport done both times, the lab-side purchase worked, and the scenario
