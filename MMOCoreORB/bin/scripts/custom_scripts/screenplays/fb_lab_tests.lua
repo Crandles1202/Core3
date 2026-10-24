@@ -3326,6 +3326,9 @@ companionDo("companionBetray", function(p) return FbCompanion:betray(p) end)
 companionDo("companionTurn", function(p) return FbCompanion:turn(p) end)
 companionDo("companionLose", function(p) local pT = FbCompanion:turnedOf(p); if pT == nil then return false end; FbCompanion:onIncap(p, pT); return true end)
 companionDo("companionReset", function(p) FbCompanion:reset(p); return true end)
+-- companionDied:<char> → the device destroyed as the stock kill path does it, then the state read (the companion is dead)
+companionDo("companionDied", function(p) local pD = FbCompanion:deviceOf(p); if pD == nil then return false end; FbCompanion:store(p); SceneObject(pD):destroyObjectFromWorld(true); SceneObject(pD):destroyObjectFromDatabase(); FbCompanion:checkAlive(p); return true end)
+companionDo("companionTakeAgain", function(p) return FbCompanion:takeAgain(p) end)
 -- companionProbe:<char>[:<attackerOid>] → the pet's AI as the server sees it: last command and target, movement state,
 -- follow object, combat, owner, and whether the attacker is attackable by the pet (for the defence's debugging)
 function FbLabTests:companionProbe(charName, attackerOid)
@@ -3368,8 +3371,8 @@ function FbLabTests.checkCompanion()
 	end
 	local function fileText(path) local f = io.open(path, "r"); if f == nil then return nil end; local t = f:read("a"); f:close(); return t end
 	local conv = { light = fileText("scripts/mobile/conversations/tasks/fb_jedi_master_conv.lua"), dark = fileText("scripts/mobile/conversations/tasks/fb_sith_master_conv.lua") }
-	local screens = { light = { "comp_offer", "comp_take", "comp_later", "comp_has", "comp_trial_offer", "comp_trial_go", "comp_trial_wait", "comp_trial_report", "comp_knighted", "comp_knighted_after" },
-		dark = { "comp_offer", "comp_take", "comp_later", "comp_dark_has", "comp_betray_ask", "comp_betray_do", "comp_betrayed_after", "comp_turned_wait", "comp_former_after", "comp_slain_after" } }
+	local screens = { light = { "comp_offer", "comp_take", "comp_later", "comp_has", "comp_trial_offer", "comp_trial_go", "comp_trial_wait", "comp_trial_report", "comp_knighted", "comp_knighted_after", "comp_dead", "comp_take_again" },
+		dark = { "comp_offer", "comp_take", "comp_later", "comp_dark_has", "comp_betray_ask", "comp_betray_do", "comp_betrayed_after", "comp_turned_wait", "comp_former_after", "comp_slain_after", "comp_dead", "comp_take_again" } }
 	for side, list in pairs(screens) do
 		local missing = {}
 		for _, id in ipairs(list) do if conv[side] == nil or not conv[side]:find('screen("' .. id .. '"', 1, true) then missing[#missing + 1] = id end end
@@ -3384,8 +3387,9 @@ function FbLabTests.checkCompanion()
 	if text ~= nil then
 		local missing = {}
 		local function need(k) if not text:find("\n" .. k .. " = ", 1, true) then missing[#missing + 1] = k end end
-		for _, k in ipairs({ "offer", "take", "later", "has", "trial_offer", "trial_go", "trial_wait", "trial_report", "knighted", "knighted_after" }) do need("master_comp_" .. k) end
-		for _, k in ipairs({ "offer", "take", "later", "has", "betray_ask", "betray_do", "betrayed_after", "turned_wait", "former_after", "slain_after" }) do need("sith_comp_" .. k) end
+		for _, k in ipairs({ "offer", "take", "later", "has", "trial_offer", "trial_go", "trial_wait", "trial_report", "knighted", "knighted_after", "dead" }) do need("master_comp_" .. k) end
+		for _, k in ipairs({ "offer", "take", "later", "has", "betray_ask", "betray_do", "betrayed_after", "turned_wait", "former_after", "slain_after", "dead" }) do need("sith_comp_" .. k) end
+		for _, k in ipairs({ "light_dead", "dark_dead", "status_dead_light", "status_dead_dark" }) do need("comp_" .. k) end
 		for _, k in ipairs({ "light_given", "light_stage2", "light_stage3", "light_trial_given", "light_trial_shrine", "light_trial_ready", "light_knighted", "dark_given", "dark_stage2", "dark_stage3", "dark_betrayed", "dark_turned", "dark_lost", "dark_slain", "dark_escaped",
 			"status_light", "status_dark", "status_knighted", "status_betrayed", "status_hunted", "status_former", "status_slain", "light_down_1", "light_shrine_1", "light_farewell_1", "dark_down_1", "dark_betray_last_1", "dark_turn_1", "dark_win_1" }) do need("comp_" .. k) end
 		for side, d in pairs(FbCompanion.sides) do

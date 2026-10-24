@@ -25,6 +25,8 @@ function fbJediMasterConvoHandler:runScreenHandlers(pConvTemplate, pPlayer, pNpc
 		FbKnight:graduate(pPlayer)
 	elseif screenID == "comp_take" and FbCompanion ~= nil then
 		FbCompanion:give(pPlayer)
+	elseif screenID == "comp_take_again" and FbCompanion ~= nil then
+		FbCompanion:takeAgain(pPlayer)
 	elseif screenID == "comp_trial_go" and FbCompanion ~= nil then
 		FbCompanion:trialGive(pPlayer)
 	elseif screenID == "comp_knighted" and FbCompanion ~= nil then

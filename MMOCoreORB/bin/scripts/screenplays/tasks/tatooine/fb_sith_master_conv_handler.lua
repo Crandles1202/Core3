@@ -25,6 +25,8 @@ function fbSithMasterConvoHandler:runScreenHandlers(pConvTemplate, pPlayer, pNpc
 		FbKnight:graduate(pPlayer)
 	elseif screenID == "comp_take" and FbCompanion ~= nil then
 		FbCompanion:give(pPlayer)
+	elseif screenID == "comp_take_again" and FbCompanion ~= nil then
+		FbCompanion:takeAgain(pPlayer)
 	elseif screenID == "comp_betray_do" and FbCompanion ~= nil then
 		FbCompanion:betray(pPlayer)
 	elseif screenID:sub(1, 5) == "told_" then

@@ -151,8 +151,22 @@ end
 
 -- ---------------------------------------------------------------- the Master's screens
 
+-- a killed faction pet's device is destroyed by the stock PetManager (hirelings die for good): a companion state whose
+-- device is gone means the companion died in a fight
+function FbCompanion:checkAlive(pPlayer)
+	local s = self:state(pPlayer)
+	if (s ~= "active" and s ~= "trial") or self:get(pPlayer, "device") == nil then return end
+	if self:deviceOf(pPlayer) ~= nil then return end
+	local side, d = self:sideOf(pPlayer)
+	self:clear(pPlayer, "device")
+	self:set(pPlayer, "state", "dead")
+	say(pPlayer, side .. "_dead")
+	printf("FbCompanion: %s's %s is dead\n", CreatureObject(pPlayer):getFirstName(), d and d.name or "companion")
+end
+
 function FbCompanion:screenFor(pPlayer, m)
 	if not self:eligible(pPlayer, m) then return nil end
+	self:checkAlive(pPlayer)
 	local s = self:state(pPlayer)
 	local side = m.side
 	if s == nil then return "comp_offer" end
@@ -168,6 +182,7 @@ function FbCompanion:screenFor(pPlayer, m)
 		if self:trialCount(pPlayer) >= self.trialShrinesNeeded then return "comp_trial_report" end
 		return "comp_trial_wait"
 	end
+	if s == "dead" then return "comp_dead" end
 	if s == "knighted" then return "comp_knighted_after" end
 	if s == "betrayed" then return "comp_betrayed_after" end
 	if s == "turned" or s == "hunted" then return "comp_turned_wait" end
@@ -192,6 +207,13 @@ function FbCompanion:give(pPlayer)
 	self:armIdle(pPlayer)
 	printf("FbCompanion: %s takes %s (%s)\n", CreatureObject(pPlayer):getFirstName(), self.sides[side].name, side)
 	return true
+end
+
+-- "I will take another" after a death: the slate wiped, a new first-stage companion
+function FbCompanion:takeAgain(pPlayer)
+	if self:state(pPlayer) ~= "dead" then return false end
+	self:reset(pPlayer)
+	return self:give(pPlayer)
 end
 
 -- ---------------------------------------------------------------- growing
@@ -307,6 +329,7 @@ end
 function FbCompanion:idleTick(pPlayer, args)
 	if pPlayer == nil or tonumber(args) ~= self:num(pPlayer, "idleGen") then return end
 	if SceneObject(pPlayer):getZoneName() == "" then return end   -- logged out: onLogin re-arms
+	self:checkAlive(pPlayer)
 	self:maybeTurn(pPlayer)
 	if self:state(pPlayer) == "active" then
 		local out, pPet = self:isOut(pPlayer)
@@ -486,11 +509,13 @@ function FbCompanion:statusLine(pPlayer)
 	local side = self:get(pPlayer, "side") or "light"
 	if s == "active" or s == "trial" then return "@fb_force:comp_status_" .. side end
 	if s == "turned" or s == "hunted" then return "@fb_force:comp_status_hunted" end
+	if s == "dead" then return "@fb_force:comp_status_dead_" .. side end
 	return "@fb_force:comp_status_" .. s
 end
 
 function FbCompanion:onLogin(pPlayer)
 	if pPlayer == nil or self:state(pPlayer) == nil then return end
+	self:checkAlive(pPlayer)
 	self:armDefence(pPlayer)
 	self:armIdle(pPlayer)
 end
