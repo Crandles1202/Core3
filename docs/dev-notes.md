@@ -1296,3 +1296,7 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   (`callLater`, which checks the device is still the current one). A **killed faction pet's device is destroyed** by
   `PetManager::notifyDestruction` (hirelings die for good): a companion state whose device is gone means the companion
   died. The `AiAgent` getters on a *stored* pet throw (the dirty-console exception): read `isOut` first.
+- **`AiAgent:getLastCommandTarget()` on a stored pet segfaults the server** (`LuaAiAgent::getLastCommandTarget`, SIGSEGV
+  2026-10-23 20:15, `~/.swg-lab/crashes/gdb-20261023-201505.log`): the stored creature's device reference is not safe to
+  follow. Read `FbCompanion:isOut` (zone name non-empty) before any `AiAgent` getter on a pet; `companionProbe` does. A
+  server halted at the gdb catchpoint answers no console command, so every lab call after the crash printed nothing.
