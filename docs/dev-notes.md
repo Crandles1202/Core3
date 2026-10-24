@@ -1265,3 +1265,7 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 - A pet's stage change is a new device: store, destroy device and creature (`destroyObjectFromWorld` + `destroyObjectFromDatabase` on both), give the next template, call it.
 - Permanent stat bonus from Lua: `setBaseHAM(pool, …)` **and** `setMaxHAM(pool, …)` (the max is not recomputed from the base); pools 0 / 3 / 6.
 - A worktree's `MMOCoreORB/build` is a link to the bench's build tree: `~/bin/build` from a worktree configures and builds the **bench's** sources, not the worktree's. C++ on a branch compiles when `bench use` deploys it. A syntax-only check before that: the bench's `compile_commands.json` entry for the file, `-o` dropped, the source path swapped for the worktree's, `-I<worktree>/MMOCoreORB/src` first so the changed headers win, `-fsyntax-only`.
+- A new `fb_*` mobile is three things or it is nothing: the file, its `includeFile` line in `mobile/quest/serverobjects.lua`,
+  and (silent, event-spawned) its `FbLabTests.eventNpcs` row; a mobile without a conversation carries no
+  `conversationTemplate` key at all. The companion's seven templates shipped without the include: `giveControlDevice`
+  found no template, returned nil, and 39 scenario checks cascaded from that one line.

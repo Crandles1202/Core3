@@ -314,6 +314,13 @@ FbLabTests.eventNpcs = {
 	fb_bounty_veteran = { conversation = false, spawnedAtBoot = false },     -- Phase 4c
 	fb_bounty_dark_hunter = { conversation = false, spawnedAtBoot = false }, -- Phase 4c
 	fb_bounty_light_hunter = { conversation = false, spawnedAtBoot = false }, -- Phase 4c
+	fb_companion_light_1 = { conversation = false, spawnedAtBoot = false },    -- Phase 4b.5 (a hireling pet)
+	fb_companion_light_2 = { conversation = false, spawnedAtBoot = false },
+	fb_companion_light_3 = { conversation = false, spawnedAtBoot = false },
+	fb_companion_dark_1 = { conversation = false, spawnedAtBoot = false },
+	fb_companion_dark_2 = { conversation = false, spawnedAtBoot = false },
+	fb_companion_dark_3 = { conversation = false, spawnedAtBoot = false },
+	fb_companion_dark_turned = { conversation = false, spawnedAtBoot = false },
 }
 
 function FbLabTests.checkNpc(npc)

@@ -32,7 +32,6 @@ fb_companion_dark_turned = Creature:new {
 	lootGroups = {},
 	primaryWeapon = "force_sword",
 	secondaryWeapon = "force_sword_ranged",
-	conversationTemplate = "",
 	primaryAttacks = merge(pikemanmaster,brawlermaster,fencermaster,swordsmanmaster,forcewielder),
 	secondaryAttacks = forcewielder
 }
