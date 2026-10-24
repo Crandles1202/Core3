@@ -80,8 +80,8 @@ X=$(lab "where:$CHAR" | sed -n 's/.* x=\([-0-9.]*\).*/\1/p' | head -n1); Y=$(lab
 RAIDER=$(lab "spawnNpcAt:tusken_raider:tatooine:$(python3 -c "print(round($X + 6, 1))"):$Y:0" | sed -n 's/.*oid=\([0-9]*\).*/\1/p' | head -n1)
 check "raider_spawned" "$( [ -n "$RAIDER" ] && echo 1 || echo 0 )"
 lab "companionDefend:$CHAR:$RAIDER" >/dev/null
-sleep 5
-check_eq "padawan_defends" "$(kv petCombat)" "true" "$(lab "objectPos:$PET2" | sed 's/.*zone=/zone=/' | cut -c1-100)"
+sleep 6
+check_eq "padawan_defends" "$(kv petCombat)" "true" "$(lab "companionProbe:$CHAR:$RAIDER" | grep -a 'INFO companionProbe' | head -n1 | cut -c1-220)"
 [ -n "$RAIDER" ] && lab "killNpc:$CHAR:$RAIDER" >/dev/null
 lab "revive:$CHAR" >/dev/null
 sleep 2
@@ -131,7 +131,8 @@ H1=$(hmax)
 check_eq "a_hundred_health_for_good" "$(( ${H1:-0} - ${H0:-0} ))" "100" "healthMax $H0 -> $H1"
 check_eq "betrayal_leans_dark" "$(kv align)" "$(( A0 - 20 ))"
 check_eq "master_knows_you_spent_her" "$(kv screen)" "comp_betrayed_after"
-# the turn and the loss
+# the turn and the loss (the character is made to last: a level-95 apprentice drops a fresh one in two swings)
+lab "hamSet:$CHAR:60000" >/dev/null
 lab "companionReset:$CHAR" >/dev/null
 lab "companionGive:$CHAR" >/dev/null
 sleep 8
@@ -141,7 +142,7 @@ check_eq "fully_trained" "$(kv stage)" "3"
 CASH0=$(lab_kv "cash:$CHAR" cash)
 lab "cashSet:$CHAR:40000" >/dev/null
 # the turn's own line is read: a level-95 apprentice set on a lab character wins within seconds
-T=$(lab "companionTurn:$CHAR" | grep -a 'INFO companion' | head -n1)
+T=$(lab "companionTurn:$CHAR" | grep -a 'INFO companion char=' | head -n1)
 TURNED=$(sed -n 's/.*[[:space:]]turned=\([^[:space:]]*\).*/\1/p' <<<"$T")
 check "apprentice_turned_and_hunting" "$(grep -q 'state=turned' <<<"$T" && grep -q 'turnedAlive=true' <<<"$T" && grep -q 'device=- pet=-' <<<"$T" && echo 1 || echo 0)" "$T"
 check "master_waits_for_the_outcome" "$(grep -q 'screen=comp_turned_wait' <<<"$T" && echo 1 || echo 0)" "$T"

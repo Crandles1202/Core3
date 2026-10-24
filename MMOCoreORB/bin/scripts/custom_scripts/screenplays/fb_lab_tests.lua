@@ -3326,6 +3326,31 @@ companionDo("companionBetray", function(p) return FbCompanion:betray(p) end)
 companionDo("companionTurn", function(p) return FbCompanion:turn(p) end)
 companionDo("companionLose", function(p) local pT = FbCompanion:turnedOf(p); if pT == nil then return false end; FbCompanion:onIncap(p, pT); return true end)
 companionDo("companionReset", function(p) FbCompanion:reset(p); return true end)
+-- companionProbe:<char>[:<attackerOid>] → the pet's AI as the server sees it: last command and target, movement state,
+-- follow object, combat, owner, and whether the attacker is attackable by the pet (for the defence's debugging)
+function FbLabTests:companionProbe(charName, attackerOid)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local out, pPet = FbCompanion:isOut(pPlayer)
+	if pPet == nil then print("INFO companionProbe pet=-"); return "none" end
+	local a = AiAgent(pPet)
+	local pF, pT = a:getFollowObject(), a:getLastCommandTarget()
+	local line = string.format("INFO companionProbe out=%s lastCommand=%s lastTarget=%s moveState=%s follow=%s combat=%s owner=%s level=%d",
+		tostring(out), tostring(a:getLastCommand()), pT and tostring(SceneObject(pT):getObjectID()) or "-", tostring(a:getMovementState()),
+		pF and tostring(SceneObject(pF):getObjectID()) or "-", tostring(CreatureObject(pPet):isInCombat()), tostring(a:getOwner() ~= nil), CreatureObject(pPet):getLevel())
+	local pMob = getSceneObject(tonumber(attackerOid) or 0)
+	if pMob ~= nil then line = line .. " attackableByPet=" .. tostring(AiAgent(pMob):isAttackableBy(pPet)) .. " petAttackableByMob=" .. tostring(AiAgent(pPet):isAttackableBy(pMob)) end
+	print(line)
+	return "ok"
+end
+-- hamSet:<char>:<value> → the three pools' maxima and current values set (a lab character that must survive a fight)
+function FbLabTests:hamSet(charName, value)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local v = tonumber(value) or 1000
+	for _, pool in ipairs({ 0, 3, 6 }) do CreatureObject(pPlayer):setMaxHAM(pool, v); CreatureObject(pPlayer):setHAM(pool, v) end
+	return hamLine(charName, pPlayer)
+end
 
 function FbLabTests.checkCompanion()
 	check("companion.loaded", FbCompanion ~= nil and FbCompanion.sides ~= nil)
