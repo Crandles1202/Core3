@@ -2913,6 +2913,17 @@ function FbLabTests:trialTick(charName)
 	if pPlayer == nil then return "offline" end
 	local sent = FbAttunement:maybeVisit(pPlayer)
 	print("INFO trialTick sent=" .. tostring(sent))
+	if not sent then
+		-- why not: the gates the trigger passes through, read the same way maybeVisit / FbVisions read them
+		local oid = SceneObject(pPlayer):getObjectID()
+		local visit = tonumber(getQuestStatus("FbAttunement.visit." .. oid) or 0) or 0
+		local c = CreatureObject(pPlayer)
+		print(string.format("INFO trialTickWhy visitAge=%s combat=%s dead=%s incap=%s riding=%s parent=%s zone=%s visionActive=%s visionDue=%s canLeave=%s trialActive=%s",
+			visit > 0 and tostring(os.time() - visit) or "-", tostring(c:isInCombat()), tostring(c:isDead()), tostring(c:isIncapacitated()), tostring(c:isRidingMount()),
+			tostring(SceneObject(pPlayer):getParentID()), SceneObject(pPlayer):getZoneName(),
+			tostring(FbVisions and FbVisions:active(pPlayer) or "-"), tostring(FbVisions and FbVisions:due(pPlayer) or "-"), tostring(FbVisions and FbVisions:canLeave(pPlayer) or "-"),
+			tostring(FbTrials and FbTrials:active(pPlayer) or "-")))
+	end
 	trialsLine(charName, pPlayer)
 	return tostring(sent)
 end
