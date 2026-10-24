@@ -69,7 +69,7 @@ check_eq "padawan_out_again" "$(kv out)" "true" "$(lab "companion:$CHAR" | head 
 lab "companionKills:$CHAR:19" >/dev/null
 check_eq "stage_waits_for_the_twentieth" "$(kv stage)" "1"
 lab "companionKills:$CHAR:1" >/dev/null
-sleep 9
+sleep 12
 C=$(lab "companion:$CHAR" | head -n1)
 check "stage_two_at_twenty" "$(grep -q 'stage=2 kills=20' <<<"$C" && grep -q 'out=true' <<<"$C" && echo 1 || echo 0)" "$C"
 check_eq "padawan_level_stage2" "$(kv petLevel)" "50"
@@ -86,7 +86,7 @@ check_eq "padawan_defends" "$(kv petCombat)" "true" "$(lab "companionProbe:$CHAR
 lab "revive:$CHAR" >/dev/null
 sleep 2
 lab "companionKills:$CHAR:30" >/dev/null
-sleep 9
+sleep 12                                             # the stage call comes through a 6.5 s event plus the stock five seconds
 check_eq "stage_three_at_fifty" "$(kv stage)" "3" "$(lab "companion:$CHAR" | head -n1 | cut -c1-200)"
 check_eq "trials_offered" "$(kv screen)" "comp_trial_offer"
 lab "companionTrialGive:$CHAR" >/dev/null
@@ -137,7 +137,7 @@ lab "companionReset:$CHAR" >/dev/null
 lab "companionGive:$CHAR" >/dev/null
 sleep 8
 lab "companionKills:$CHAR:50" >/dev/null
-sleep 8
+sleep 12
 check_eq "fully_trained" "$(kv stage)" "3"
 CASH0=$(lab_kv "cash:$CHAR" cash)
 lab "cashSet:$CHAR:40000" >/dev/null
@@ -165,7 +165,7 @@ lab "companionReset:$CHAR" >/dev/null
 lab "companionGive:$CHAR" >/dev/null
 sleep 8
 lab "companionKills:$CHAR:50" >/dev/null
-sleep 8
+sleep 12
 lab "companionTurn:$CHAR" >/dev/null
 sleep 3
 TURNED=$(kv turned)

@@ -3333,6 +3333,8 @@ function FbLabTests:companionProbe(charName, attackerOid)
 	if pPlayer == nil then return "offline" end
 	local out, pPet = FbCompanion:isOut(pPlayer)
 	if pPet == nil then print("INFO companionProbe pet=-"); return "none" end
+	-- the AiAgent getters on a stored (zoneless) pet throw a C++ exception that dirties the console Lua stack: stop short
+	if not out then print("INFO companionProbe out=false (stored or dead; no AI state read)"); return "stored" end
 	local a = AiAgent(pPet)
 	local pF, pT = a:getFollowObject(), a:getLastCommandTarget()
 	local line = string.format("INFO companionProbe out=%s lastCommand=%s lastTarget=%s moveState=%s follow=%s combat=%s owner=%s level=%d",

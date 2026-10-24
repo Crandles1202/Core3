@@ -124,8 +124,10 @@ function FbCompanion:removeDevice(pPlayer)
 	self:clear(pPlayer, "device")
 end
 
--- a device of the stage's template in the datapad, named, called out
-function FbCompanion:makeDevice(pPlayer, side, stage)
+-- a device of the stage's template in the datapad, named, called out. A stock pet call lands after five seconds and a
+-- second call inside that window is refused (call_delay_finish_pet), so a stage change calls through a 6.5 s event: two
+-- stages reached by one kill count still end with the last one out (the event checks the device is still the current one)
+function FbCompanion:makeDevice(pPlayer, side, stage, delayed)
 	local d = self.sides[side]
 	local pDatapad = SceneObject(pPlayer):getSlottedObject("datapad")
 	if pDatapad == nil then return nil end
@@ -134,10 +136,17 @@ function FbCompanion:makeDevice(pPlayer, side, stage)
 	SceneObject(pDevice):setCustomObjectName(d.name)
 	local pPet = getControlledObject(pDevice)
 	if pPet ~= nil then SceneObject(pPet):setCustomObjectName(d.name) end
-	self:set(pPlayer, "device", SceneObject(pDevice):getObjectID())
+	local oid = SceneObject(pDevice):getObjectID()
+	self:set(pPlayer, "device", oid)
 	self:set(pPlayer, "stage", stage)
-	callControlDevice(pDevice, pPlayer)
+	if delayed then createEvent(6500, "FbCompanion", "callLater", pPlayer, tostring(oid)) else callControlDevice(pDevice, pPlayer) end
 	return pDevice
+end
+function FbCompanion:callLater(pPlayer, args)
+	if pPlayer == nil or tonumber(args) ~= self:num(pPlayer, "device") then return end
+	if SceneObject(pPlayer):getZoneName() == "" then return end
+	local pDevice = self:deviceOf(pPlayer)
+	if pDevice ~= nil then callControlDevice(pDevice, pPlayer) end
 end
 
 -- ---------------------------------------------------------------- the Master's screens
@@ -203,7 +212,7 @@ function FbCompanion:advance(pPlayer, stage)
 	local side, d = self:sideOf(pPlayer)
 	if d == nil or stage > #d.stages then return false end
 	self:removeDevice(pPlayer)
-	if self:makeDevice(pPlayer, side, stage) == nil then return false end
+	if self:makeDevice(pPlayer, side, stage, true) == nil then return false end
 	say(pPlayer, side .. "_stage" .. stage)
 	if stage == 3 then self:set(pPlayer, "fullAt", os.time()); self:set(pPlayer, "lastRoll", os.date("%Y%m%d")) end
 	printf("FbCompanion: %s's %s reaches stage %d\n", CreatureObject(pPlayer):getFirstName(), d.name, stage)

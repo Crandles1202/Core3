@@ -1291,3 +1291,8 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   isNeutral() → false`; *neutral* = faction 0 = all wildlife; the `tusken_raider` faction string reads as 0 too). The hireling
   rule keeps GCW pets to the GCW. The companions (creature templates `fb_companion_*`) are exempted in those three places
   (`fbIsCompanionPet`). Found with lab `companionProbe` live: `attackableByPet=false attackableByOwner=true mobFaction=0`.
+- **A pet call lands five seconds later and a second call inside that window is refused** (`call_delay_finish_pet`): two
+  stage changes from one kill count left the companion in the datapad. Stage changes call through a 6.5 s event
+  (`callLater`, which checks the device is still the current one). A **killed faction pet's device is destroyed** by
+  `PetManager::notifyDestruction` (hirelings die for good): a companion state whose device is gone means the companion
+  died. The `AiAgent` getters on a *stored* pet throw (the dirty-console exception): read `isOut` first.
