@@ -266,7 +266,12 @@ def fight_seat(s, char, target, max_s=90, reach=4.0, harvest=False):
         s.action("command", name="loot", target=str(target), args="all", nowait=True, timeout=5)
         _t.sleep(2)
         said = (s.request({"op": "vars", "path": "/SystemMessages"}).get("vars") or [])[n0:]
-        looted = not any("@error_message" in m or "out_of_range" in m for m in said)
+        # the server's own words (PlayerManager::lootAll / LootCommand): a refusal is one of four ids; success says
+        # corpse_looted (items taken) or prose_coin_loot (credits), or nothing at all for a corpse with neither. Any
+        # other error line in the window (a trailing attack refused after the kill) is not the loot's.
+        refusals = ("target_out_of_range", "no_corpse_permission", "you_are_full", "corpse_empty")
+        loot_said = [m for m in said if any(k in m for k in refusals + ("corpse_looted", "prose_coin_loot"))]
+        looted = not any(any(k in m for k in refusals) for m in loot_said)
     harvested, harvest_said = False, ""
     if verdict == "killed" and harvest:
         # a scout harvests the corpse (harvestcorpse [meat|hide|bone], a random one when unsaid): within 10 m, out of
@@ -291,6 +296,8 @@ def fight_seat(s, char, target, max_s=90, reach=4.0, harvest=False):
               "looted": looted, "harvested": harvested}
     if harvest_said:
         result["harvestSaid"] = harvest_said
+    if verdict == "killed":
+        result["lootSaid"] = "; ".join(m[:80] for m in loot_said)[:160]
     print(f"fight: {verdict} after {swings} swing(s), {result['seconds']} s" + (", looted" if result["looted"] else "") + (", harvested" if harvested else ""))
     return result
 
