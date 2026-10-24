@@ -1304,3 +1304,4 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   companion vanished four seconds after it appeared whenever a kill had made a vision due (the companion scenario set the
   path flags by hand without marking the visions seen; lab `visionsSkip`). Found only by probing every second after the
   spawn and reading the server log for the pet's owner. `FbVisions` now calls the companion back when the character returns.
+- A mobile with `PACK` in its `creatureBitmask` must name a `socialGroup` (`LuaMobileTemplatesTest`); a lone enemy is `KILLER` alone.
