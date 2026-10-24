@@ -3337,7 +3337,13 @@ function FbLabTests:companionProbe(charName, attackerOid)
 	local out, pPet = FbCompanion:isOut(pPlayer)
 	if pPet == nil then print("INFO companionProbe pet=-"); return "none" end
 	-- the AiAgent getters on a stored (zoneless) pet throw a C++ exception that dirties the console Lua stack: stop short
-	if not out then print("INFO companionProbe out=false (stored or dead; no AI state read)"); return "stored" end
+	if not out then
+		-- no AiAgent getter here (they segfault on a stored pet); the plain object getters are safe
+		print(string.format("INFO companionProbe out=false zone=%s dead=%s posture=%d parent=%s x=%.1f y=%.1f ham=%d/%d (stored or dead; no AI state read)",
+			SceneObject(pPet):getZoneName(), tostring(CreatureObject(pPet):isDead()), CreatureObject(pPet):getPosture(), tostring(SceneObject(pPet):getParentID()),
+			SceneObject(pPet):getWorldPositionX(), SceneObject(pPet):getWorldPositionY(), CreatureObject(pPet):getHAM(0), CreatureObject(pPet):getMaxHAM(0)))
+		return "stored"
+	end
 	local a = AiAgent(pPet)
 	local pF, pT = a:getFollowObject(), a:getLastCommandTarget()
 	local line = string.format("INFO companionProbe out=%s lastCommand=%s lastTarget=%s moveState=%s follow=%s combat=%s owner=%s level=%d",
