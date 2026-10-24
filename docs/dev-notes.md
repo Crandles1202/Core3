@@ -1269,3 +1269,13 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   and (silent, event-spawned) its `FbLabTests.eventNpcs` row; a mobile without a conversation carries no
   `conversationTemplate` key at all. The companion's seven templates shipped without the include: `giveControlDevice`
   found no template, returned nil, and 39 scenario checks cascaded from that one line.
+- Shared-wrapper slip number four (the companion's turn): `local so = SceneObject(pPlayer)` … `self:removeDevice()` …
+  `so:getWorldPositionX()` read the *device*, and `so:getObjectID()` the freshly spawned mob — so the turned apprentice
+  spawned at the device's position and its owner lookup found itself ("read screen play data from a non-player Scene
+  Object"). Rule restated: pull every number you need off an object into locals *before* calling any helper, because
+  helpers wrap other objects.
+- A mobile with `randomNameType = NAME_GENERIC` is named "<random> (<customName>)"; `NAME_TAG` keeps the customName as is.
+  A pet made by `giveControlDevice` is named by its template, so set the creature's name explicitly too.
+- `AiAgent:setDefender(target)` alone leaves a **pet** standing; what the datapad's attack command does is
+  `setLastCommandTarget(target)`, `setDefender(target)`, `selectDefaultAttack()`, `enqueueAttack()` — all bound in Lua.
+- A bot session's log is complete only after `wait "$BOT_PID"`: check system messages and SpatialChat lines after the wait.
