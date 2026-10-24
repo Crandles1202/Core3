@@ -1309,3 +1309,6 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   seat's loot heuristic flake now and then, and 2026-10-23 three full gates in a row went red on one unrelated check each
   (bounty's own bug aside): schematic-broker, seat-fight.corpse_looted, trade-hall.keeper_converse. A real bug fails twice;
   the first run's log is kept beside the second.
+- A bot conversation two seconds after zone-in (`bot --wait 2 --converse`) failed three gates running once the server had
+  been up for a few hours; every other conversation scenario waits ten or more seconds, trade-hall now does too. The
+  lab's `gotoNpc` needs the character online (`onlinePlayer`): a hand replay without a bot session returns "not online".
