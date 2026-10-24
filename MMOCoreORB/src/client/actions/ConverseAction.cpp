@@ -5,7 +5,7 @@
  * records what the NPC said (core.vars "Conversation/transcript", also logged).
  *
  *   --converse <npcOid> [--options 0,2,1] [--converse-timeout <sec>]
- *   JSON: {"action":"converse","npc":123,"options":[0,2],"timeout":5}
+ *   JSON: {"action":"converse","npc":123,"options":[0,2],"timeout":10}   (the start is asked twice within 2×timeout)
  *
  * Option indexes are 0-based positions in the option list the server sent for the current
  * screen. The conversation is closed at the end unless the NPC already closed it.
@@ -81,7 +81,7 @@ class ConverseAction : public ActionBase {
 	}
 
 public:
-	ConverseAction() : timeoutSeconds(5), skipped(false), screensSeen(0) {
+	ConverseAction() : timeoutSeconds(10), skipped(false), screensSeen(0) {
 		setLogLevel(Logger::INFO);
 		setLoggingName("Converse");
 	}
@@ -161,10 +161,16 @@ public:
 		info() << "starting conversation with " << npc;
 		sendCommand(core, "npcconversationstart", npc, "");
 
-		// the screen's option list and the StartNpcConversation packet arrive in either order
+		// the screen's option list and the StartNpcConversation packet arrive in either order. A start the server
+		// refuses (same cell, 5 m, line of sight) is silent, and a loaded gate server can take longer than the wait:
+		// ask once more before giving up (four gates in a row flaked here on 2026-10-23/24, each passing alone).
 		if (!waitForScreen(core, -1)) {
-			result.setError("NPC " + String::valueOf(npc) + " did not start a conversation within " + String::valueOf(timeoutSeconds) + "s (out of range? not conversable?)", 3);
-			return;
+			info() << "no conversation screen within " << timeoutSeconds << " s: sending npcconversationstart again";
+			sendCommand(core, "npcconversationstart", npc, "");
+			if (!waitForScreen(core, -1)) {
+				result.setError("NPC " + String::valueOf(npc) + " did not start a conversation within " + String::valueOf(2 * timeoutSeconds) + "s, asked twice (out of range? not conversable?)", 3);
+				return;
+			}
 		}
 		for (int waited = 0; !core.hasVar("Conversation/npc") && waited < 2000; waited += 50)
 			Thread::sleep(50);
