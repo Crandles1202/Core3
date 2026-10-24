@@ -1286,3 +1286,8 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 - A level-95 enemy set on a lab character wins in under three seconds: a scenario reads the state it wants to see from the
   **same lab call** that creates it (the oracle prints its line before the AI's first swing), and sets up anything the outcome
   reads (the cash) *before* the trigger.
+- **A faction (hireling) pet will not attack a neutral creature, and neutral creatures will not attack it**
+  (`AiAgentImplementation::isAttackableBy`, both overloads, and `TangibleObjectImplementation::isAttackableBy`: `FACTIONPET &&
+  isNeutral() → false`; *neutral* = faction 0 = all wildlife; the `tusken_raider` faction string reads as 0 too). The hireling
+  rule keeps GCW pets to the GCW. The companions (creature templates `fb_companion_*`) are exempted in those three places
+  (`fbIsCompanionPet`). Found with lab `companionProbe` live: `attackableByPet=false attackableByOwner=true mobFaction=0`.

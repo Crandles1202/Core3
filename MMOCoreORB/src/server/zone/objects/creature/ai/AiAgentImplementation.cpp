@@ -4352,6 +4352,18 @@ bool AiAgentImplementation::isAggressive(TangibleObject* target) {
 	return pvpStatusBitmask & ObjectFlag::AGGRESSIVE;
 }
 
+// Final Boss 4b.5: the companion Padawan / Apprentice rides on a faction (hireling) pet, and stock faction pets neither
+// attack neutral creatures nor are attacked by them (the GCW-only rule below). A companion fights whatever its master
+// fights, so the rule skips pets whose creature template is one of ours.
+static bool fbIsCompanionPet(AiAgent* agent) {
+	if (agent == nullptr)
+		return false;
+
+	const CreatureTemplate* templ = agent->getCreatureTemplate();
+
+	return templ != nullptr && templ->getTemplateName().indexOf("fb_companion_") == 0;
+}
+
 bool AiAgentImplementation::isAttackableBy(TangibleObject* object) {
 	/*
 	* This function should return true if this creature is attackable by the passed Tangible Object
@@ -4371,7 +4383,7 @@ bool AiAgentImplementation::isAttackableBy(TangibleObject* object) {
 	if (isPet() && !isMindTricked()) {
 		ManagedReference<PetControlDevice*> pcd = getControlDevice().get().castTo<PetControlDevice*>();
 
-		if (pcd != nullptr && pcd->getPetType() == PetManager::FACTIONPET && object->isNeutral())
+		if (pcd != nullptr && pcd->getPetType() == PetManager::FACTIONPET && object->isNeutral() && !fbIsCompanionPet(asAiAgent()))
 			return false;
 
 		ManagedReference<CreatureObject*> owner = getLinkedCreature().get();
@@ -4426,7 +4438,7 @@ bool AiAgentImplementation::isAttackableBy(CreatureObject* creature) {
 	// Handle Pets - Check against owner
 	if (isPet() && !isMindTricked()) {
 		ManagedReference<PetControlDevice*> pcd = getControlDevice().get().castTo<PetControlDevice*>();
-		if (pcd != nullptr && pcd->getPetType() == PetManager::FACTIONPET && creature->isNeutral()) {
+		if (pcd != nullptr && pcd->getPetType() == PetManager::FACTIONPET && creature->isNeutral() && !fbIsCompanionPet(asAiAgent())) {
 			return false;
 		}
 
@@ -4445,7 +4457,7 @@ bool AiAgentImplementation::isAttackableBy(CreatureObject* creature) {
 	if (creature->isPet()) {
 		ManagedReference<PetControlDevice*> controlDevice = creature->getControlDevice().get().castTo<PetControlDevice*>();
 
-		if (controlDevice != nullptr && controlDevice->getPetType() == PetManager::FACTIONPET && isNeutral())
+		if (controlDevice != nullptr && controlDevice->getPetType() == PetManager::FACTIONPET && isNeutral() && !fbIsCompanionPet(creature->asAiAgent()))
 			return false;
 
 		ManagedReference<CreatureObject*> owner = creature->getLinkedCreature().get();
