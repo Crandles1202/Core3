@@ -1305,3 +1305,7 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   path flags by hand without marking the visions seen; lab `visionsSkip`). Found only by probing every second after the
   spawn and reading the server log for the pet's owner. `FbVisions` now calls the companion back when the character returns.
 - A mobile with `PACK` in its `creatureBitmask` must name a `socialGroup` (`LuaMobileTemplatesTest`); a lone enemy is `KILLER` alone.
+- **The gate retries a red scenario once** (`tools/swg test_scenario`, only in `all`): the bot's conversation starts and the
+  seat's loot heuristic flake now and then, and 2026-10-23 three full gates in a row went red on one unrelated check each
+  (bounty's own bug aside): schematic-broker, seat-fight.corpse_looted, trade-hall.keeper_converse. A real bug fails twice;
+  the first run's log is kept beside the second.

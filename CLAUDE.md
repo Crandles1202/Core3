@@ -163,7 +163,8 @@ tools/citizens/crew up [names|all] [--idle S] [--dry] | down | status | log <cit
   row index or row text, input boxes by text); `--keep-going` runs on after a failed action),
   the oracle observes. Templates: `stimpack-heals.sh` (control round measures regen, then the command
   round; asserts per-pool heal beyond regen), `npc-conversation.sh`. Write one for every mechanic
-  change; `swg test all` runs them. `*.manual.sh` scenarios (long audits such as `merchant-stops`, which
+  change; `swg test all` runs them, and gives a red scenario **one retry** (a flake passes the second time, a real bug fails
+  twice; the first run's log is kept as `last-scenario-<name>.first.log`). `*.manual.sh` scenarios (long audits such as `merchant-stops`, which
   walks every merchant stop) run only by name: `swg test scenario merchant-stops`.
 - Test accounts: `claude-admin` (admin_level 15), `claude-player` (admin_level 0). Passwords are in
   `~/.swg-lab/*.pass` (mode 600), never in the repo. Account hash = `SHA256(DBSecret + password + salt)`,
