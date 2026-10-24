@@ -49,7 +49,7 @@ lab "companionGive:$CHAR" >/dev/null
 sleep 9                                              # a pet call lands after the stock five seconds
 C=$(lab "companion:$CHAR" | head -n1)
 check "padawan_taken_and_out" "$(grep -q 'state=active stage=1' <<<"$C" && grep -q 'out=true near=true' <<<"$C" && echo 1 || echo 0)" "$C"
-check_eq "padawan_named" "$(kv petName)" "Mirren Solas"
+check_eq "padawan_named" "$(kv petName)" "Mirren_Solas"
 check_eq "padawan_level_stage1" "$(kv petLevel)" "25"
 DEVICE=$(kv device); PET=$(kv pet)
 check "device_in_the_datapad" "$( [ -n "$DEVICE" ] && [ "$DEVICE" != "-" ] && echo 1 || echo 0 )" "device $DEVICE pet $PET"
@@ -119,7 +119,7 @@ dark_knight
 check_eq "apprentice_offered" "$(kv screen)" "comp_offer" "$(lab "companion:$CHAR" | head -n1 | cut -c1-200)"
 lab "companionGive:$CHAR" >/dev/null
 sleep 9
-check_eq "apprentice_named" "$(kv petName)" "Ryka Dathe"
+check_eq "apprentice_named" "$(kv petName)" "Ryka_Dathe"
 hmax() { lab "ham:$CHAR" | sed -n 's/.*[[:space:]]health=[0-9]*\/\([0-9]*\)\/.*/\1/p' | head -n1; }
 H0=$(hmax)
 A0=$(kv align)
@@ -138,17 +138,17 @@ sleep 8
 lab "companionKills:$CHAR:50" >/dev/null
 sleep 8
 check_eq "fully_trained" "$(kv stage)" "3"
-lab "companionTurn:$CHAR" >/dev/null
-sleep 3
-C=$(lab "companion:$CHAR" | head -n1)
-TURNED=$(kv turned)
-check "apprentice_turned_and_hunting" "$(grep -q 'state=turned' <<<"$C" && grep -q 'turnedAlive=true' <<<"$C" && grep -q 'device=- pet=-' <<<"$C" && echo 1 || echo 0)" "$C"
-TX=$(lab "objectPos:$TURNED" | sed -n 's/.* x=\([-0-9.]*\).*/\1/p' | head -n1); TY=$(lab "objectPos:$TURNED" | sed -n 's/.* y=\([-0-9.]*\).*/\1/p' | head -n1)
-check "turned_apprentice_beside_you" "$( [ -n "$TX" ] && python3 -c "import sys; sys.exit(0 if (($TX-5264)**2+($TY-113)**2)**0.5 < 15 else 1)" && echo 1 || echo 0 )" "$(lab "objectPos:$TURNED" | sed 's/.*zone=/zone=/' | cut -c1-100)"
-check_eq "master_waits_for_the_outcome" "$(kv screen)" "comp_turned_wait"
 CASH0=$(lab_kv "cash:$CHAR" cash)
 lab "cashSet:$CHAR:40000" >/dev/null
-lab "companionLose:$CHAR" >/dev/null
+# the turn's own line is read: a level-95 apprentice set on a lab character wins within seconds
+T=$(lab "companionTurn:$CHAR" | grep -a 'INFO companion' | head -n1)
+TURNED=$(sed -n 's/.*[[:space:]]turned=\([^[:space:]]*\).*/\1/p' <<<"$T")
+check "apprentice_turned_and_hunting" "$(grep -q 'state=turned' <<<"$T" && grep -q 'turnedAlive=true' <<<"$T" && grep -q 'device=- pet=-' <<<"$T" && echo 1 || echo 0)" "$T"
+check "master_waits_for_the_outcome" "$(grep -q 'screen=comp_turned_wait' <<<"$T" && echo 1 || echo 0)" "$T"
+TX=$(lab "objectPos:$TURNED" | sed -n 's/.* x=\([-0-9.]*\).*/\1/p' | head -n1); TY=$(lab "objectPos:$TURNED" | sed -n 's/.* y=\([-0-9.]*\).*/\1/p' | head -n1)
+check "turned_apprentice_beside_you" "$( [ -n "$TX" ] && python3 -c "import sys; sys.exit(0 if (($TX-5264)**2+($TY-113)**2)**0.5 < 15 else 1)" && echo 1 || echo 0 )" "$(lab "objectPos:$TURNED" | sed 's/.*zone=/zone=/' | cut -c1-100)"
+sleep 3
+lab "companionLose:$CHAR" >/dev/null                 # a no-op when she has already won
 lab "revive:$CHAR" >/dev/null
 sleep 3
 C=$(lab "companion:$CHAR" | head -n1)

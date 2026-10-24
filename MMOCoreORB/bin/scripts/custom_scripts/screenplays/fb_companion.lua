@@ -26,6 +26,7 @@ FbCompanion = {
 	DATA = "FbCompanion",
 	device = "object/intangible/pet/pet_control.iff",
 	stageKills = { 0, 20, 50 },          -- kills with the companion out: stage 2 at 20, stage 3 at 50
+	petAttack = 3,                      -- PetManager::ATTACK: the datapad command the pet behaviour tree acts on
 	nearRange = 80,                      -- m: a kill counts when the companion stands this close
 	idleMs = 4 * 60 * 1000,              -- the idle tick while online
 	idleChance = 40,                     -- % of ticks the companion says something, when out and not fighting
@@ -226,7 +227,9 @@ function FbCompanion:onDamage(pPlayer, pAttacker, damage)
 	if not near or pPet == nil then return 0 end
 	if not SceneObject(pAttacker):isCreatureObject() or SceneObject(pAttacker):getObjectID() == SceneObject(pPet):getObjectID() then return 0 end
 	if not CreatureObject(pPet):isInCombat() then
-		-- what PetAttackCommand does: the command target, the defender, the default attack queued
+		-- what the datapad's attack does: the command and its target on the device (the pet behaviour tree checks
+		-- CheckPetCommand PET_ATTACK before it fights), the defender, the default attack queued
+		AiAgent(pPet):setLastCommand(self.petAttack)
 		AiAgent(pPet):setLastCommandTarget(pAttacker)
 		AiAgent(pPet):setDefender(pAttacker)
 		AiAgent(pPet):selectDefaultAttack()

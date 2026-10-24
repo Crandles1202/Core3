@@ -111,6 +111,7 @@ namespace ai {
 		int getLastCommand(lua_State* L);
 		int getLastCommandTarget(lua_State* L);
 		int setLastCommandTarget(lua_State* L);
+		int setLastCommand(lua_State* L);
 		int setAlertDuration(lua_State* L);
 		int alertedTimeIsPast(lua_State* L);
 		int setLevel(lua_State* L);

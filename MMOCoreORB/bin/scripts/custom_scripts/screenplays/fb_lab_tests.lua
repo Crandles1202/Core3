@@ -3285,7 +3285,7 @@ local function companionLine(charName, pPlayer)
 	local m = FbMasters ~= nil and FbMasters.of(pPlayer) or nil
 	local _, pPet = FbCompanion:isOut(pPlayer)
 	print("INFO companion char=" .. charName .. " " .. FbCompanion:status(pPlayer)
-		.. " petName=" .. (pPet and tostring(SceneObject(pPet):getCustomObjectName()) or "-")
+		.. " petName=" .. (pPet and tostring(SceneObject(pPet):getCustomObjectName()):gsub(" ", "_") or "-")
 		.. " petCombat=" .. (pPet and tostring(CreatureObject(pPet):isInCombat()) or "-")
 		.. " screen=" .. tostring(m and m:screenFor(pPlayer) or "-")
 		.. " align=" .. tostring(FbAlignment and FbAlignment:score(pPlayer) or "-")

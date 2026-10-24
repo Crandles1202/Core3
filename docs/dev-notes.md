@@ -1279,3 +1279,10 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 - `AiAgent:setDefender(target)` alone leaves a **pet** standing; what the datapad's attack command does is
   `setLastCommandTarget(target)`, `setDefender(target)`, `selectDefaultAttack()`, `enqueueAttack()` — all bound in Lua.
 - A bot session's log is complete only after `wait "$BOT_PID"`: check system messages and SpatialChat lines after the wait.
+- A **pet fights only on a datapad command**: its behaviour tree (`ai/pet.lua`, `CheckPetCommand PET_ATTACK`) reads the
+  control device's last command, so `setDefender` + `enqueueAttack` do nothing for a pet. New `AiAgent:setLastCommand(cmd)`
+  (PetManager::ATTACK = 3) beside the stock `setLastCommandTarget`; the companion's defence sets both, then the defender and
+  the queued default attack.
+- A level-95 enemy set on a lab character wins in under three seconds: a scenario reads the state it wants to see from the
+  **same lab call** that creates it (the oracle prints its line before the AI's first swing), and sets up anything the outcome
+  reads (the cash) *before* the trigger.
