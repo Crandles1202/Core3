@@ -586,6 +586,7 @@ def seat_tools(seat, files, character_name, seat_name):
     def _inventory_rows():
         """the server's inventory rows (lab inventory: oid, path, name, type, count, resource/rtype/units for a stack);
         empty on a server without the 7.5 binding, when the caller falls back to the client's view"""
+        seat_mod = load_seat_module()
         rows = []
         for l in seat_mod.lab(f"inventory:{character_name}", 15).splitlines():
             if not l.startswith("INFO item ") or " name=" not in l:
@@ -882,6 +883,7 @@ def seat_tools(seat, files, character_name, seat_name):
         sells whole) or a fragment of an item's name; `price` in credits for the whole listing. Walks to the terminal
         (lab bazaarNear, cell-aware), one CreateImmediateAuction packet, the 20 cr fee leaves the bank, the listing
         stands for a year (our 2.5). The buyer's credits land in your bank."""
+        seat_mod = load_seat_module()
         item = str(item or "").strip()
         try:
             price = int(price)
