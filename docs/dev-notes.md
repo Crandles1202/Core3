@@ -1424,5 +1424,6 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   gameplay decision for Chuck (the level then rises and falls with every swap). Lab `level:<char>` (stored, best-line
   strength, held template), `unequip:<char>`; scenario `level-login` (bot login, master marksman box bare-handed, rifle
   given and equipped → stored level unchanged, `loginHook` → stored level = rifle line, agrees with the lab's strength).
-  Needs a build (the binding); untested live until the bench is free (the companion lane holds it for its re-gate).
+  Live 2026-10-25: the lab character read level 1 bare-handed with the master marksman box, still 1 with the CDEF rifle
+  equipped, 7 after the login hook (`private_rifle_combat_difficulty` 600), the same as the lab's strength; 7/7.
 
