@@ -1989,6 +1989,20 @@ local function fightingStrength(pPlayer)
 	return math.min(25, math.floor(best / 100) + 1)
 end
 
+-- level:<char> → the stored level (what every con, mission terminal and aggro check reads), the weapon line held, and
+-- the fighting strength (the level the best line would give). The two differ when the weapon changed since the last skill
+-- award; the login hook (FBLogin.recomputeLevel, 7.5) brings the stored one up to the weapon in hand.
+function FbLabTests:level(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pWeapon = SceneObject(pPlayer):getSlottedObject("hold_r")
+	local held = "none"
+	if pWeapon ~= nil then held = SceneObject(pWeapon):getTemplateObjectPath() end
+	print(string.format("INFO level char=%s stored=%d strength=%d held=%s", charName, CreatureObject(pPlayer):getLevel(),
+		fightingStrength(pPlayer), held))
+	return tostring(CreatureObject(pPlayer):getLevel())
+end
+
 -- threats:<char>[:<radius>] → every live AI agent within radius (default 150 m) that is aggressive to the character
 -- (isAggressiveTo: aggressive creatures, enemy factions) or a wild creature above its strength: name, level, distance;
 -- first an INFO me line with the character's stored level and fighting strength. Five level-19 Tusken raiders of the
@@ -2659,6 +2673,19 @@ function FbLabTests:equip(charName, oid)
 	local ok = SceneObject(pPlayer):transferObject(pItem, 4, true)
 	print(string.format("INFO equip char=%s oid=%s ok=%s", charName, tostring(oid), tostring(ok)))
 	return tostring(ok)
+end
+
+-- unequip:<char> → the weapon in hand goes back to the inventory (bare hands: the default unarmed weapon). The level
+-- scenario awards a box bare-handed so the stored level is computed from the unarmed line.
+function FbLabTests:unequip(charName)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then print("ERROR unequip: " .. tostring(charName) .. " is offline"); return "offline" end
+	local pHeld = SceneObject(pPlayer):getSlottedObject("hold_r")
+	local pInventory = SceneObject(pPlayer):getSlottedObject("inventory")
+	local moved = false
+	if pHeld ~= nil and pInventory ~= nil then moved = SceneObject(pInventory):transferObject(pHeld, -1, true) end
+	print(string.format("INFO unequip char=%s moved=%s", charName, tostring(moved)))
+	return tostring(moved)
 end
 
 -- structureDestroy:<oid> → tear a structure down the proper way (DestroyStructureTask: lot refunded, owner list

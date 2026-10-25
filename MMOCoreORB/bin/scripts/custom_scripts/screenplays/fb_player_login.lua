@@ -19,10 +19,25 @@ function FBLogin.raiseInventoryLimit(pPlayer)
 	end
 end
 
+-- Phase 7.5: PlayerManager::calculatePlayerLevel (the held weapon line's combat difficulty / 100 + 1, cap 25) only runs
+-- when a skill box is awarded, so a character that picked up its weapon afterwards -- every veteran start, made unarmed --
+-- read level 1 to every con, mission terminal and aggro check for ever. CreatureObject:recomputeLevel() runs it again.
+function FBLogin.recomputeLevel(pPlayer)
+	if not SceneObject(pPlayer):isPlayerCreature() then return end
+	local before = CreatureObject(pPlayer):getLevel()
+	local after = CreatureObject(pPlayer):recomputeLevel()
+	if after > 0 and after ~= before then
+		printf("FBLogin: level of %s recomputed %d -> %d\n", CreatureObject(pPlayer):getFirstName(), before, after)
+	end
+end
+
 function FBLogin.onLogin(pPlayer)
 	if pPlayer == nil then return end
 	local ok, err = pcall(FBLogin.raiseInventoryLimit, pPlayer)
 	if not ok then printf("FBLogin.raiseInventoryLimit failed: %s\n", tostring(err)) end
+	-- Phase 7.5: the stored level follows the weapon in hand (stock recomputes it only on a skill award)
+	local okL, errL = pcall(FBLogin.recomputeLevel, pPlayer)
+	if not okL then printf("FBLogin.recomputeLevel failed: %s\n", tostring(errL)) end
 	-- Phase 2.12: every privileged character carries a Lab Remote (no-op for players and for admins who have one)
 	if FbLabRemote ~= nil then
 		local ok2, err2 = pcall(function() FbLabRemote:give(pPlayer) end)

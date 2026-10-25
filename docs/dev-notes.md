@@ -1355,3 +1355,20 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   5 s); the result carries `minigame`, `retried` and the survey/sample system messages seen (`said`) so the next flake
   explains itself. The seat's `sui` answer needs its own `timeout` field in the action body: the Python `timeout`
   keyword of `Seat.action` is the socket wait and is not sent.
+
+### 2026-10-25 — 7.5 the stored level follows the weapon at login (alice)
+
+- **Why a veteran start read level 1 for ever.** `PlayerManager::calculatePlayerLevel` (the *held* weapon line's
+  `private_<weapon>_combat_difficulty / 100 + 1`, cap 25) runs in exactly three places, all in `SkillManager`: `awardSkill`,
+  `surrenderSkill`, `surrenderAllSkills`. Nothing recomputes it when the weapon changes, so a character whose boxes were
+  awarded bare-handed (every `citizen new` veteran start; Teyla read level 1 with a rifle line worth 12) carried the
+  unarmed line's level to every con colour, mission terminal difficulty and aggro check until its next box. Fix, small
+  on purpose: a Lua binding `CreatureObject:recomputeLevel()` (`LuaCreatureObject.cpp`: players only, `calculatePlayerLevel`
+  + `setLevel`, returns the level; 0 and no change when there is no weapon object) and `FBLogin.recomputeLevel` in the
+  login hook, which prints a line when the number moves. A weapon swap between logins still leaves the stored level
+  stale — recomputing on equip would be a change to `CreatureObjectImplementation` (widely included, long rebuild) and a
+  gameplay decision for Chuck (the level then rises and falls with every swap). Lab `level:<char>` (stored, best-line
+  strength, held template), `unequip:<char>`; scenario `level-login` (bot login, master marksman box bare-handed, rifle
+  given and equipped → stored level unchanged, `loginHook` → stored level = rifle line, agrees with the lab's strength).
+  Needs a build (the binding); untested live until the bench is free (the companion lane holds it for its re-gate).
+

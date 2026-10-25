@@ -143,6 +143,7 @@ Luna<LuaCreatureObject>::RegType LuaCreatureObject::Register[] = {
 		{ "isInvisible", &LuaTangibleObject::isInvisible },
 		{ "isInCombat", &LuaCreatureObject::isInCombat },
 		{ "isMeditating", &LuaCreatureObject::isMeditating },
+		{ "recomputeLevel", &LuaCreatureObject::recomputeLevel },
 		{ "healDamage", &LuaCreatureObject::healDamage },
 		{ "getGroupID", &LuaCreatureObject::getGroupID },
 		{ "enhanceCharacter", &LuaCreatureObject::enhanceCharacter },
@@ -1064,6 +1065,30 @@ int LuaCreatureObject::isInCombat(lua_State* L) {
 
 int LuaCreatureObject::isMeditating(lua_State* L) {
 	lua_pushboolean(L, realObject->isMeditating());
+
+	return 1;
+}
+
+// Final Boss (Phase 7.5): recompute a player's stored level the way a skill award does (PlayerManager::calculatePlayerLevel:
+// the held weapon line's private_<weapon>_combat_difficulty / 100 + 1, capped at 25) and store it. Stock only runs that
+// on a skill award, so a character whose weapon changed since (a veteran start made unarmed) reads a stale level to every
+// con, mission and aggro check. Returns the level now stored; 0 (and no change) when the character holds no weapon
+// object or is not a player.
+int LuaCreatureObject::recomputeLevel(lua_State* L) {
+	if (!realObject->isPlayerCreature()) {
+		lua_pushinteger(L, 0);
+		return 1;
+	}
+
+	PlayerManager* playerManager = realObject->getZoneServer()->getPlayerManager();
+	int level = playerManager->calculatePlayerLevel(realObject);
+
+	if (level > 0) {
+		Locker locker(realObject);
+		realObject->setLevel(level);
+	}
+
+	lua_pushinteger(L, level);
 
 	return 1;
 }
