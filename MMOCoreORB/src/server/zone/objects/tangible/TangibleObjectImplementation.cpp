@@ -18,6 +18,7 @@
 #include "server/zone/packets/tangible/UpdatePVPStatusMessage.h"
 #include "server/zone/objects/area/ActiveArea.h"
 #include "server/zone/objects/creature/CreatureObject.h"
+#include "server/zone/objects/creature/ai/CreatureTemplate.h"
 #include "server/zone/objects/creature/ai/AiAgent.h"
 #include "server/zone/objects/factorycrate/FactoryCrate.h"
 #include "server/zone/objects/tangible/threat/ThreatMap.h"
@@ -1489,7 +1490,11 @@ bool TangibleObjectImplementation::isAttackableBy(CreatureObject* creature) {
 		if (agent->isPet()) {
 			ManagedReference<PetControlDevice*> pcd = agent->getControlDevice().get().castTo<PetControlDevice*>();
 
-			if (pcd != nullptr && pcd->getPetType() == PetManager::FACTIONPET && isNeutral()) {
+			// Final Boss 4b.5: a companion pet (template fb_companion_*) fights neutral things like its master does
+			const CreatureTemplate* petTempl = agent->getCreatureTemplate();
+			bool fbCompanion = petTempl != nullptr && petTempl->getTemplateName().indexOf("fb_companion_") == 0;
+
+			if (pcd != nullptr && pcd->getPetType() == PetManager::FACTIONPET && isNeutral() && !fbCompanion) {
 				return false;
 			}
 

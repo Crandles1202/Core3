@@ -63,7 +63,7 @@ check "knight_of_the_light" "$(grep -q 'state=done' <<<"$K" && grep -q 'knightTi
 check "rank3_box" "$(lab "jediMaster:$CHAR" | grep -q 'frsRank=3' && echo 1 || echo 0)"
 check "light_robe_in_the_bag" "$(lab "findItem:$CHAR:robe_jedi_light" | grep -qi 'robe' && echo 1 || echo 0)" "$(lab "findItem:$CHAR:robe_jedi_light" | head -n1 | cut -c1-120)"
 check "client_got_graduated" "$(grep -aq 'fb_force:master_knight_graduated' "$BOTLOG" && echo 1 || echo 0)" "$(grep -a 'knight_' "$BOTLOG" | cut -c1-90 | tail -n1)"
-check_eq "ladder_ends_for_now" "$(lab "knight:$CHAR" | sed -n 's/.*screen=\([a-z_0-9]*\).*/\1/p')" "trained"
+check_eq "ladder_goes_on_to_the_companion" "$(lab "knight:$CHAR" | sed -n 's/.*screen=\([a-z_0-9]*\).*/\1/p')" "comp_offer"   # 4b.5: a Knight is offered a Padawan
 
 # --- D: the dark trial through the lab: the elder at the stronghold, finished ---------------------------------------
 lab "attunementReset:$CHAR" >/dev/null

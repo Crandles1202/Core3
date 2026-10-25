@@ -115,6 +115,7 @@ Luna<LuaAiAgent>::RegType LuaAiAgent::Register[] = {
 		{ "getLastCommand", &LuaAiAgent::getLastCommand },
 		{ "getLastCommandTarget", &LuaAiAgent::getLastCommandTarget },
 		{ "setLastCommandTarget", &LuaAiAgent::setLastCommandTarget },
+		{ "setLastCommand", &LuaAiAgent::setLastCommand },
 		{ "setAlertDuration", &LuaAiAgent::setAlertDuration },
 		{ "alertedTimeIsPast", &LuaAiAgent::alertedTimeIsPast },
 		{ "setLevel", &LuaAiAgent::setLevel },
@@ -867,6 +868,22 @@ int LuaAiAgent::getLastCommandTarget(lua_State* L) {
 		lua_pushlightuserdata(L, target);
 
 	return 1;
+}
+
+// setLastCommand(cmd): the pet's last datapad command (PetManager::ATTACK = 3 …) — the pet behaviour tree acts on
+// it (CheckPetCommand), so a pet told to attack from Lua needs this besides setLastCommandTarget (Final Boss 4b.5)
+int LuaAiAgent::setLastCommand(lua_State* L) {
+	unsigned int cmd = (unsigned int) lua_tointeger(L, -1);
+
+	ManagedReference<PetControlDevice*> controlDevice = realObject->getControlDevice().get().castTo<PetControlDevice*>();
+	if (controlDevice == nullptr)
+		return 0;
+
+	Locker locker(controlDevice);
+
+	controlDevice->setLastCommand(cmd);
+
+	return 0;
 }
 
 int LuaAiAgent::setLastCommandTarget(lua_State* L) {

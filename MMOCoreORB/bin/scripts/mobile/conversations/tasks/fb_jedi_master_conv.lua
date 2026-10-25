@@ -71,4 +71,18 @@ screen("knight_done", "master_knight_done", {}, true)
 -- the ladder's end for now
 screen("trained", "master_trained", {}, true)
 
+-- the companion Padawan (4b.5): offered to a Knight, the trials at the third stage, the knighting
+screen("comp_offer", "master_comp_offer", { {"I will take them.", "comp_take"}, {"Not yet.", "comp_later"} })
+screen("comp_take", "master_comp_take", {}, true)
+screen("comp_later", "master_comp_later", {}, true)
+screen("comp_dead", "master_comp_dead", { {"I will take another.", "comp_take_again"}, {"Not now.", "comp_later"} })
+screen("comp_take_again", "master_comp_take", {}, true)
+screen("comp_has", "master_comp_has", {}, true)
+screen("comp_trial_offer", "master_comp_trial_offer", { {"They are ready.", "comp_trial_go"}, {"Not yet.", "comp_later"} })
+screen("comp_trial_go", "master_comp_trial_go", {}, true)
+screen("comp_trial_wait", "master_comp_trial_wait", {}, true)
+screen("comp_trial_report", "master_comp_trial_report", { {"It is done.", "comp_knighted"} })
+screen("comp_knighted", "master_comp_knighted", {}, true)
+screen("comp_knighted_after", "master_comp_knighted_after", {}, true)
+
 addConversationTemplate("fb_jedi_master_conv", fbJediMasterConvoTemplate)
