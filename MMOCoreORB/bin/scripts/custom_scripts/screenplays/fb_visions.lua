@@ -261,6 +261,7 @@ function FbVisions:finish(pPlayer, aborted)
 	for _, k in ipairs({ "active", "home", "gen", "line", "cast" }) do self:clear(pPlayer, k) end
 	if FbAttunement ~= nil then removeQuestStatus("FbAttunement.visit." .. oid) end
 	if id ~= nil then printf("FbVisions: %s %s the vision '%s'\n", CreatureObject(pPlayer):getFirstName(), aborted and "leaves" or "wakes from", id) end
+	if FbCompanion ~= nil then FbCompanion:onVisionEnd(pPlayer) end   -- 4b.5: the companion, stored by the zone change, comes back
 end
 
 -- sweepFigure(nil, "<oid>"): an event's object pointer may be dead by the time it fires (a swept figure panicked

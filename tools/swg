@@ -702,6 +702,15 @@ test_scenario() {
 		say "== scenario: $(basename "$f" .sh)"
 		SWG="$REPO/tools/swg" bash "$f" 2>&1 | sed 's/^/   /' | tee "$LABDIR/last-scenario-$(basename "$f" .sh).log"
 		local src=${PIPESTATUS[0]}
+		if (( src != 0 )) && [ "$name" = all ]; then
+			# a gate-wide run gives a red scenario one more go: the bot's conversation and loot heuristics flake now and
+			# then (2026-10-23: three gates in a row red on one unrelated check each); a real bug fails twice
+			cp "$LABDIR/last-scenario-$(basename "$f" .sh).log" "$LABDIR/last-scenario-$(basename "$f" .sh).first.log"
+			say "== scenario: $(basename "$f" .sh) (red: one retry)"
+			SWG="$REPO/tools/swg" bash "$f" 2>&1 | sed 's/^/   /' | tee "$LABDIR/last-scenario-$(basename "$f" .sh).log"
+			src=${PIPESTATUS[0]}
+			(( src == 0 )) && say "   (passed on the retry: a flake; the first run is in last-scenario-$(basename "$f" .sh).first.log)"
+		fi
 		(( src == 0 )) || rc=1
 		ran=$((ran + 1))
 	done

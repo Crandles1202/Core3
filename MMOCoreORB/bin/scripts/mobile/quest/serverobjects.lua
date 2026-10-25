@@ -896,6 +896,13 @@ includeFile("quest/tatooine/fb_bounty_hunter.lua")   -- Phase 4c
 includeFile("quest/tatooine/fb_bounty_veteran.lua")   -- Phase 4c
 includeFile("quest/tatooine/fb_bounty_dark_hunter.lua")   -- Phase 4c
 includeFile("quest/tatooine/fb_bounty_light_hunter.lua")   -- Phase 4c
+includeFile("quest/tatooine/fb_companion_light_1.lua")   -- Phase 4b.5
+includeFile("quest/tatooine/fb_companion_light_2.lua")   -- Phase 4b.5
+includeFile("quest/tatooine/fb_companion_light_3.lua")   -- Phase 4b.5
+includeFile("quest/tatooine/fb_companion_dark_1.lua")   -- Phase 4b.5
+includeFile("quest/tatooine/fb_companion_dark_2.lua")   -- Phase 4b.5
+includeFile("quest/tatooine/fb_companion_dark_3.lua")   -- Phase 4b.5
+includeFile("quest/tatooine/fb_companion_dark_turned.lua")   -- Phase 4b.5
 includeFile("quest/tatooine/fb_fixer.lua")   -- Phase 4c
 includeFile("quest/tatooine/fb_smuggler_goods.lua")
 includeFile("quest/tatooine/fb_schematic_broker.lua")   -- Phase 2.2

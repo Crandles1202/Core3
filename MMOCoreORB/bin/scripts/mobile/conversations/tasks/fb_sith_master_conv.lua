@@ -71,4 +71,18 @@ screen("knight_done", "sith_knight_done", {}, true)
 -- the ladder's end for now
 screen("trained", "sith_trained", {}, true)
 
+-- the apprentice (4b.5): offered to a Knight, the betrayal at any time, what is left after the turn
+screen("comp_offer", "sith_comp_offer", { {"I will take them.", "comp_take"}, {"Not yet.", "comp_later"} })
+screen("comp_take", "sith_comp_take", {}, true)
+screen("comp_later", "sith_comp_later", {}, true)
+screen("comp_dead", "sith_comp_dead", { {"I will take another.", "comp_take_again"}, {"Not now.", "comp_later"} })
+screen("comp_take_again", "sith_comp_take", {}, true)
+screen("comp_dark_has", "sith_comp_has", { {"I am done with them.", "comp_betray_ask"}, {"Nothing.", "comp_later"} })
+screen("comp_betray_ask", "sith_comp_betray_ask", { {"Do it.", "comp_betray_do"}, {"No.", "comp_later"} })
+screen("comp_betray_do", "sith_comp_betray_do", {}, true)
+screen("comp_betrayed_after", "sith_comp_betrayed_after", {}, true)
+screen("comp_turned_wait", "sith_comp_turned_wait", {}, true)
+screen("comp_former_after", "sith_comp_former_after", {}, true)
+screen("comp_slain_after", "sith_comp_slain_after", {}, true)
+
 addConversationTemplate("fb_sith_master_conv", fbSithMasterConvoTemplate)

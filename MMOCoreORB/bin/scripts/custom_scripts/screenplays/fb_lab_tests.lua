@@ -314,6 +314,13 @@ FbLabTests.eventNpcs = {
 	fb_bounty_veteran = { conversation = false, spawnedAtBoot = false },     -- Phase 4c
 	fb_bounty_dark_hunter = { conversation = false, spawnedAtBoot = false }, -- Phase 4c
 	fb_bounty_light_hunter = { conversation = false, spawnedAtBoot = false }, -- Phase 4c
+	fb_companion_light_1 = { conversation = false, spawnedAtBoot = false },    -- Phase 4b.5 (a hireling pet)
+	fb_companion_light_2 = { conversation = false, spawnedAtBoot = false },
+	fb_companion_light_3 = { conversation = false, spawnedAtBoot = false },
+	fb_companion_dark_1 = { conversation = false, spawnedAtBoot = false },
+	fb_companion_dark_2 = { conversation = false, spawnedAtBoot = false },
+	fb_companion_dark_3 = { conversation = false, spawnedAtBoot = false },
+	fb_companion_dark_turned = { conversation = false, spawnedAtBoot = false },
 }
 
 function FbLabTests.checkNpc(npc)
@@ -816,6 +823,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkSithMaster()
 		FbLabTests.checkAlignment()
 		FbLabTests.checkKnight()
+		FbLabTests.checkCompanion()
 		FbLabTests.checkCrystals()
 		FbLabTests.checkBounty()
 	end)
@@ -3062,6 +3070,17 @@ function FbLabTests:trialTick(charName)
 	if pPlayer == nil then return "offline" end
 	local sent = FbAttunement:maybeVisit(pPlayer)
 	print("INFO trialTick sent=" .. tostring(sent))
+	if not sent then
+		-- why not: the gates the trigger passes through, read the same way maybeVisit / FbVisions read them
+		local oid = SceneObject(pPlayer):getObjectID()
+		local visit = tonumber(getQuestStatus("FbAttunement.visit." .. oid) or 0) or 0
+		local c = CreatureObject(pPlayer)
+		print(string.format("INFO trialTickWhy visitAge=%s combat=%s dead=%s incap=%s riding=%s parent=%s zone=%s visionActive=%s visionDue=%s canLeave=%s trialActive=%s",
+			visit > 0 and tostring(os.time() - visit) or "-", tostring(c:isInCombat()), tostring(c:isDead()), tostring(c:isIncapacitated()), tostring(c:isRidingMount()),
+			tostring(SceneObject(pPlayer):getParentID()), SceneObject(pPlayer):getZoneName(),
+			tostring(FbVisions and FbVisions:active(pPlayer) or "-"), tostring(FbVisions and FbVisions:due(pPlayer) or "-"), tostring(FbVisions and FbVisions:canLeave(pPlayer) or "-"),
+			tostring(FbTrials and FbTrials:active(pPlayer) or "-")))
+	end
 	trialsLine(charName, pPlayer)
 	return tostring(sent)
 end
@@ -3157,6 +3176,15 @@ function FbLabTests:visionEnd(charName)
 end
 
 -- visionsReset:<char> → forget every vision seen (the lab shortcuts mark them all seen)
+-- visionsSkip:<char> → every vision marked seen (what attunementAccept / trialsUnlock do): a scenario that sets the path's
+-- flags by hand would otherwise get a vision at its first kill, and the zone change stores the character's pets
+function FbLabTests:visionsSkip(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	FbVisions:skipAll(pPlayer)
+	print("INFO visionsSkip done")
+	return "ok"
+end
 function FbLabTests:visionsReset(charName)
 	local pPlayer = loadedPlayer(charName)
 	if pPlayer == nil then return "offline" end
@@ -3425,6 +3453,132 @@ function FbLabTests.checkKnight()
 			for _, k in ipairs({ "offer", "go", "given", "wait", "report", "done", "spare", "kill", "graduated" }) do need(prefix .. "knight_" .. k) end
 		end
 		check("knight.strings", #missing == 0, #missing == 0 and "every line of the trial" or ("missing: " .. table.concat(missing, ", ")))
+	end
+end
+
+-- ---------------------------------------------------------------- Phase 4b.5: the companion
+
+local function companionLine(charName, pPlayer)
+	local m = FbMasters ~= nil and FbMasters.of(pPlayer) or nil
+	local _, pPet = FbCompanion:isOut(pPlayer)
+	print("INFO companion char=" .. charName .. " " .. FbCompanion:status(pPlayer)
+		.. " petName=" .. (pPet and tostring(SceneObject(pPet):getCustomObjectName()):gsub(" ", "_") or "-")
+		.. " petCombat=" .. (pPet and tostring(CreatureObject(pPet):isInCombat()) or "-")
+		.. " screen=" .. tostring(m and m:screenFor(pPlayer) or "-")
+		.. " align=" .. tostring(FbAlignment and FbAlignment:score(pPlayer) or "-")
+		.. " statusLine=" .. tostring(FbCompanion:statusLine(pPlayer) or "-"))
+end
+-- companion:<char> → the companion's state, the pet, the Master's opening screen
+function FbLabTests:companion(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	companionLine(charName, pPlayer)
+	return "ok"
+end
+local function companionDo(name, fn)
+	FbLabTests[name] = function(self, charName, a, b)
+		local pPlayer = loadedPlayer(charName)
+		if pPlayer == nil then return "offline" end
+		print("INFO " .. name .. " ok=" .. tostring(fn(pPlayer, a, b)))
+		companionLine(charName, pPlayer)
+		return "ok"
+	end
+end
+-- companionGive:<char> → taken from the Master without the conversation; companionCall / companionStore → the pet out / away
+companionDo("companionGive", function(p) return FbCompanion:give(p) end)
+companionDo("companionCall", function(p) return FbCompanion:call(p) end)
+companionDo("companionStore", function(p) return FbCompanion:store(p) end)
+-- companionKills:<char>:<n> → n kills credited with the companion out (the stages follow)
+companionDo("companionKills", function(p, n) return FbCompanion:credit(p, tonumber(n) or 1) end)
+-- companionDefend:<char>:<attackerOid> → as if the attacker hit the character: the companion goes for it
+companionDo("companionDefend", function(p, oid) local pMob = getSceneObject(tonumber(oid) or 0); if pMob == nil then return false end; FbCompanion:onDamage(p, pMob, 1); return true end)
+-- companionSpeak:<char>:<kind> → one line of that kind (idle, fight, kill, down, shrine, farewell, betray_last)
+companionDo("companionSpeak", function(p, kind) local _, d = FbCompanion:sideOf(p); return d ~= nil and FbCompanion:speak(p, kind, d[kind] or 1) end)
+-- companionTrialGive:<char>, companionShrine:<char>:<shrineKey>, companionKnight:<char> → the light capstone
+companionDo("companionTrialGive", function(p) return FbCompanion:trialGive(p) end)
+companionDo("companionShrine", function(p, key) FbCompanion:onShrine(p, key); return true end)
+companionDo("companionKnight", function(p) return FbCompanion:knight(p) end)
+-- companionBetray:<char>, companionTurn:<char> (the turn now, whatever the day's roll), companionLose:<char> (the turned apprentice wins)
+companionDo("companionBetray", function(p) return FbCompanion:betray(p) end)
+companionDo("companionTurn", function(p) return FbCompanion:turn(p) end)
+companionDo("companionLose", function(p) local pT = FbCompanion:turnedOf(p); if pT == nil then return false end; FbCompanion:onIncap(p, pT); return true end)
+companionDo("companionReset", function(p) FbCompanion:reset(p); return true end)
+-- companionDied:<char> → the device destroyed as the stock kill path does it, then the state read (the companion is dead)
+companionDo("companionDied", function(p) local pD = FbCompanion:deviceOf(p); if pD == nil then return false end; FbCompanion:store(p); SceneObject(pD):destroyObjectFromWorld(true); SceneObject(pD):destroyObjectFromDatabase(); FbCompanion:checkAlive(p); return true end)
+companionDo("companionTakeAgain", function(p) return FbCompanion:takeAgain(p) end)
+-- companionProbe:<char>[:<attackerOid>] → the pet's AI as the server sees it: last command and target, movement state,
+-- follow object, combat, owner, and whether the attacker is attackable by the pet (for the defence's debugging)
+function FbLabTests:companionProbe(charName, attackerOid)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local out, pPet = FbCompanion:isOut(pPlayer)
+	if pPet == nil then print("INFO companionProbe pet=-"); return "none" end
+	-- the AiAgent getters on a stored (zoneless) pet throw a C++ exception that dirties the console Lua stack: stop short
+	if not out then
+		-- no AiAgent getter here (they segfault on a stored pet); the plain object getters are safe
+		print(string.format("INFO companionProbe out=false zone=%s dead=%s posture=%d parent=%s x=%.1f y=%.1f ham=%d/%d (stored or dead; no AI state read)",
+			SceneObject(pPet):getZoneName(), tostring(CreatureObject(pPet):isDead()), CreatureObject(pPet):getPosture(), tostring(SceneObject(pPet):getParentID()),
+			SceneObject(pPet):getWorldPositionX(), SceneObject(pPet):getWorldPositionY(), CreatureObject(pPet):getHAM(0), CreatureObject(pPet):getMaxHAM(0)))
+		return "stored"
+	end
+	local a = AiAgent(pPet)
+	local pF, pT = a:getFollowObject(), a:getLastCommandTarget()
+	local line = string.format("INFO companionProbe out=%s lastCommand=%s lastTarget=%s moveState=%s follow=%s combat=%s owner=%s level=%d",
+		tostring(out), tostring(a:getLastCommand()), pT and tostring(SceneObject(pT):getObjectID()) or "-", tostring(a:getMovementState()),
+		pF and tostring(SceneObject(pF):getObjectID()) or "-", tostring(CreatureObject(pPet):isInCombat()), tostring(a:getOwner() ~= nil), CreatureObject(pPet):getLevel())
+	local pMob = getSceneObject(tonumber(attackerOid) or 0)
+	line = line .. string.format(" petFaction=%s ownerFaction=%s", tostring(CreatureObject(pPet):getFaction()), tostring(CreatureObject(pPlayer):getFaction()))
+	if pMob ~= nil then line = line .. " attackableByPet=" .. tostring(AiAgent(pMob):isAttackableBy(pPet)) .. " attackableByOwner=" .. tostring(AiAgent(pMob):isAttackableBy(pPlayer)) .. " petAttackableByMob=" .. tostring(AiAgent(pPet):isAttackableBy(pMob)) .. " mobFaction=" .. tostring(CreatureObject(pMob):getFaction()) end
+	print(line)
+	return "ok"
+end
+-- hamSet:<char>:<value> → the three pools' maxima and current values set (a lab character that must survive a fight)
+function FbLabTests:hamSet(charName, value)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local v = tonumber(value) or 1000
+	for _, pool in ipairs({ 0, 3, 6 }) do CreatureObject(pPlayer):setMaxHAM(pool, v); CreatureObject(pPlayer):setHAM(pool, v) end
+	return hamLine(charName, pPlayer)
+end
+
+function FbLabTests.checkCompanion()
+	check("companion.loaded", FbCompanion ~= nil and FbCompanion.sides ~= nil)
+	if FbCompanion == nil then return end
+	for side, d in pairs(FbCompanion.sides) do
+		local files = { table.unpack(d.stages) }
+		if d.turned ~= nil then files[#files + 1] = d.turned end
+		for _, name in ipairs(files) do
+			local f = io.open("scripts/mobile/quest/tatooine/" .. name .. ".lua", "r")
+			check("companion." .. side .. "." .. name, f ~= nil, name .. ".lua"); if f ~= nil then f:close() end
+		end
+	end
+	local function fileText(path) local f = io.open(path, "r"); if f == nil then return nil end; local t = f:read("a"); f:close(); return t end
+	local conv = { light = fileText("scripts/mobile/conversations/tasks/fb_jedi_master_conv.lua"), dark = fileText("scripts/mobile/conversations/tasks/fb_sith_master_conv.lua") }
+	local screens = { light = { "comp_offer", "comp_take", "comp_later", "comp_has", "comp_trial_offer", "comp_trial_go", "comp_trial_wait", "comp_trial_report", "comp_knighted", "comp_knighted_after", "comp_dead", "comp_take_again" },
+		dark = { "comp_offer", "comp_take", "comp_later", "comp_dark_has", "comp_betray_ask", "comp_betray_do", "comp_betrayed_after", "comp_turned_wait", "comp_former_after", "comp_slain_after", "comp_dead", "comp_take_again" } }
+	for side, list in pairs(screens) do
+		local missing = {}
+		for _, id in ipairs(list) do if conv[side] == nil or not conv[side]:find('screen("' .. id .. '"', 1, true) then missing[#missing + 1] = id end end
+		check("companion." .. side .. ".screens", #missing == 0, #missing == 0 and "every screen" or ("missing: " .. table.concat(missing, ", ")))
+	end
+	local hooks = fileText("scripts/custom_scripts/screenplays/fb_attunement.lua") or ""
+	local masters = fileText("scripts/custom_scripts/screenplays/fb_masters.lua") or ""
+	check("companion.hooks", hooks:find("FbCompanion:onKill", 1, true) ~= nil and hooks:find("FbCompanion:onIncap", 1, true) ~= nil and hooks:find("FbCompanion:onShrine", 1, true) ~= nil
+		and masters:find("FbCompanion:screenFor", 1, true) ~= nil and masters:find("FbCompanion:onLogin", 1, true) ~= nil and masters:find("FbCompanion:reset", 1, true) ~= nil, "attunement kill/incap/shrine, Masters screen/login/reset")
+	check("companion.bindings", type(callControlDevice) == "function" and type(storeControlDevice) == "function" and type(getControlledObject) == "function", "callControlDevice / storeControlDevice / getControlledObject (DirectorManager)")
+	local text = fileText("../../tre-src/string/en/fb_force.stf.txt")
+	if text ~= nil then
+		local missing = {}
+		local function need(k) if not text:find("\n" .. k .. " = ", 1, true) then missing[#missing + 1] = k end end
+		for _, k in ipairs({ "offer", "take", "later", "has", "trial_offer", "trial_go", "trial_wait", "trial_report", "knighted", "knighted_after", "dead" }) do need("master_comp_" .. k) end
+		for _, k in ipairs({ "offer", "take", "later", "has", "betray_ask", "betray_do", "betrayed_after", "turned_wait", "former_after", "slain_after", "dead" }) do need("sith_comp_" .. k) end
+		for _, k in ipairs({ "light_dead", "dark_dead", "status_dead_light", "status_dead_dark" }) do need("comp_" .. k) end
+		for _, k in ipairs({ "light_given", "light_stage2", "light_stage3", "light_trial_given", "light_trial_shrine", "light_trial_ready", "light_knighted", "dark_given", "dark_stage2", "dark_stage3", "dark_betrayed", "dark_turned", "dark_lost", "dark_slain", "dark_escaped",
+			"status_light", "status_dark", "status_knighted", "status_betrayed", "status_hunted", "status_former", "status_slain", "light_down_1", "light_shrine_1", "light_farewell_1", "dark_down_1", "dark_betray_last_1", "dark_turn_1", "dark_win_1" }) do need("comp_" .. k) end
+		for side, d in pairs(FbCompanion.sides) do
+			for _, kind in ipairs({ "idle", "fight", "kill" }) do for n = 1, d[kind] do need("comp_" .. side .. "_" .. kind .. "_" .. n) end end
+		end
+		check("companion.strings", #missing == 0, #missing == 0 and "every line" or ("missing: " .. table.concat(missing, ", ")))
 	end
 end
 

@@ -26,7 +26,7 @@ KEEPER=$(lab "gotoNpc:$CHAR:Hallkeeper" | sed -n 's/.*oid=\([0-9]*\).*/\1/p' | h
 check "goto_keeper" "$( [ -n "$KEEPER" ] && echo 1 || echo 0 )"
 wait "$BOT_PID"
 lab "questStatus:FbTradeHall.lastWaypoint:none" >/dev/null
-bot --wait 2 --converse "$KEEPER" --options 0 --wait 2
+bot --wait 10 --converse "$KEEPER" --options 0 --wait 3    # ten seconds in: a converse two seconds after zone-in failed three gates running on 2026-10-24
 check_eq "keeper_converse_ok" "$(bot_action_status converse)" "ok" "status: $(bot_action_status converse)"
 check "keeper_mentions_the_hall" "$(grep -aq 'Trade Hall' "$BOTLOG" && echo 1 || echo 0)"
 check_eq "waypoint_given" "$(lab_kv "questStatus:FbTradeHall.lastWaypoint" value)" "$CHAR"
@@ -41,6 +41,6 @@ check "buy_inside_the_hall" "$(lab "buyPart:$CHAR:1:1" | grep -aq '^INFO' && ech
 CASH1=$(lab_kv "cash:$CHAR" cash)
 check "paid_for_it" "$( [ "${CASH1:-0}" -lt "${CASH0:-0}" ] && echo 1 || echo 0 )" "cash $CASH0 -> $CASH1"
 wait "$BOT_PID"
-bot --wait 2 --converse "$TAMSIN" --options 0 --wait 2    # the bot's last act: it logs out inside the hall
+bot --wait 10 --converse "$TAMSIN" --options 0 --wait 3    # the bot's last act: it logs out inside the hall
 check_eq "tenant_converse_ok" "$(bot_action_status converse)" "ok" "status: $(bot_action_status converse)"
 finish

@@ -1258,6 +1258,60 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   bounty's hunt log line died on a decayed visibility of 1999.6, after the squad was spawned, and the lab tick
   returned nothing — a check that passed when the number was still whole.
 
+### 2026-10-23 — 4b.5 the companion
+
+- **A story NPC that follows, fights and persists = a stock hireling pet.** `giveControlDevice(pDatapad, "object/intangible/pet/pet_control.iff", "<mobile template name>", -1, true)` (what the GCW recruiters hand out) makes a `PetControlDevice` of type FACTIONPET with an AiAgent of our template in it; the datapad radial calls (44) and stores (59) it, the pet follows, crosses zones, is stored at logout and called again. Lua had no way to call or store one or to reach the creature inside: `callControlDevice`, `storeControlDevice` (forced, no 60 s faction-pet delay) and `getControlledObject` are new DirectorManager globals. A stored pet has no zone (`getZoneName() == ""`), which is how `FbCompanion:isOut` reads it. The device's shown name is `setCustomObjectName`; the creature's is the template's `customName`.
+- Stock pets do **not** attack what attacks their owner on their own (only on the pet commands); a `DAMAGERECEIVED` observer on the player with `AiAgent(pPet):setDefender(pAttacker)` does it.
+- A pet's stage change is a new device: store, destroy device and creature (`destroyObjectFromWorld` + `destroyObjectFromDatabase` on both), give the next template, call it.
+- Permanent stat bonus from Lua: `setBaseHAM(pool, …)` **and** `setMaxHAM(pool, …)` (the max is not recomputed from the base); pools 0 / 3 / 6.
+- A worktree's `MMOCoreORB/build` is a link to the bench's build tree: `~/bin/build` from a worktree configures and builds the **bench's** sources, not the worktree's. C++ on a branch compiles when `bench use` deploys it. A syntax-only check before that: the bench's `compile_commands.json` entry for the file, `-o` dropped, the source path swapped for the worktree's, `-I<worktree>/MMOCoreORB/src` first so the changed headers win, `-fsyntax-only`.
+- A new `fb_*` mobile is three things or it is nothing: the file, its `includeFile` line in `mobile/quest/serverobjects.lua`,
+  and (silent, event-spawned) its `FbLabTests.eventNpcs` row; a mobile without a conversation carries no
+  `conversationTemplate` key at all. The companion's seven templates shipped without the include: `giveControlDevice`
+  found no template, returned nil, and 39 scenario checks cascaded from that one line.
+- Shared-wrapper slip number four (the companion's turn): `local so = SceneObject(pPlayer)` … `self:removeDevice()` …
+  `so:getWorldPositionX()` read the *device*, and `so:getObjectID()` the freshly spawned mob — so the turned apprentice
+  spawned at the device's position and its owner lookup found itself ("read screen play data from a non-player Scene
+  Object"). Rule restated: pull every number you need off an object into locals *before* calling any helper, because
+  helpers wrap other objects.
+- A mobile with `randomNameType = NAME_GENERIC` is named "<random> (<customName>)"; `NAME_TAG` keeps the customName as is.
+  A pet made by `giveControlDevice` is named by its template, so set the creature's name explicitly too.
+- `AiAgent:setDefender(target)` alone leaves a **pet** standing; what the datapad's attack command does is
+  `setLastCommandTarget(target)`, `setDefender(target)`, `selectDefaultAttack()`, `enqueueAttack()` — all bound in Lua.
+- A bot session's log is complete only after `wait "$BOT_PID"`: check system messages and SpatialChat lines after the wait.
+- A **pet fights only on a datapad command**: its behaviour tree (`ai/pet.lua`, `CheckPetCommand PET_ATTACK`) reads the
+  control device's last command, so `setDefender` + `enqueueAttack` do nothing for a pet. New `AiAgent:setLastCommand(cmd)`
+  (PetManager::ATTACK = 3) beside the stock `setLastCommandTarget`; the companion's defence sets both, then the defender and
+  the queued default attack.
+- A level-95 enemy set on a lab character wins in under three seconds: a scenario reads the state it wants to see from the
+  **same lab call** that creates it (the oracle prints its line before the AI's first swing), and sets up anything the outcome
+  reads (the cash) *before* the trigger.
+- **A faction (hireling) pet will not attack a neutral creature, and neutral creatures will not attack it**
+  (`AiAgentImplementation::isAttackableBy`, both overloads, and `TangibleObjectImplementation::isAttackableBy`: `FACTIONPET &&
+  isNeutral() → false`; *neutral* = faction 0 = all wildlife; the `tusken_raider` faction string reads as 0 too). The hireling
+  rule keeps GCW pets to the GCW. The companions (creature templates `fb_companion_*`) are exempted in those three places
+  (`fbIsCompanionPet`). Found with lab `companionProbe` live: `attackableByPet=false attackableByOwner=true mobFaction=0`.
+- **A pet call lands five seconds later and a second call inside that window is refused** (`call_delay_finish_pet`): two
+  stage changes from one kill count left the companion in the datapad. Stage changes call through a 6.5 s event
+  (`callLater`, which checks the device is still the current one). A **killed faction pet's device is destroyed** by
+  `PetManager::notifyDestruction` (hirelings die for good): a companion state whose device is gone means the companion
+  died. The `AiAgent` getters on a *stored* pet throw (the dirty-console exception): read `isOut` first.
+- **`AiAgent:getLastCommandTarget()` on a stored pet segfaults the server** (`LuaAiAgent::getLastCommandTarget`, SIGSEGV
+  2026-10-23 20:15, `~/.swg-lab/crashes/gdb-20261023-201505.log`): the stored creature's device reference is not safe to
+  follow. Read `FbCompanion:isOut` (zone name non-empty) before any `AiAgent` getter on a pet; `companionProbe` does. A
+  server halted at the gdb catchpoint answers no console command, so every lab call after the crash printed nothing.
+- **A zone change stores every pet** (stock `StoreSpawnedChildrenTask`): the Force visions (4a.4) are zone changes, so a
+  companion vanished four seconds after it appeared whenever a kill had made a vision due (the companion scenario set the
+  path flags by hand without marking the visions seen; lab `visionsSkip`). Found only by probing every second after the
+  spawn and reading the server log for the pet's owner. `FbVisions` now calls the companion back when the character returns.
+- A mobile with `PACK` in its `creatureBitmask` must name a `socialGroup` (`LuaMobileTemplatesTest`); a lone enemy is `KILLER` alone.
+- **The gate retries a red scenario once** (`tools/swg test_scenario`, only in `all`): the bot's conversation starts and the
+  seat's loot heuristic flake now and then, and 2026-10-23 three full gates in a row went red on one unrelated check each
+  (bounty's own bug aside): schematic-broker, seat-fight.corpse_looted, trade-hall.keeper_converse. A real bug fails twice;
+  the first run's log is kept beside the second.
+- A bot conversation two seconds after zone-in (`bot --wait 2 --converse`) failed three gates running once the server had
+  been up for a few hours; every other conversation scenario waits ten or more seconds, trade-hall now does too. The
+  lab's `gotoNpc` needs the character online (`onlinePlayer`): a hand replay without a bot session returns "not online".
 ### 2026-10-23 — 7.5 the citizens train (alice)
 
 - **Why training first:** Teyla's stored level read 1 against a fighting strength of 12 (her veteran start was awarded
