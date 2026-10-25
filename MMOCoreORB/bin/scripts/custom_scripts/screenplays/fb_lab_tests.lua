@@ -915,6 +915,17 @@ function FbLabTests:inventory(charName)
 	if pPlayer == nil then return "offline" end
 	local pInv = SceneObject(pPlayer):getSlottedObject("inventory")
 	local n = SceneObject(pInv):getContainerObjectsSize()
+	-- with the 7.5 binding the rows carry the displayed name, the type, the use count and, for a resource stack, its
+	-- spawn name, class and units (Lua has no ResourceContainer methods); an older server prints oid and path only
+	local rows = type(getInventoryItems) == "function" and getInventoryItems(charName) or nil
+	if rows ~= nil then
+		for _, r in ipairs(rows) do
+			local extra = r.resource ~= nil and string.format(" resource=%s rtype=%s units=%d", (r.resource ~= "" and r.resource or "-"):gsub("%s", "_"), (r.resourceType ~= "" and r.resourceType or "-"):gsub("%s", "_"), r.units or 0) or ""
+			print(string.format("INFO item oid=%d path=%s name=%s type=0x%x count=%d%s", r.oid, r.template, (r.name ~= "" and r.name or "-"):gsub("%s", "_"), r.type, r.useCount or 1, extra))
+		end
+		print("INFO inventory char=" .. charName .. " count=" .. #rows)
+		return tostring(#rows)
+	end
 	for i = 0, n - 1 do
 		local pItem = SceneObject(pInv):getContainerObject(i)
 		if pItem ~= nil then
@@ -923,6 +934,27 @@ function FbLabTests:inventory(charName)
 	end
 	print("INFO inventory char=" .. charName .. " count=" .. n)
 	return tostring(n)
+end
+
+-- bazaarNear:<char>[:<radius>] → the bazaar terminals (game object type 0x4002) within radius m (default 600) of the
+-- character, nearest first, with cell-local coordinates for the ones inside buildings; the pilot's sell tool walks to
+-- the first. The server accepts a bazaar sale from any distance (checkSaleItem has no range rule); the walk is manners.
+function FbLabTests:bazaarNear(charName, radius)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	radius = tonumber(radius) or 600
+	local zone = SceneObject(pPlayer):getZoneName()
+	local px, py = SceneObject(pPlayer):getWorldPositionX(), SceneObject(pPlayer):getWorldPositionY()
+	local objects = getObjectsInRange(zone, px, py, radius, 0x4002) or {}
+	for _, o in ipairs(objects) do o.distance = math.sqrt((o.x - px) ^ 2 + (o.y - py) ^ 2) end
+	table.sort(objects, function(a, b) return a.distance < b.distance end)
+	for _, o in ipairs(objects) do
+		print(string.format("INFO bazaar oid=%d name=%s x=%.1f y=%.1f z=%.1f cell=%d cellName=%s building=%d localX=%.2f localY=%.2f localZ=%.2f distance=%d",
+			o.oid, (o.name ~= "" and o.name or "bazaar_terminal"):gsub("%s", "_"), o.x, o.y, o.z, o.cell, o.cellName ~= "" and o.cellName or "-", o.building,
+			o.localX or 0, o.localY or 0, o.localZ or 0, o.distance))
+	end
+	print(string.format("INFO bazaars char=%s zone=%s radius=%d count=%d", charName, zone, radius, #objects))
+	return tostring(#objects)
 end
 
 -- findItem:<char>:<fragment> → first inventory item whose template path contains <fragment>
@@ -1965,6 +1997,20 @@ local function fightingStrength(pPlayer)
 	return math.min(25, math.floor(best / 100) + 1)
 end
 
+-- level:<char> → the stored level (what every con, mission terminal and aggro check reads), the weapon line held, and
+-- the fighting strength (the level the best line would give). The two differ when the weapon changed since the last skill
+-- award; the login hook (FBLogin.recomputeLevel, 7.5) brings the stored one up to the weapon in hand.
+function FbLabTests:level(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pWeapon = SceneObject(pPlayer):getSlottedObject("hold_r")
+	local held = "none"
+	if pWeapon ~= nil then held = SceneObject(pWeapon):getTemplateObjectPath() end
+	print(string.format("INFO level char=%s stored=%d strength=%d held=%s", charName, CreatureObject(pPlayer):getLevel(),
+		fightingStrength(pPlayer), held))
+	return tostring(CreatureObject(pPlayer):getLevel())
+end
+
 -- threats:<char>[:<radius>] → every live AI agent within radius (default 150 m) that is aggressive to the character
 -- (isAggressiveTo: aggressive creatures, enemy factions) or a wild creature above its strength: name, level, distance;
 -- first an INFO me line with the character's stored level and fighting strength. Five level-19 Tusken raiders of the
@@ -2635,6 +2681,19 @@ function FbLabTests:equip(charName, oid)
 	local ok = SceneObject(pPlayer):transferObject(pItem, 4, true)
 	print(string.format("INFO equip char=%s oid=%s ok=%s", charName, tostring(oid), tostring(ok)))
 	return tostring(ok)
+end
+
+-- unequip:<char> → the weapon in hand goes back to the inventory (bare hands: the default unarmed weapon). The level
+-- scenario awards a box bare-handed so the stored level is computed from the unarmed line.
+function FbLabTests:unequip(charName)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then print("ERROR unequip: " .. tostring(charName) .. " is offline"); return "offline" end
+	local pHeld = SceneObject(pPlayer):getSlottedObject("hold_r")
+	local pInventory = SceneObject(pPlayer):getSlottedObject("inventory")
+	local moved = false
+	if pHeld ~= nil and pInventory ~= nil then moved = SceneObject(pInventory):transferObject(pHeld, -1, true) end
+	print(string.format("INFO unequip char=%s moved=%s", charName, tostring(moved)))
+	return tostring(moved)
 end
 
 -- structureDestroy:<oid> → tear a structure down the proper way (DestroyStructureTask: lot refunded, owner list

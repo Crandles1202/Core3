@@ -540,6 +540,7 @@ void DirectorManager::initializeLuaEngine(Lua* luaEngine) {
 	luaEngine->registerFunction("isBuildingPermittedAt", isBuildingPermittedAt);
 	luaEngine->registerFunction("setDeedValues", setDeedValues);
 	luaEngine->registerFunction("getResourceUnits", getResourceUnits);
+	luaEngine->registerFunction("getInventoryItems", getInventoryItems);   // Final Boss (7.5): (playerName) -> inventory rows with names and resource units
 	luaEngine->registerFunction("getZoneWeather", getZoneWeather);
 	luaEngine->registerFunction("setZoneWeather", setZoneWeather);
 	luaEngine->registerFunction("awardSkill", awardSkill);
@@ -4442,6 +4443,52 @@ int DirectorManager::getResourceUnits(lua_State* L) {
 			units += container->getQuantity();
 	}
 	lua_pushinteger(L, units);
+	return 1;
+}
+
+// Final Boss (7.5, the bazaar): getInventoryItems(playerName) -> {{oid, template, name, type, useCount [, resource,
+// resourceType, units]}, …} for every item in the player's inventory (name = the displayed name; a resource stack adds
+// its spawn name, class and units — Lua has no ResourceContainer binding), or nil when the player is offline.
+int DirectorManager::getInventoryItems(lua_State* L) {
+	if (checkArgumentCount(L, 1) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::getInventoryItems";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	String playerName = lua_tostring(L, -1);
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	PlayerManager* playerManager = zoneServer != nullptr ? zoneServer->getPlayerManager() : nullptr;
+	ManagedReference<CreatureObject*> player = playerManager != nullptr ? playerManager->getPlayer(playerName) : nullptr;
+	SceneObject* inventory = player != nullptr ? player->getSlottedObject("inventory") : nullptr;
+	if (inventory == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	lua_newtable(L);
+	int row = 0;
+	for (int i = 0; i < inventory->getContainerObjectsSize(); ++i) {
+		SceneObject* item = inventory->getContainerObject(i);
+		if (item == nullptr)
+			continue;
+		lua_newtable(L);
+		lua_pushinteger(L, (lua_Integer) item->getObjectID()); lua_setfield(L, -2, "oid");
+		lua_pushstring(L, item->getObjectTemplate() != nullptr ? item->getObjectTemplate()->getFullTemplateString().toCharArray() : ""); lua_setfield(L, -2, "template");
+		lua_pushstring(L, item->getDisplayedName().toCharArray()); lua_setfield(L, -2, "name");
+		lua_pushinteger(L, item->getGameObjectType()); lua_setfield(L, -2, "type");
+		TangibleObject* tano = item->isTangibleObject() ? cast<TangibleObject*>(item) : nullptr;
+		lua_pushinteger(L, tano != nullptr ? tano->getUseCount() : 1); lua_setfield(L, -2, "useCount");
+		if (item->isResourceContainer()) {
+			ResourceContainer* container = cast<ResourceContainer*>(item);
+			ManagedReference<ResourceSpawn*> spawn = container != nullptr ? container->getSpawnObject() : nullptr;
+			lua_pushstring(L, spawn != nullptr ? spawn->getName().toCharArray() : ""); lua_setfield(L, -2, "resource");
+			lua_pushstring(L, spawn != nullptr ? spawn->getType().toCharArray() : ""); lua_setfield(L, -2, "resourceType");
+			lua_pushinteger(L, container != nullptr ? container->getQuantity() : 0); lua_setfield(L, -2, "units");
+		}
+		lua_rawseti(L, -2, ++row);
+	}
 	return 1;
 }
 

@@ -1365,6 +1365,32 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   reports `harvested`. Teyla holds the Scout novice box, so twenty worrts are one scout box (1000) and the first award
   with the rifle in hand recomputes her level from 1 to the real number. Scenario `seat-fight` grants the box and checks
   the corpse and the experience (14 checks).
+- **The bazaar (Wex sells; written while the harvest gate ran, verified live 2026-10-24 after the companion lane's night on the bench: `seat-sell` 12/12 — 5000 Vahiide listed for 1500 cr, the 20 cr fee from the bank, retrieved; the only live bug was a `NameError` for the seat module handle in the pilot's new scope):** Lua had no way to read
+  a resource stack — `getDisplayedName` on one is the *family* name (`createResource` sets the custom name to
+  `getFamilyName()`), the spawn name and units live in `ResourceContainer`, which has no Lua class — so a C++ global
+  `getInventoryItems(playerName)` returns every inventory row as `{oid, template, name, type, useCount}` plus
+  `resource, resourceType, units` for a stack. Lab `inventory:<char>` prints those fields when the binding exists
+  (older servers: oid and path, as before), and `bazaarNear:<char>[:radius]` lists bazaar terminals (game object type
+  `0x4002`) nearest first through `getObjectsInRange`. Server rules for a sale (`checkSaleItem`): price 1..the bazaar cap,
+  fewer than `Core3.Auction.MaxSales` (our 100) listings, 20 cr sales fee in the bank, the item movable out of its
+  container, no intangibles; **no distance check for a bazaar sale** (only retrieve has TOOFAR); a stack is listed whole
+  (`split` is C++ only). Seat: `sell <item> <terminal> <price> [--describe]` and `retrieve <item> <terminal>` over the
+  bot's auction actions (`ItemSoldMessage` status 0 ok, 2 invalid item, 4 price, 9 credits, 13 too many). Pilot:
+  `my_inventory` now reads the server rows (a stack shows as its resource name with units), tool `sell(item, price)`
+  finds the stack by resource name (or an item by a name fragment), the nearest terminal, walks there (cell-aware) and
+  lists it; a rules paragraph on pricing. The pilot holds exactly 20 strict tools now (the API's cap): tools without
+  arguments and `train`/`sell` go unstrict. Scenario `seat-sell`: a 5000-unit mineral stack and a terminal 30 m away,
+  the tool by resource name, the stack gone from the inventory, the fee from the bank, retrieve puts it back.
+- **Two gate flakes made hardier (2026-10-24, with the bazaar build):** (1) the bot's `converse` waited 5 s for the
+  conversation screen; a start the server refuses (same cell, 5 m, line of sight) is silent and a loaded gate server
+  under gdb answers late — four gates in a row flaked there (the broker twice, the Trade Hall keeper, each passing alone).
+  Now 10 s, and when no screen arrives the action sends `npcconversationstart` once more before failing ("asked twice";
+  `ConverseAction.cpp`). (2) `fight_seat` read "looted" as *no error line at all* in the 2 s after `loot all`, so a trailing
+  attack refused after the kill failed `seat-fight.corpse_looted` in the companion gate; now the verdict comes from the
+  loot's own words (`PlayerManager::lootAll` / `LootCommand`: refusals `target_out_of_range`, `no_corpse_permission`,
+  `you_are_full`, `corpse_empty`; `@base_player:corpse_looted` or `prose_coin_loot` confirm; an empty corpse says nothing)
+  and the result carries `lootSaid`. The companion lane added a one-time retry per red scenario to `swg test all` the
+  same night (its branch; a scenario failing twice still fails) — Chuck's to keep or revert.
 - **Gate flake, 2026-10-23 ~21:30:** `schematic-broker-ui` and `schematic-broker` both failed on the bot's converse with
   Dannik Vosa in the Trade Hall ("did not start a conversation within 5s"), the same broker oid twice, right after the
   `sandstorm` scenario; `gotoNpc` reported the teleport done both times, the lab-side purchase worked, and the scenario
@@ -1383,3 +1409,21 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   5 s); the result carries `minigame`, `retried` and the survey/sample system messages seen (`said`) so the next flake
   explains itself. The seat's `sui` answer needs its own `timeout` field in the action body: the Python `timeout`
   keyword of `Seat.action` is the socket wait and is not sent.
+
+### 2026-10-25 — 7.5 the stored level follows the weapon at login (alice)
+
+- **Why a veteran start read level 1 for ever.** `PlayerManager::calculatePlayerLevel` (the *held* weapon line's
+  `private_<weapon>_combat_difficulty / 100 + 1`, cap 25) runs in exactly three places, all in `SkillManager`: `awardSkill`,
+  `surrenderSkill`, `surrenderAllSkills`. Nothing recomputes it when the weapon changes, so a character whose boxes were
+  awarded bare-handed (every `citizen new` veteran start; Teyla read level 1 with a rifle line worth 12) carried the
+  unarmed line's level to every con colour, mission terminal difficulty and aggro check until its next box. Fix, small
+  on purpose: a Lua binding `CreatureObject:recomputeLevel()` (`LuaCreatureObject.cpp`: players only, `calculatePlayerLevel`
+  + `setLevel`, returns the level; 0 and no change when there is no weapon object) and `FBLogin.recomputeLevel` in the
+  login hook, which prints a line when the number moves. A weapon swap between logins still leaves the stored level
+  stale — recomputing on equip would be a change to `CreatureObjectImplementation` (widely included, long rebuild) and a
+  gameplay decision for Chuck (the level then rises and falls with every swap). Lab `level:<char>` (stored, best-line
+  strength, held template), `unequip:<char>`; scenario `level-login` (bot login, master marksman box bare-handed, rifle
+  given and equipped → stored level unchanged, `loginHook` → stored level = rifle line, agrees with the lab's strength).
+  Live 2026-10-25: the lab character read level 1 bare-handed with the master marksman box, still 1 with the CDEF rifle
+  equipped, 7 after the login hook (`private_rifle_combat_difficulty` 600), the same as the lab's strength; 7/7.
+

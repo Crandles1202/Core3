@@ -114,6 +114,7 @@ namespace creature {
 		int isInvisible(lua_State* L);
 		int isInCombat(lua_State* L);
 		int isMeditating(lua_State* L);   // Final Boss: shrine meditation (Phase 4a.1)
+		int recomputeLevel(lua_State* L);   // Final Boss: the stored level from the weapon in hand (Phase 7.5)
 		int healDamage(lua_State* L);
 		int getGroupID(lua_State* L);
 		int enhanceCharacter(lua_State* L);
