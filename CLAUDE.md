@@ -381,9 +381,9 @@ Settings are read at session start, so restart Claude Code after creating it.
 
 ## Current status
 
-_Updated: 2026-10-20 (sessions 3–5: Phase 2.12 tooling complete — Lab Remote, site builder, site planner with game loop, world edits, terrain — and Phase 4 begun with 4a.1 attunement; Phase 1 done, Phase 2 bar 2.4, Phase 3 bar 3.12 / 3.3 time-of-day / 3.11 escort)_
+_Updated: 2026-10-25 (Phase 4 complete: 4a.0 crystals, 4a.1–4a.4, 4b.1–4b.5, 4c all on `unstable`; Phase 7 citizens live beside it. Earlier: sessions 3–5: Phase 2.12 tooling complete — Lab Remote, site builder, site planner with game loop, world edits, terrain — and Phase 4 begun with 4a.1 attunement; Phase 1 done, Phase 2 bar 2.4, Phase 3 bar 3.12 / 3.3 time-of-day / 3.11 escort)_
 
-- `unstable` = `origin/unstable` (`95c7107cd7`, 2026-10-20), no local feature branches, stash empty. Every feature
+- `unstable` = `origin/unstable` (`b2a1b1f686`, 2026-10-25), no local feature branches of mine (alice's `feature/alice-bazaar` worktree is hers), stash empty. Every feature
   went through its own `feature/<name>` branch, a `--no-ff` merge and a push. **Where things stand:** the
   Phase 1–3 content from 2026-10-17/18 is still unplay-tested by Chuck except what he saw while placing the
   Trade Hall (2.11 hall, vendors, HoloNet, 2.12 tooling — all good); the Phase 4 content (4a.1) is new today
@@ -400,8 +400,8 @@ _Updated: 2026-10-20 (sessions 3–5: Phase 2.12 tooling complete — Lab Remote
   block at the top of the roadmap's Phase 4 section is the spec (attunement score with capped sources, Force-ghost
   clues, FRS rank trees as the ladder, Masters in the Yavin 4 enclaves, cosmetic colour crystals, fixer-paid
   bounties). 4.0 custom TRE tooling shipped and installed in Chuck's client (`/mnt/c/EMU/swg - Copy/SWGEmu`). **2.11 Mos Eisley Trade Hall** shipped the same night (server-placed stock building with the 11 square vendors inside, doorman on the square) — the pattern for every later shop/enclave. Next: 4a.1 attunement + Old Man on `feature/phase4a.1-*`; TRE object templates (custom building names) when a shop needs its own name.
-- Binaries: `bin/core3` built 2026-10-20 (weather clamp, `isMeditating`), `bin/core3client` 2026-10-19, both from this tree (`swg build`).
-- Lab now: 261 unit, planner selftest, ~465 Lua checks (one placement check per live FB spawn), bot, 45 scenarios (+2 manual audits) (`companion`, `crystals`, `bounty`, `knight-trial`, `ranks-alignment`, `sith-master`, `jedi-master`, `visions`, `trials`, `shrines`, `attunement`, `terrain-grid`, `world-edits`, `site-preview`, `site-builder`, `lab-remote`, `trade-hall`, `npc-placement`, `tre-strings`, `stimpack-heals`, `npc-conversation`,
+- Binaries: `bin/core3` and `bin/core3client` rebuilt by every `bench use` that changes C++ (last 2026-10-25: the companion's control-device and pet-command bindings, the faction-pet rule exemption, alice's level recompute and converse hardening).
+- Lab now: unit (gtest), planner selftest, ~627 Lua checks (one placement check per live FB spawn), bot, 49 scenarios (+2 manual audits; a red scenario gets one retry in `test all`) (`companion`, `crystals`, `bounty`, `knight-trial`, `ranks-alignment`, `sith-master`, `jedi-master`, `visions`, `trials`, `shrines`, `attunement`, `terrain-grid`, `world-edits`, `site-preview`, `site-builder`, `lab-remote`, `trade-hall`, `npc-placement`, `tre-strings`, `stimpack-heals`, `npc-conversation`,
   `inventory-100`, `mission-hints`, `entertainer-xp`, `schematic-broker`, `schematic-broker-ui` (real SUI path),
   `parts-dealer`, `bazaar-listings`, `traveling-merchant`, `ambient-cantina`, `galaxy-chatter`, `story-ticker`, `faction-patrols`, `holonet`, `convoy-ambush`, `sandstorm`, `invasion-bestine`, `territory`; manual: `merchant-stops`, `ambient-locations`). Oracle
   additions today: `inventoryLimit`, `setInventoryLimit`, `loginHook`, `spawnObjectNear`, `destroyObject`,

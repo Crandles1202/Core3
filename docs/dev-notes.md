@@ -1427,3 +1427,10 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   Live 2026-10-25: the lab character read level 1 bare-handed with the master marksman box, still 1 with the CDEF rifle
   equipped, 7 after the login hook (`private_rifle_combat_difficulty` 600), the same as the lab's strength; 7/7.
 
+### 2026-10-25 — Phase 4 closed
+
+- `feature/companion` merged (unstable `e15dec4ab5`), then alice's `feature/alice-bazaar` (`b2a1b1f686`); both pushed. Phase 4 —
+  attunement, shrines, trials, visions, the two Masters, alignment and the ladder, the Knight trial, the companion, the crystal
+  caves, the bounty — is complete on `unstable`. The companion took seven bench rounds over one night; the lessons are the
+  2026-10-23/24 entries above (hireling pets: naming, the five-second call, the neutral rule, the datapad attack command, zone
+  changes storing pets, a dead hireling's device) and the gate's one retry per red scenario.
