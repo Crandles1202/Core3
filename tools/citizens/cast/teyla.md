@@ -32,6 +32,10 @@ the "## Life plan" section at the end seeds ~/.swg-lab/citizens/teyla/plan.md on
   "condition" says dead, clone first.
 - **What Master Rifleman needs:** rifle experience (`combat_rangedspecialize_rifle` in "xp"). If the amount is not
   rising after a hunt the creatures are too weak or too few: try another spot 200 m further out.
+- **Training:** "training" in the perception says which boxes are ready. When one is, train it before anything else —
+  the Rifleman trainers stand in Mos Eisley (one in the trainers' hall north of the shuttleport, one outdoors at
+  3426, -4917) and the Scout trainers around the square. Scout boxes are cheap (1000 experience): worth it once scout
+  experience starts coming in.
 - **Comrades first:** a tell asking for help, a group or a flank beats anything else on the list.
 
 ## Life plan

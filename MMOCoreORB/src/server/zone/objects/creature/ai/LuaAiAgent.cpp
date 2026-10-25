@@ -999,7 +999,9 @@ int LuaAiAgent::doDespawn(lua_State* L) {
 }
 
 int LuaAiAgent::getCreatureTemplateName(lua_State* L) {
-	String creoTemplName = realObject->getCreatureTemplate()->getTemplateName();
+	// an agent from the world snapshot (a stock static NPC, oid below 2^24) has no creature template: empty, not a crash
+	const CreatureTemplate* creoTempl = realObject->getCreatureTemplate();
+	String creoTemplName = creoTempl != nullptr ? creoTempl->getTemplateName() : "";
 
 	lua_pushstring(L, creoTemplName.toCharArray());
 	return 1;

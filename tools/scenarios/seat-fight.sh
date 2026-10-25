@@ -18,6 +18,8 @@ OUT=$("$SEAT" start "$BOT_USER" "$CHAR" --name "$NAME" --timeout 600 2>&1); RC=$
 check_eq "seat_started" "$RC" "0" "$(tail -n1 <<<"$OUT")"
 [ "$RC" = 0 ] || { "$SEAT" log "$NAME" 30 | sed 's/^/   client: /'; die "seat did not start"; }
 lab "skill:$CHAR:combat_marksman_master" >/dev/null
+lab "skill:$CHAR:outdoors_scout_novice" >/dev/null   # a scout harvests the corpse after the loot (7.5)
+SCOUT0=$(lab "xp:$CHAR:scout" 8 | sed -n 's/.*amount=\([0-9]*\).*/\1/p' | head -n1)
 RIFLE=$(lab "give:$CHAR:object/weapon/ranged/rifle/rifle_cdef.iff" | sed -n 's/.*oid=\([0-9]*\).*/\1/p' | head -n1)
 EQ=$(lab "equip:$CHAR:$RIFLE" | grep -a '^INFO equip' | head -n1)
 check "rifle_equipped" "$( grep -q 'ok=true' <<<"$EQ" && echo 1 || echo 0 )" "CDEF rifle oid ${RIFLE:-none}: $(grep -o 'ok=[a-z]*' <<<"$EQ")"
@@ -32,12 +34,15 @@ check "rat_spawned" "$( [ -n "$RAT" ] && echo 1 || echo 0 )" "kreetle oid ${RAT:
 sleep 2
 
 T0=$(date +%s)
-FIGHT=$("$SEAT" fight "$NAME" "$RAT" --max 120 --reach 20 2>&1); RC=$?
+FIGHT=$("$SEAT" fight "$NAME" "$RAT" --max 120 --reach 20 --harvest 2>&1); RC=$?
 T1=$(date +%s)
 check_eq "fight_won" "$RC" "0" "$(grep -a '^fight:' <<<"$FIGHT" | head -n1) ($((T1 - T0)) s)"
 ALIVE=$(lab "objectAlive:$RAT" 8 | sed -n 's/.*alive=\([0-9]*\).*/\1/p' | head -n1)
 check_eq "rat_dead_on_server" "${ALIVE:-1}" "0" "alive=${ALIVE:-?}"
 check "corpse_looted" "$( grep -q '"looted": true' <<<"$FIGHT" && echo 1 || echo 0 )" "loot all sent on the corpse"
+SCOUT1=$(lab "xp:$CHAR:scout" 8 | sed -n 's/.*amount=\([0-9]*\).*/\1/p' | head -n1)
+check "corpse_harvested" "$( grep -q '"harvested": true' <<<"$FIGHT" && echo 1 || echo 0 )" "harvestcorpse on the kreetle: scout experience ${SCOUT0:-?} → ${SCOUT1:-?} $(grep -o '"harvestSaid": "[^"]*"' <<<"$FIGHT")"
+check "scout_xp_paid" "$( [ "${SCOUT1:-0}" -gt "${SCOUT0:-0}" ] && echo 1 || echo 0 )" "a kreetle is level 10: 69 experience"
 HAM=$(lab "ham:$CHAR" 8 | grep -a '^INFO ham' | head -n1)
 check "character_standing" "$( grep -q 'incap=true\|dead=true' <<<"$(lab "where:$CHAR" 8)" && echo 0 || echo 1 )" "$(grep -o 'health=[0-9/]*' <<<"$HAM")"
 # the threat oracle the pilot's hunt asks before every fight: a Tusken raider 110 m north is aggressive and level 19

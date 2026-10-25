@@ -1312,3 +1312,74 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 - A bot conversation two seconds after zone-in (`bot --wait 2 --converse`) failed three gates running once the server had
   been up for a few hours; every other conversation scenario waits ten or more seconds, trade-hall now does too. The
   lab's `gotoNpc` needs the character online (`onlinePlayer`): a hand replay without a bot session returns "not online".
+### 2026-10-23 — 7.5 the citizens train (alice)
+
+- **Why training first:** Teyla's stored level read 1 against a fighting strength of 12 (her veteran start was awarded
+  unarmed; `calculatePlayerLevel` only runs on a skill award), and her first wake on the new south ground met giant
+  worrts (level 13, pairs) above that strength and found nowhere to hunt. A citizen that never spends its experience
+  never grows; the stock answer is the trainer NPC.
+- **How stock training works** (`screenplays/trainers/trainerConvHandler.lua`, `skillTrainer.lua`, `trainerData.lua`):
+  the trainer's conversation lists the boxes of its `trainerSkills[<type>]` the player can take (`fulfillsSkillPrerequisitesAndXp`)
+  as options `@skl_n:<skill>` under *learn* (option 0 of the intro), then a cost screen (yes = option 0) that pays
+  the credits (cash first, then bank) and calls `LuaSkillManager:awardSkill`. The trainer type is the NPC's mobile
+  template name (`trainer_rifleman`); `AiAgent:getCreatureTemplateName()` reads it. Skill points are not exposed to
+  Lua: `canLearnSkill(pPlayer, skill, false)` is the one check that covers prerequisites, experience and points.
+- **Lab:** `trainable:<char>[:all]` (INFO trainable = buy now; INFO next = prerequisites met, experience short; for the
+  professions the character holds a box of, `all` adds every novice box; `INFO training … level= strength=` summary),
+  `trainers:<planet>:<type>[:x:y]` (trainer NPCs by template within 500 m of each travel point, nearest first, cell-local
+  coordinates indoors), `skillDrop:<char>:<skill>` (`surrenderSkill`; the scenario resets the shared lab character).
+- **Pilot:** perception `training` (`ready` with credits, `next` with experience have/cost, sorted by how close); tool
+  `train(skill)` — lab trainable → nearest trainer by template → walk (`within=3`, indoors too) → the stock conversation
+  over real packets (converse `[0]`, find `@skl_n:<skill>` among the options, converse `[0, i, 0]`) → `hasSkill` read
+  back; the result carries the new level and strength. The tool has an argument and is the 21st, so it is unstrict.
+- **`AiAgent:getCreatureTemplateName()` halted the server** (null `npcTemplate->getTemplateName()`): an AI agent from the
+  world snapshot (oid 16796195, a stock static NPC) has no creature template. The binding now returns "" for those.
+  The symptom was a gdb catchpoint with the Lua oracle printing nothing at all, and every later `swg cmd` answering
+  nothing while `swg status` said HALTED IN GDB — read `swg status` before blaming the oracle.
+- **An indoor path ended under the floor.** `findPath` returns the indoor target itself as the last point, at the z it
+  was asked for (0): the walk's last `DataTransformWithParent` set the character 1.1 m below the room, the position was
+  accepted (the server checks speed, not floors), the travel code never noticed (a ticket terminal needs no line of
+  sight) — and `NpcConversationStartCommand` refused the trainer with its silent GENERALERROR, because
+  `checkLineOfSightInBuilding` casts the ray from the character's cell-local z + 1 through the floor triangles. `pathTo`
+  now gives the last indoor point the floor height of the node before it; `path_within` stops short indoors too (a
+  zero-length ray from inside the NPC is not a line of sight either).
+- **`seat.action(…, timeout=)` is the socket's timeout**, not the action's: the converse action's own wait is its
+  `timeout` field, so the train tool sends the action JSON through `seat.request` directly.
+- Scenario `seat-train`: the lab character with the Scout novice box and 5000 scout + trapping experience trains
+  `outdoors_scout_movement_01` from the square (outdoor trainer, 8 m) and `outdoors_scout_tools_01` from beside the
+  trainers' hall (indoor trainer in cell `meetingb`, through the door); 14 checks, both boxes read back, 1000 credits
+  each, the box gone from `ready` afterwards. Mos Eisley has eight scout trainers near its shuttleport.
+- **What Teyla can train:** nothing yet — the next Rifleman boxes cost 175 000–350 000 rifle experience (she has 1025)
+  and the Scout boxes 1000 scout/trapping/camp experience (she has 0). Her level stays 1 until the first award; the
+  stock grind is the stock grind (XP ×2 already) — whether the citizens get more is Chuck's call. Follow-ups: a bazaar
+  `sell` tool for Wex (the bot client already lists and buys), crafting.
+- **Scouts harvest corpses** (same batch, after the gate above went red on a flake — see below). The rules
+  (`HarvestCorpseCommand.h`, `CreatureImplementation::canHarvestMe`, `CreatureManagerImplementation::harvest`): within
+  10 m of the corpse, not in combat, the `outdoors_scout_novice` box and `creature_harvesting` ≥ 1, the creature has
+  organics (a kreetle: insect meat / scaley hide; a worrt: meat, hide, bone), once per player per corpse,
+  `harvestcorpse [meat|hide|bone]` (random when unsaid). Scout experience = level × 5 + 19 (a kreetle paid 71 with the
+  ×2), the message is `@skl_use:creature_quality_<fat|medium|scrawny>` with the resource name — the client decodes it
+  now, and the seat reads the kill by the experience (`xp:<char>:scout` before and after) rather than the message.
+  `tools/seat fight … --harvest` (after the loot, waits up to 12 s for `where` to say combat=false, nowait command);
+  the pilot's `hunt` asks lab `skillmod:<char>:creature_harvesting` once and harvests every kill when it is at least 1,
+  reports `harvested`. Teyla holds the Scout novice box, so twenty worrts are one scout box (1000) and the first award
+  with the rifle in hand recomputes her level from 1 to the real number. Scenario `seat-fight` grants the box and checks
+  the corpse and the experience (14 checks).
+- **Gate flake, 2026-10-23 ~21:30:** `schematic-broker-ui` and `schematic-broker` both failed on the bot's converse with
+  Dannik Vosa in the Trade Hall ("did not start a conversation within 5s"), the same broker oid twice, right after the
+  `sandstorm` scenario; `gotoNpc` reported the teleport done both times, the lab-side purchase worked, and the scenario
+  passed on its own a few minutes later (12/12) as it had in every earlier gate. Pattern: the bot logs in 2 s after a
+  relog into a cell and talks after 2 s more; nothing in the batch touches that path. Unexplained; if it repeats, give
+  those two scenarios a longer `--wait` before the converse or a `where` check that the character came back in the cell.
+- **Gate flake 2, 2026-10-23 ~22:20, explained and fixed:** the re-gate on `3d172f429f` was green everywhere except
+  `survey-sample` (`sample_ok`: "no sample result at all"), which passed alone right after. Cause, in the server: one
+  sample start in 51 (`SurveySessionImplementation::startSample`, `System::random(50) == 7`) opens the *concentrated
+  sample* list box (`@survey:cnode_t`: a richer spot nearby, or `@survey:gnode_t`: gamble 300 action) instead of
+  sampling; the real client answers it, the seat's `sample` action only counted result messages for 5 s. Row 0 of either
+  window ("ignore / keep sampling here") calls `rescheduleSample`, which schedules the sample **25 s** out (not 3 s).
+  Fix in `tools/seat` (`sample_seat`, used by the CLI and the pilot's `sample` tool): on "no sample result" answer a
+  window whose title contains `node_t` with row 0 and re-send the sample with two rounds (a sample with a task pending is
+  swallowed; the 30 s wait catches the rescheduled result), else re-send once (a first result slower than the action's
+  5 s); the result carries `minigame`, `retried` and the survey/sample system messages seen (`said`) so the next flake
+  explains itself. The seat's `sui` answer needs its own `timeout` field in the action body: the Python `timeout`
+  keyword of `Seat.action` is the socket wait and is not sent.

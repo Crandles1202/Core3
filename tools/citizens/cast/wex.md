@@ -28,6 +28,8 @@ _Persona from docs/Citizens-Cast.md (approved by Chuck 2026-10-21). The pilot re
   the no-build belt (a city's reaches 700–900 m past its walls). Never two harvesters on the same resource within 500 m.
 - **What Master Artisan needs:** surveying experience (`resource_harvesting_inorganic` in "xp") from sampling and
   from harvesters; crafting experience from making things later.
+- **Training:** "training" in the perception says which boxes are ready (Merchant boxes need merchant experience from
+  sales). When one is, train it: Artisan and Merchant trainers stand in every starport city.
 - **Stay alive:** an artisan alone in the wild dies to the first thing that bites (he died at 1024, -5696 on Corellia on
   2026-10-22, and again on a 2.5 km march north of Coronet on 2026-10-23). Never walk more than about 2 km from a city:
   for a far spot take the shuttle (travel_to) to the nearest city first, or choose a nearer spot of the same resource (the
