@@ -39,6 +39,7 @@ runs and tests. Host: WSL2 Debian 12.
 | Lot / room survey | `tools/lotsurvey near|cells|footprint|rooms|furniture|check|lots|export …` reads the stock snapshot, portal layouts and floor meshes through the server's archives: where buildings stand, a template's footprint and rooms (cell-local coordinates for `spawnMobile`), and free lots for a building near a point. Used to place the 2.11 Trade Hall |
 | Custom client/server data (strings, templates) | `tre-src/` → packed by `tools/tre` (stdlib Python; `build/list/extract/strings/verify/roundtrip/install/status/crc`). `string/en/fb_*.stf.txt` = `key = text` lines → `@fb_*:key` |
 | Wrapper scripts | `~/bin/build`, `~/bin/run` (both `source ~/.env`) |
+| **Second bench** (`bench2`) | `~/workspace/Core3-bench2` — a full clone of the repo with its own build tree (remote `local` = the main repo; branches are fetched from it), ports = the bench's + 2000 (login **46453**), database `swgemu_bench2`, archive folder `~/swg-bench2/tre`, tmux `bench2`, lock `~/.swg-lab/bench2.lock`, built/running stamps `~/.swg-lab/bench2.*`. `SWG_INSTANCE=bench2` (or `swg --bench2 …`) makes every swg command act there, including `bench use`, `test all`, `build`, `release`; the gate stamp (`gate.passed`, per commit) is shared, and `bench merge` runs only from the main bench. Set up once with `swg bench2 init` (clone + config + first build) and `swg bench2 data` (database and ODB copied from the main bench, stopped) |
 | **Live instance** (second server) | `~/swg-live/` — `bin/` (binaries + scripts + `conf/config.lua` deployed from the bench's `unstable` by `swg live deploy`; its own `conf/config-local.lua`, ODB `databases/`, `log/`, `screenlog.0`), `tre/` (links to the stock archives + its own `finalboss.tre`), `DEPLOYED` (rev + time). MySQL `swgemu_live`; ports = the bench's + 1000 (login **45453**, zone 45463, ping 45462, status 45455, ORB 45419, web 45460); tmux `swg-live`; lock `~/.swg-lab/live.lock`. `swg --live start|stop|status|cmd|logs|snap|account` (or `SWG_INSTANCE=live`); `bench|test|build|agent|site|tre` are refused there. `swg live init` (once; needs the database — Chuck creates it as root), `swg live deploy [--no-restart]`, `swg live client [--bench]` (points the game client's `swgemu_login.cfg` at one or the other), `swg live status`. Seats and pilots take `SWG_INSTANCE=live` (the seat's default port follows) |
 | Unit tests (gtest) | `MMOCoreORB/src/tests/*.cpp` |
 
@@ -73,11 +74,13 @@ runs and tests. Host: WSL2 Debian 12.
 - `tools/swg` (Claude's way, tmux session `swg`) — see Test commands. Do not run both at once
   (`pgrep core3` first).
 - Boot takes ~45 s; ready when the console prints `[Core] initialized` followed by `READY`.
-- **Two servers** (2026-10-25): the bench (`~/workspace/Core3`, ports 44xxx, database `swgemu`) runs every gate, deploy and
-  build and restarts whenever a branch is tested; the **live instance** (`~/swg-live`, ports 45xxx, `swgemu_live`) is for
-  Chuck's play and the citizens and restarts only on `swg live deploy` (the bench's `unstable`, built) or by hand. Both
-  binaries are named `core3`: the tooling tells them apart by working directory. One game client folder serves both
-  through `swg live client` / `swg live client --bench` (one line in `swgemu_login.cfg`).
+- **Three servers** (2026-10-26): the **bench** (`~/workspace/Core3`, ports 44xxx, database `swgemu`) and **bench2**
+  (`~/workspace/Core3-bench2`, ports 46xxx, `swgemu_bench2`) each run gates, deploys and builds, so two agents test at the
+  same time without waiting — by convention claude on the bench, alice on bench2 (`export SWG_INSTANCE=bench2` in her
+  session); the **live instance** (`~/swg-live`, ports 45xxx, `swgemu_live`) is for Chuck's play and the citizens and
+  restarts only on `swg live deploy` (the bench's `unstable`, built) or by hand. All binaries are named `core3`: the
+  tooling tells them apart by working directory. Merges into `unstable` happen on the main bench only. One game client
+  folder serves all three through `swg live client` / `swg live client --bench` (one line in `swgemu_login.cfg`).
 - Console commands (`help` lists them): `shutdown`, `save`, `info`, `chars`, `reloadscreenplays`,
   `reloadmanager`, `loglevel`, `broadcast`, `runLuaFunction module:function[:arg...]`, `dumpcfg`.
 - Chuck's client connects to `127.0.0.1` over UDP, which needs WSL **mirrored** networking
@@ -147,6 +150,7 @@ tools/swg test planner          # headless check of the site planner's data path
 tools/swg whoami | lock [purpose] [--minutes N] | unlock [--force]   # the bench lock (docs/BOARD.md)
 tools/swg agent new <name> | list | done <name>                      # a worktree + branch per agent
 tools/swg live init [--force] | deploy [--no-restart] | client [--bench] | status   # the second server (~/swg-live), from the bench
+tools/swg bench2 init [--no-build] | data | status                   # the second bench (~/workspace/Core3-bench2); then SWG_INSTANCE=bench2 swg …
 tools/swg --live start|stop|status|cmd|logs|snap|account …          # the same commands against the live instance
 tools/swg bench status | use <branch> | release | merge <branch>     # deploy on the bench, gate, merge
 tools/seat start <user> <char> [--name N] [--timeout S] | stop | list | prune | ping | say | tell | emote | cmd | do | vars | objects | wait | log

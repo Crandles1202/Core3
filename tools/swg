@@ -74,8 +74,30 @@ DBNAME=swgemu
 # purpose. start/stop/status/cmd/logs/snap/account work on it; bench/test/build/agent/site/tre are refused.
 INSTANCE=${SWG_INSTANCE:-bench}
 if [ "${1:-}" = "--live" ]; then INSTANCE=live; shift; fi
+if [ "${1:-}" = "--bench2" ]; then INSTANCE=bench2; shift; fi
 LIVE_ROOT=${SWG_LIVE_ROOT:-$HOME/swg-live}
 LIVE_PORT_BASE=${SWG_LIVE_PORT_BASE:-45000}
+# ---------------------------------------------------------------- the second bench (swg --bench2 …, SWG_INSTANCE=bench2)
+# A whole second test server so two agents gate at once: its own full clone of the repo (a worktree cannot build its
+# own binary; this one has its own build tree) at ~/workspace/Core3-bench2, deploying branches fetched from the main
+# repo (remote "local"), its own database swgemu_bench2, ODB, logs, archive folder (~/swg-bench2/tre), ports 46xxx,
+# tmux session bench2 and lock. Everything a bench does works here (use / test / build / release); the gate stamp is
+# per commit and shared, and `bench merge` runs only from the main bench, whose checkout is the canonical unstable.
+BENCH2_ROOT=${SWG_BENCH2_ROOT:-$HOME/workspace/Core3-bench2}
+BENCH2_PORT_BASE=${SWG_BENCH2_PORT_BASE:-46000}
+BENCH2_TRE=${SWG_BENCH2_TRE:-$HOME/swg-bench2/tre}
+if [ "$INSTANCE" = bench2 ]; then
+	BENCH="$BENCH2_ROOT"
+	BIN="$BENCH/MMOCoreORB/bin"
+	LOG="$BIN/screenlog.0"
+	SESSION=${SWG_TMUX_SESSION:-bench2}
+	LOCKFILE="$LABDIR/bench2.lock"
+	DBNAME=swgemu_bench2
+	export SWG_INSTANCE=bench2
+	export SWG_LOGIN_PORT=${SWG_LOGIN_PORT:-$((BENCH2_PORT_BASE + 453))}
+fi
+# children (tools/tre, the scenarios' lib.sh, the seat) follow the instance through these
+export SWG_BENCH="$BENCH" SWG_BIN="$BIN"
 if [ "$INSTANCE" = live ]; then
 	BIN="$LIVE_ROOT/bin"
 	LOG="$BIN/screenlog.0"
@@ -143,7 +165,7 @@ with_lock() {
 	return $rc
 }
 
-cmd_whoami() { [ "$INSTANCE" = live ] && say "instance: live ($LIVE_ROOT, login $((LIVE_PORT_BASE + 453)))"; say "$(agent_name)  (checkout $REPO$( [ "$REPO" = "$BENCH" ] && echo ", the bench" || echo "; bench $BENCH"))"; }
+cmd_whoami() { [ "$INSTANCE" = live ] && say "instance: live ($LIVE_ROOT, login $((LIVE_PORT_BASE + 453)))"; [ "$INSTANCE" = bench2 ] && say "instance: bench2 ($BENCH2_ROOT, login $((BENCH2_PORT_BASE + 453)))"; say "$(agent_name)  (checkout $REPO$( [ "$REPO" = "$BENCH" ] && echo ", the bench" || echo "; bench $BENCH"))"; }
 
 cmd_lock() {
 	local purpose="" minutes=60
@@ -194,8 +216,8 @@ cmd_agent() {
 	esac
 }
 
-bench_running_file() { echo "$LABDIR/bench.running"; }
-bench_built_file() { echo "$LABDIR/bench.built"; }
+bench_running_file() { echo "$LABDIR/$( [ "$INSTANCE" = bench ] && echo bench || echo "$INSTANCE" ).running"; }
+bench_built_file() { echo "$LABDIR/$( [ "$INSTANCE" = bench ] && echo bench || echo "$INSTANCE" ).built"; }
 bench_note_running() { git -C "$BENCH" rev-parse HEAD >"$(bench_running_file)" 2>/dev/null || true; }
 bench_note_built() { git -C "$BENCH" rev-parse HEAD >"$(bench_built_file)" 2>/dev/null || true; }
 
@@ -210,7 +232,8 @@ cmd_bench() {
 			git -C "$BENCH" worktree list | sed 's/^/worktree   /' ;;
 		use)
 			local target=${1:-}; [ -n "$target" ] || die "usage: swg bench use <branch|commit>"
-			local commit; commit=$(git -C "$BENCH" rev-parse --verify -q "$target^{commit}") || die "unknown branch/commit $target"
+			if [ "$INSTANCE" = bench2 ]; then git -C "$BENCH" fetch -q local 2>/dev/null || warn "bench2: fetch from the main repo failed"; fi
+			local commit; commit=$(git -C "$BENCH" rev-parse --verify -q "$target^{commit}" 2>/dev/null || git -C "$BENCH" rev-parse --verify -q "local/$target^{commit}" 2>/dev/null) || die "unknown branch/commit $target"
 			[ -z "$(git -C "$BENCH" status --porcelain)" ] || die "the bench checkout is dirty ($BENCH): nobody edits files there; commit or stash by hand"
 			local tries=0
 			while ! lock_is_stale && [ "$(lock_field 1)" != "$(agent_name)" ]; do   # SWG_WAIT=1 queues behind another agent's hold
@@ -238,11 +261,12 @@ cmd_bench() {
 			say "deployed. Test with swg test …; 'swg bench release' when done." ;;
 		release)
 			[ -z "$(git -C "$BENCH" status --porcelain)" ] || die "the bench checkout is dirty; clean it by hand first"
-			git -C "$BENCH" checkout -q unstable || die "checkout unstable failed"
+			if [ "$INSTANCE" = bench2 ]; then git -C "$BENCH" fetch -q local 2>/dev/null; git -C "$BENCH" checkout -q -B unstable local/unstable || die "checkout unstable failed"; else git -C "$BENCH" checkout -q unstable || die "checkout unstable failed"; fi
 			cmd_unlock
 			local running; running=$(cat "$(bench_running_file)" 2>/dev/null || echo "")
 			if [ -n "$running" ] && [ "$running" != "$(git -C "$BENCH" rev-parse HEAD)" ]; then warn "note: the server still runs $(cut -c1-10 <<<"$running"); the next 'bench use' puts it right"; fi ;;
 		merge)
+			[ "$INSTANCE" = bench ] || die "swg bench merge runs from the main bench only (its checkout is the canonical unstable); the gate stamp from bench2 counts"
 			local branch=${1:-}; [ -n "$branch" ] || die "usage: swg bench merge <branch>"
 			local commit; commit=$(git -C "$BENCH" rev-parse --verify -q "$branch^{commit}") || die "unknown branch $branch"
 			grep -qx "$commit" "$LABDIR/gate.passed" 2>/dev/null || die "no green 'swg test all' recorded for $branch @ $(cut -c1-10 <<<"$commit"): swg bench use $branch && swg test all"
@@ -808,7 +832,7 @@ build_inner() {
 	mkdir -p "$LABDIR"
 	local log="$LABDIR/last-build.log" t0=$SECONDS
 	say "== build: ~/bin/build (client on) → $log"
-	( cd "$REPO" && CMAKE_ARGS="-DENABLE_BUILD_CLIENT=ON ${CMAKE_ARGS:-}" "$HOME/bin/build" "$@" ) >"$log" 2>&1
+	( cd "$BENCH" && CMAKE_ARGS="-DENABLE_BUILD_CLIENT=ON ${CMAKE_ARGS:-}" "$HOME/bin/build" "$@" ) >"$log" 2>&1   # the instance's own tree (a worktree's build dir is the main bench's)
 	local rc=$?
 	local errors; errors=$(grep -ac "error:" "$log")
 	local warnings; warnings=$(grep -ac "warning:" "$log")
@@ -978,6 +1002,85 @@ cmd_tre() {
 
 usage() { sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//' | sed '1d'; }
 
+# ---------------------------------------------------------------- swg bench2 init|data|status (run from the main bench or a worktree)
+
+bench2_config_local() {
+	local src="$HOME/workspace/Core3/MMOCoreORB/bin/conf/config-local.lua" dst="$BENCH2_ROOT/MMOCoreORB/bin/conf/config-local.lua" base=$BENCH2_PORT_BASE
+	[ -f "$src" ] || die "$src missing (the main bench's local config holds the DB credentials)"
+	sed -e "s|^\([[:space:]]*\)DBName[[:space:]]*=.*|\1DBName = \"swgemu_bench2\"|" \
+	    -e "s|^\([[:space:]]*\)LoginPort[[:space:]]*=.*|\1LoginPort = $((base + 453))|" \
+	    -e "s|^\([[:space:]]*\)PingPort[[:space:]]*=.*|\1PingPort = $((base + 462))|" \
+	    -e "s|^\([[:space:]]*\)StatusPort[[:space:]]*=.*|\1StatusPort = $((base + 455))|" \
+	    -e "s|^\([[:space:]]*\)ZoneServerPort[[:space:]]*=.*|\1ZoneServerPort = $((base + 463))|" \
+	    -e "s|^\([[:space:]]*\)TrePath[[:space:]]*=.*|\1TrePath = \"$BENCH2_TRE\"|" "$src" > "$dst"
+	cat >> "$dst" <<EOT
+
+-- the second bench (written by swg bench2 init): its own database, ports and archive folder
+Core3.DBName = "swgemu_bench2"
+Core3.LoginPort = $((base + 453))
+Core3.PingPort = $((base + 462))
+Core3.StatusPort = $((base + 455))
+Core3.ZoneServerPort = $((base + 463))
+Core3.ORBPort = $((base + 419))
+Core3.WebPorts = $((base + 460))
+Core3.MetricsPort = 0
+Core3.TrePath = "$BENCH2_TRE"
+EOT
+	chmod 600 "$dst"
+	luac -p "$dst" 2>/dev/null || die "$dst does not parse"
+}
+
+cmd_bench2() {
+	[ "$INSTANCE" != live ] || die "swg bench2 … is not a live command"
+	local main="$HOME/workspace/Core3"
+	case "${1:-}" in
+		init)
+			shift
+			# 1. the clone with its own build tree, the main repo as remote "local"
+			if [ ! -d "$BENCH2_ROOT/.git" ]; then
+				say "== bench2 init: cloning $main -> $BENCH2_ROOT (submodules from their recorded URLs)"
+				git clone -q --recurse-submodules -b unstable "$main" "$BENCH2_ROOT" || die "clone failed"
+				git -C "$BENCH2_ROOT" remote rename origin local
+			fi
+			# 2. runtime: config, archive folder, the generated data the server would otherwise rebuild, gdb log dir
+			mkdir -p "$BENCH2_ROOT/MMOCoreORB/bin/conf" "$BENCH2_ROOT/MMOCoreORB/bin/log" "$BENCH2_TRE"
+			bench2_config_local
+			local f; for f in /tre/*.tre; do [ "$(basename "$f")" = finalboss.tre ] && continue; [ -e "$BENCH2_TRE/$(basename "$f")" ] || ln -s "$f" "$BENCH2_TRE/$(basename "$f")"; done
+			local d; for d in navmeshes terrain; do [ -d "$main/MMOCoreORB/bin/$d" ] && { rsync -a "$main/MMOCoreORB/bin/$d/" "$BENCH2_ROOT/MMOCoreORB/bin/$d/" || die "rsync $d failed"; }; done
+			# 3. the first build (its own tree; ccache makes it minutes, not an hour)
+			if [ "${1:-}" != "--no-build" ]; then
+				say "== bench2 init: first build in $BENCH2_ROOT (log $LABDIR/last-build.log)"
+				( cd "$BENCH2_ROOT" && CMAKE_ARGS="-DENABLE_BUILD_CLIENT=ON ${CMAKE_ARGS:-}" "$HOME/bin/build" ) >"$LABDIR/bench2-first-build.log" 2>&1 || die "first build failed: see $LABDIR/bench2-first-build.log"
+				say "== bench2 init: built $(date -r "$BENCH2_ROOT/MMOCoreORB/bin/core3" '+%F %T')"
+				git -C "$BENCH2_ROOT" rev-parse HEAD > "$LABDIR/bench2.built"
+			fi
+			say "bench2 ready for its data: swg bench2 data   (needs the database swgemu_bench2 and the main bench stopped)"
+			;;
+		data)
+			mysql -N swgemu_bench2 -e 'SELECT 1' >/dev/null 2>&1 || { live_sql_hint swgemu_bench2; die "bench2 data: no database"; }
+			[ -d "$BENCH2_ROOT/MMOCoreORB/bin/conf" ] || die "swg bench2 init first"
+			local p; for p in $(pgrep -x core3); do [ "$(readlink -f "/proc/$p/cwd" 2>/dev/null)" = "$(readlink -f "$main/MMOCoreORB/bin")" ] && die "the main bench core3 is running: stop it first (swg stop) for a clean ODB copy"; done
+			for p in $(pgrep -x core3); do [ "$(readlink -f "/proc/$p/cwd" 2>/dev/null)" = "$(readlink -f "$BENCH2_ROOT/MMOCoreORB/bin")" ] && die "the bench2 core3 is running: swg --bench2 stop first"; done
+			say "MySQL: swgemu -> swgemu_bench2"
+			mysqldump --single-transaction --quick --routines swgemu | mysql swgemu_bench2 || die "copy of the database failed"
+			mysql swgemu_bench2 -e "UPDATE galaxy SET port = $((BENCH2_PORT_BASE + 463)), pingport = $((BENCH2_PORT_BASE + 462)) WHERE galaxy_id = (SELECT * FROM (SELECT MIN(galaxy_id) FROM galaxy) g)" || die "galaxy row update failed"
+			say "ODB: $main/MMOCoreORB/bin/databases -> $BENCH2_ROOT/MMOCoreORB/bin/databases"
+			rm -rf "$BENCH2_ROOT/MMOCoreORB/bin/databases"
+			cp -a "$main/MMOCoreORB/bin/databases" "$BENCH2_ROOT/MMOCoreORB/bin/databases" || die "copy of the ODB failed"
+			say "bench2 has its data: SWG_INSTANCE=bench2 swg bench use <branch>   (login port $((BENCH2_PORT_BASE + 453)))"
+			;;
+		status|"")
+			local p2=""; for p in $(pgrep -x core3); do [ "$(readlink -f "/proc/$p/cwd" 2>/dev/null)" = "$(readlink -f "$BENCH2_ROOT/MMOCoreORB/bin")" ] && p2=$p; done
+			if [ -d "$BENCH2_ROOT/.git" ]; then
+				say "bench2 $( [ -n "$p2" ] && echo "RUNNING pid $p2" || echo STOPPED )  $BENCH2_ROOT @ $(git -C "$BENCH2_ROOT" rev-parse --short HEAD 2>/dev/null) ($(git -C "$BENCH2_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null))  built $(cut -c1-10 "$LABDIR/bench2.built" 2>/dev/null || echo never)  login $((BENCH2_PORT_BASE + 453))  db swgemu_bench2  lock $( [ -f "$LABDIR/bench2.lock" ] && cut -d'|' -f1,2 "$LABDIR/bench2.lock" || echo free )"
+			else
+				say "bench2 not set up (swg bench2 init)"
+			fi
+			;;
+		*) die "usage: swg bench2 init [--no-build] | data | status" ;;
+	esac
+}
+
 # ---------------------------------------------------------------- swg live init|deploy|client|status (run on the bench)
 
 live_sql_hint() {
@@ -1126,6 +1229,7 @@ if [ "$INSTANCE" = live ]; then
 fi
 case "${1:-}" in
 	live)    shift; cmd_live "$@" ;;
+	bench2)  shift; cmd_bench2 "$@" ;;
 	start)   shift; with_lock "start" cmd_start "$@"; bench_note_running ;;
 	stop)    shift; with_lock "stop" cmd_stop "$@" ;;
 	restart) shift; with_lock "restart" restart_inner "$@"; bench_note_running ;;

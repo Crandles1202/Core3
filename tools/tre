@@ -55,7 +55,7 @@ def _bench():
     return REPO
 
 
-BENCH = _bench()
+BENCH = os.environ.get("SWG_BENCH") or _bench()   # swg exports the instance's checkout (bench2 is a clone of its own)
 DEFAULT_SRC = os.path.join(REPO, "tre-src")                                    # the strings under test: this checkout
 DEFAULT_OUT = os.path.join(REPO, "MMOCoreORB", "bin", "tre", "finalboss.tre")
 CONFIG_LOCAL = os.path.join(BENCH, "MMOCoreORB", "bin", "conf", "config-local.lua")   # TrePath etc.: the bench
