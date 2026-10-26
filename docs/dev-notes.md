@@ -1463,3 +1463,17 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 - **Both servers up 2026-10-25 21:13**: bench pid on 44xxx, live on 45xxx, each answering its own console (`swg cmd` /
   `swg --live cmd`), 0 errors on live. Open: nightly backups cover `swgemu` only (`~/bin/swg-backup-daily.sh`); the live
   database and ODB have `swg --live snap save <name>` (`~/swg-snapshots/live/`) until the script learns the second database.
+
+### 2026-10-26 — the citizens move to the live server (alice)
+
+- Teyla and Wex were moved from the bench to the live instance the same day it came up: `crew down teyla wex` on the
+  bench, then `SWG_INSTANCE=live tools/citizens/crew up teyla wex` (seats on 45453, lab calls through the live console
+  under `~/.swg-lab/live.lock`). Verified three ways before trusting it: `SWG_INSTANCE=live swg cmd --shared
+  "runLuaFunction FbLabTests:where:Teyla"` places her on live, the plain bench console answers `offline Teyla`, and the
+  pilot process carries `SWG_INSTANCE=live` in its environment (crew inherits the variable; `crew status` prints the
+  instance and port it reads). **Every crew/seat/pilot command for a live citizen needs the variable** — without it
+  `crew up` seats the character on the bench, where the next gate restart kills the seat, and `swg cmd` asks the wrong
+  server. The other ten citizens stay on the bench until the two have run a clean day on live. The live server runs the
+  `2e0e53e231` build; `swg live deploy` (restarts live: take the live citizens down first) brings it to a newer
+  `unstable` when Chuck wants.
+
