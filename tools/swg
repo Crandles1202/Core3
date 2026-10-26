@@ -278,13 +278,14 @@ core3_pid() {
 	done
 }
 is_running()  { [ -n "$(core3_pid)" ]; }
-# every tmux target is "=$SESSION": without the "=" tmux falls back to prefix matching, and with two servers "swg" would
-# reach "swg-live" when the bench session is down (the first live instance died that way, 2026-10-25)
+# every tmux target is exact: "=$SESSION" for session commands (has-session, kill-session) and "=$SESSION:" for pane
+# commands (send-keys, pipe-pane, display-message). Without the "=" tmux falls back to prefix matching, and with two
+# servers "swg" would reach "swg-live" when the bench session is down (the first live instance died that way, 2026-10-25)
 has_session() { tmux has-session -t "=$SESSION" 2>/dev/null; }
 
 session_running_gdb() {
 	# pane command is "gdb" while gdb owns the pane
-	[ "$(tmux display-message -p -t "=$SESSION" '#{pane_current_command}' 2>/dev/null)" = "gdb" ]
+	[ "$(tmux display-message -p -t "=$SESSION:" '#{pane_current_command}' 2>/dev/null)" = "gdb" ]
 }
 
 # core3 alive but stopped under the debugger (a gdb catchpoint fired: SIGSEGV/SIGUSR1); the process
@@ -406,9 +407,9 @@ cmd_start() {
 	fi
 
 	tmux new-session -d -s "$SESSION" -c "$BIN" -x 250 -y 50 || die "could not create tmux session"
-	tmux pipe-pane -o -t "=$SESSION" "cat >> '$LOG'"
-	tmux send-keys -t "=$SESSION" -l -- "$launch"
-	tmux send-keys -t "=$SESSION" Enter
+	tmux pipe-pane -o -t "=$SESSION:" "cat >> '$LOG'"
+	tmux send-keys -t "=$SESSION:" -l -- "$launch"
+	tmux send-keys -t "=$SESSION:" Enter
 
 	if [ "$INSTANCE" = live ]; then
 		say "starting the live core3 ($( [ "$use_gdb" = 1 ] && echo under gdb || echo no gdb ), deployed $(cat "$LIVE_ROOT/DEPLOYED" 2>/dev/null || echo '?'), ports $((LIVE_PORT_BASE + 453))/$((LIVE_PORT_BASE + 463))) in tmux session '$SESSION'"
@@ -443,7 +444,7 @@ cmd_stop() {
 		if has_session; then
 			if session_running_gdb; then
 				say "core3 not running but gdb is idle in the session — quitting gdb"
-				tmux send-keys -t "=$SESSION" -l -- "quit"; tmux send-keys -t "=$SESSION" Enter
+				tmux send-keys -t "=$SESSION:" -l -- "quit"; tmux send-keys -t "=$SESSION:" Enter
 				sleep 2
 			fi
 			has_session && tmux kill-session -t "=$SESSION"
@@ -459,17 +460,17 @@ cmd_stop() {
 		# no console to type 'shutdown' into: the process sits on a fatal signal. Kill it from gdb
 		# (the periodic ODB backup is the last saved state) and keep the backtrace.
 		warn "core3 is halted in gdb (crashed) — killing it from gdb; backtrace kept in $BIN/gdb.log"
-		tmux send-keys -t "=$SESSION" -l -- "kill"; tmux send-keys -t "=$SESSION" Enter; sleep 1
-		tmux send-keys -t "=$SESSION" -l -- "y"; tmux send-keys -t "=$SESSION" Enter; sleep 2
-		tmux send-keys -t "=$SESSION" -l -- "quit"; tmux send-keys -t "=$SESSION" Enter; sleep 2
+		tmux send-keys -t "=$SESSION:" -l -- "kill"; tmux send-keys -t "=$SESSION:" Enter; sleep 1
+		tmux send-keys -t "=$SESSION:" -l -- "y"; tmux send-keys -t "=$SESSION:" Enter; sleep 2
+		tmux send-keys -t "=$SESSION:" -l -- "quit"; tmux send-keys -t "=$SESSION:" Enter; sleep 2
 		has_session && tmux kill-session -t "=$SESSION"
 		is_running && die "core3 still alive after gdb kill — attach with: tmux attach -t $SESSION"
 		mkdir -p "$LABDIR/crashes"; [ -f "$BIN/gdb.log" ] && cp "$BIN/gdb.log" "$LABDIR/crashes/gdb-$(date +%Y%m%d-%H%M%S).log"
 		return 1
 	fi
 	say "sending 'shutdown' to pid $(core3_pid)"
-	tmux send-keys -t "=$SESSION" -l -- "shutdown"
-	tmux send-keys -t "=$SESSION" Enter
+	tmux send-keys -t "=$SESSION:" -l -- "shutdown"
+	tmux send-keys -t "=$SESSION:" Enter
 
 	local t0=$SECONDS
 	while is_running; do
@@ -485,7 +486,7 @@ cmd_stop() {
 	local w=0
 	while has_session && (( w < 15 )); do
 		if session_running_gdb; then
-			tmux send-keys -t "=$SESSION" -l -- "quit"; tmux send-keys -t "=$SESSION" Enter
+			tmux send-keys -t "=$SESSION:" -l -- "quit"; tmux send-keys -t "=$SESSION:" Enter
 		fi
 		sleep 1; w=$((w + 1))
 	done
@@ -538,8 +539,8 @@ cmd_cmd() {
 	has_session || die "core3 is not running in tmux session '$SESSION'"
 
 	local before; before=$(log_lines)
-	tmux send-keys -t "=$SESSION" -l -- "$command"
-	tmux send-keys -t "=$SESSION" Enter
+	tmux send-keys -t "=$SESSION:" -l -- "$command"
+	tmux send-keys -t "=$SESSION:" Enter
 
 	# wait until the log stops growing (2 quiet polls of 0.25 s) or the timeout hits
 	local t0=$SECONDS last=$before now quiet=0
