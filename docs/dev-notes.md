@@ -1460,3 +1460,6 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   have reached the live console from the bench's tooling whenever the bench session was down. Every target in
   `tools/swg` is `-t "=$SESSION"` now (exact), and the live session is named `live`. The live runtime also needs the
   bench's generated `navmeshes/` (1.3 GB) and `terrain/`, or the server rebuilds every navmesh at boot.
+- **Both servers up 2026-10-25 21:13**: bench pid on 44xxx, live on 45xxx, each answering its own console (`swg cmd` /
+  `swg --live cmd`), 0 errors on live. Open: nightly backups cover `swgemu` only (`~/bin/swg-backup-daily.sh`); the live
+  database and ODB have `swg --live snap save <name>` (`~/swg-snapshots/live/`) until the script learns the second database.
