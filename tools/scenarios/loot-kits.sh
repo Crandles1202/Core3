@@ -38,13 +38,15 @@ check_eq "bone_encumbrance_from_template" "$(kv "$STATS" encumbrance)" "56/22/4"
 # --- B: tier II composite: kinetic special; tier III veteran composite --------------------------------------------------
 lab "takeItems:$CHAR:wearables/armor" >/dev/null
 assemble composite_chest_plate_2 armor 2 "armor/composite/armor_composite_chest_plate"
-check "tier2_effectiveness_42_48" "$(within "$(kv "$STATS" energy)" 42 48 && echo 1 || echo 0)" "$STATS"
-check "tier2_composite_kinetic_special_plus_10" "$(within "$(kv "$STATS" kinetic)" 52 58 && echo 1 || echo 0)" "$STATS"
+check "tier2_effectiveness_42_48" "$(within "$(kv "$STATS" energy)" 42 48 && within "$(kv "$STATS" blast)" 42 48 && echo 1 || echo 0)" "$STATS"
+check "tier2_composite_kinetic_special_plus_10" "$(python3 -c "import sys; sys.exit(0 if abs(float('$(kv "$STATS" kinetic)') - float('$(kv "$STATS" energy)') - 10) < 0.6 else 1)" && echo 1 || echo 0)" "kinetic = base + 10; $STATS"
+check_eq "tier2_composite_stun_stays_vulnerable" "$(kv "$STATS" stun)" "0" "the stock set's vulnerability stands"
 check_eq "tier2_integrity" "$(kv "$STATS" maxCondition)" "25000"
 lab "takeItems:$CHAR:wearables/armor" >/dev/null
 assemble composite_adv_chest_plate_3 armor 3 "armor/composite/armor_composite_chest_plate"
 check "tier3_effectiveness_52_58" "$(within "$(kv "$STATS" energy)" 52 58 && echo 1 || echo 0)" "$STATS"
-check "tier3_kinetic_special_plus_15" "$(within "$(kv "$STATS" kinetic)" 67 73 && echo 1 || echo 0)" "$STATS"
+check "tier3_kinetic_special_plus_15" "$(python3 -c "import sys; sys.exit(0 if abs(float('$(kv "$STATS" kinetic)') - float('$(kv "$STATS" energy)') - 15) < 0.6 else 1)" && echo 1 || echo 0)" "kinetic = base + 15; $STATS"
+check_eq "new_piece_unworn" "$(kv "$STATS" conditionDamage)" "0"
 check_eq "tier3_integrity" "$(kv "$STATS" maxCondition)" "35000"
 check "tier3_needs_five_parts" "$(grep -q 'moved=5' <<<"$A" && echo 1 || echo 0)" "$A"
 check "kit_short_of_parts_waits" "$(lab "kitGive:$CHAR:padded_boots_1" >/dev/null; K2=$(lab "findItem:$CHAR:fb_kits/kit_padded_boots_1.iff" | sed -n 's/.*oid=\([0-9]*\).*/\1/p' | tail -n1); lab "kitParts:$CHAR:weapon:1" >/dev/null; lab "kitAssemble:$CHAR:$K2" | grep -q 'moved=0.*kitGone=false' && echo 1 || echo 0)" "weapon parts do not fit an armor kit"

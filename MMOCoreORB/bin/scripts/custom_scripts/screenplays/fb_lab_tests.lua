@@ -3645,7 +3645,7 @@ function FbLabTests:lootItem(charName, name)
 	if pPlayer == nil then return "offline" end
 	local pInv = kitInventory(pPlayer)
 	local before = SceneObject(pInv):getContainerObjectsSize()
-	createLoot(pInv, name, 10, false)
+	createLoot(pInv, name, 10, true)
 	local pNew = SceneObject(pInv):getContainerObject(SceneObject(pInv):getContainerObjectsSize() - 1)
 	if SceneObject(pInv):getContainerObjectsSize() == before or pNew == nil then print("ERROR lootItem: nothing made for " .. tostring(name)); return "none" end
 	print("INFO lootItem name=" .. name .. " oid=" .. tostring(SceneObject(pNew):getObjectID()) .. " " .. getItemStats(pNew))

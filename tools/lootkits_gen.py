@@ -12,6 +12,19 @@ def weapon(path):
     g=lambda k: float(re.search(r"\b%s = ([0-9.]+)" % k, s).group(1))
     return dict(min=g("minDamage"), max=g("maxDamage"), speed=g("attackSpeed"))
 KIT_LOOK="object/tangible/loot/simple_kit/shared_datadisk_repair_kit.iff"
+# damage-type bits (SharedWeaponObjectTemplate) and each type's loot key
+TYPES=[("kinetic",1),("energy",2),("blast",4),("stun",8),("lightsaber",16),("heat",32),("cold",64),("acid",128),("electricity",256)]
+TYPEKEY={"kinetic":"kineticeffectiveness","energy":"energyeffectiveness","blast":"blasteffectiveness","stun":"stuneffectiveness","lightsaber":"lightsabereffectiveness","heat":"heateffectiveness","cold":"coldeffectiveness","acid":"acideffectiveness","electricity":"electricaleffectiveness"}
+def vulnerability(tpl_path):
+    """the stock piece's vulnerability bitmask (its Lua: vulnerability = KINETIC + BLAST + …)"""
+    s=open(f"{O}/tangible/wearables/armor/{tpl_path}.lua").read()
+    m=re.search(r"vulnerability\s*=\s*([A-Z_ +]+)", s)
+    bits=0
+    if m:
+        for name in m.group(1).replace(" ","").split("+"):
+            for t,b in TYPES:
+                if t.upper()==name: bits|=b
+    return bits
 ARMOR_PARTS=[("plating","Armor Plating","object/tangible/component/armor/shared_armor_segment.iff"),
              ("mesh","Armor Mesh","object/tangible/component/armor/shared_armor_layer.iff"),
              ("fastener","Armor Fasteners","object/tangible/component/armor/shared_armor_layer_kinetic.iff"),
@@ -74,10 +87,19 @@ for t,sets in SETS.items():
         g=[]
         for pid,plabel in pieces:
             kid=f"{sid}_{pid}_{t}"; reward=f"fb_reward_{kid}"
-            cv=[f'{{"armor_effectiveness", {a["lo"]}, {a["hi"]}, 0}}', f'{{"armor_integrity", {a["integ"]}, {a["integ"]}, 0}}',
+            # Every type the stock piece protects is spelled out as a special with its own delta (0, or the set's bonus), and
+            # armor_special_type names exactly those bits: left absent, ArmorObject reads the not-found sentinel as the bitmask
+            # and one stray type per set shows a garbage value (found 2026-10-26). The stock vulnerabilities stay (a vulnerable
+            # type shows nothing); the shown value of a protected type = armor_special_effectiveness roll + its delta.
+            vuln=vulnerability(tpl(pid))
+            protected=[(typ,b) for typ,b in TYPES if not (vuln & b) and typ!="lightsaber"]
+            mask=sum(b for _,b in protected)
+            cv=[f'{{"armor_effectiveness", {a["lo"]}, {a["hi"]}, 0}}', f'{{"armor_special_effectiveness", {a["lo"]}, {a["hi"]}, 0}}',
+                f'{{"armor_special_type", {mask}, {mask}, 0}}', f'{{"armor_integrity", {a["integ"]}, {a["integ"]}, 0}}',
                 f'{{"armor_health_encumbrance", {eh}, {eh}, 0}}', f'{{"armor_action_encumbrance", {ea}, {ea}, 0}}', f'{{"armor_mind_encumbrance", {em}, {em}, 0}}']
-            # the set's special type shows base + this (ArmorObject::getTypeValue: specialProtection + the type's own value)
-            if special and a["special"]: cv.append(f'{{"{special}", {a["special"]}, {a["special"]}, 0}}')
+            for typ,b in protected:
+                delta = a["special"] if (special == TYPEKEY[typ] and a["special"]) else 0
+                cv.append(f'{{"{TYPEKEY[typ]}", {delta}, {delta}, 0}}')
             items.append(f'{reward} = {{ minimumLevel = 0, maximumLevel = -1, customObjectName = "", directObjectTemplate = "object/tangible/wearables/armor/{tpl(pid)}.iff", craftingValues = {{ {", ".join(cv)} }}, customizationStringNames = {{}}, customizationValues = {{}} }}')
             items.append(f'addLootItemTemplate("{reward}", {reward})')
             kit(kid, f"{slabel} {plabel}", "armor", t, reward)

@@ -27,6 +27,8 @@ The rule in one line: **kit gear tops out around two thirds of the best crafted 
 | Crafted, good | good resources, experimentation, layers | 65–80 % | 45 000+ | 100 % | the best gear on the server stays crafted |
 
 Specials: composite sets get the +10 % / +15 % on kinetic, ubese on energy, chitin on blast; kit I has none.
+The effectiveness applies to the types the stock set protects; a set's stock vulnerabilities stay (bone stops only energy
+and electricity, padded nothing against heat, acid or stun, composite nothing against stun). A kit piece comes unworn.
 Encumbrance follows the template's class (padded light, composite heavy); kits do not improve it.
 
 What kit gear never has: skill-mod sockets, experimentation, repair above its integrity. Those stay crafting's.
