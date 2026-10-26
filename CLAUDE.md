@@ -336,7 +336,7 @@ Persisted object fields (`containerVolumeLimit`, …) are only read from the tem
 - **Which `tools/swg` you run is who you are:** the lock identity comes from the `.swg-agent` next to the copy you
   invoke. `~/workspace/Core3/tools/swg bench use …` from a worktree takes the lock as "bench", and the worktree's own
   tools (`tools/seat`, `citizen`, the pilot's lab calls) are then refused as "alice" — silently, for anything that reads
-  lab lines. Always run the worktree's `tools/swg` (CLAUDE.md's `tools/swg …` means that one).
+  lab lines. Always run the worktree's `tools/swg` (CLAUDE.md's `tools/swg …` means that one). **And which server you talk to is `SWG_INSTANCE`:** seat and pilot state is shared by the bench and the live instance, so `crew`/`seat` record the instance per seat and refuse to touch a seat of the other one (a bench-side `crew down` logged two live citizens out on 2026-10-26); every command for a live citizen needs `SWG_INSTANCE=live`.
 - **Wild creatures spawn only around a player who moves** (`SpawnArea::notifyPositionUpdate` → `tryToSpawn`, lairs near the
   player, never inside a city's no-spawn circle): an oracle count at a quiet spot says nothing about the hunting there — walk
   a bot through it first. The **bench kills idle citizens**: every gate's `sandstorm` scenario sends Tusken raiders over Mos

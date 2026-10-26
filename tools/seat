@@ -401,6 +401,20 @@ def path_length(points):
     return total
 
 
+def current_instance():
+    """'live' under SWG_INSTANCE=live, else 'bench' — the server this command talks to."""
+    return "live" if os.environ.get("SWG_INSTANCE", "").lower() == "live" else "bench"
+
+
+def seat_instance(name):
+    """The server a seat was started against ('bench' for seats older than the instance file)."""
+    try:
+        with open(os.path.join(seat_dir(name), "instance")) as f:
+            return f.read().strip() or "bench"
+    except OSError:
+        return "bench"
+
+
 def seat_dir(name):
     d = os.path.join(SEATS, name)
     os.makedirs(d, exist_ok=True)
@@ -564,6 +578,8 @@ def cmd_start(args):
         f.write(str(proc.pid))
     with open(os.path.join(d, "character"), "w") as f:
         f.write(char)
+    with open(os.path.join(d, "instance"), "w") as f:   # which server the seat sits on (crew/stop refuse a mismatch)
+        f.write(current_instance())
 
     # wait for the socket (login + zone-in takes a few seconds)
     for _ in range(90):
@@ -582,9 +598,13 @@ def cmd_start(args):
 
 def cmd_stop(args):
     if not args:
-        die("stop <name>")
+        die("stop <name> [--force]")
     name = args[0]
     d = seat_dir(name)
+    # seat state is shared by both servers: a stop issued for the other instance would log a live citizen out
+    if seat_instance(name) != current_instance() and "--force" not in args and os.path.exists(os.path.join(d, "pid")):
+        die(f"seat '{name}' sits on {seat_instance(name).upper()} and this command talks to {current_instance().upper()}: "
+            f"set SWG_INSTANCE={seat_instance(name)} (or --force)")
     pidfile = os.path.join(d, "pid")
     pid = int(open(pidfile).read()) if os.path.exists(pidfile) else None
     try:

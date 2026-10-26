@@ -1476,4 +1476,11 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   server. The other ten citizens stay on the bench until the two have run a clean day on live. The live server runs the
   `2e0e53e231` build; `swg live deploy` (restarts live: take the live citizens down first) brings it to a newer
   `unstable` when Chuck wants.
+- **The shared seat state bit within the hour.** Another lane ran a courtesy `crew down teyla wex` from the bench (no
+  `SWG_INSTANCE`) at 15:44 UTC and took the two *live* seats and pilots down: seat and pilot state (`~/.swg-lab/seats/<name>/pid`,
+  `citizens/<name>/pilot.pid`) is one set of files for both servers, and `crew down` / `seat stop` acted by pid. Guard:
+  `tools/seat start` writes `seats/<name>/instance` (`live` or `bench`); `seat stop` refuses a seat of the other instance
+  unless `--force`; `crew up` and `crew down` skip such a seat with "seat is up on LIVE, not touched"; `crew status` shows
+  the instance per seat (`seat up (pid N, live)`). Proven from the bench view with both seats on live: down, stop and up
+  all refused, the seats stayed up. Seats older than the file read as `bench`.
 

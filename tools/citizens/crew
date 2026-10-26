@@ -67,6 +67,23 @@ def seat_pid(name):
         return None
 
 
+def current_instance():
+    return "live" if os.environ.get("SWG_INSTANCE", "").lower() == "live" else "bench"
+
+
+def seat_instance(name):
+    """The server a seat was started against (tools/seat writes it; 'bench' for older seats)."""
+    try:
+        return open(os.path.join(LABDIR, "seats", name, "instance")).read().strip() or "bench"
+    except OSError:
+        return "bench"
+
+
+def other_instance(name):
+    """True when the seat is up on the other server: crew leaves it alone (seat state is shared by both servers)."""
+    return seat_up(name) and seat_instance(name) != current_instance()
+
+
 def seat_up(name):
     pid = seat_pid(name)
     return pid is not None and pid_alive(pid) and os.path.exists(os.path.join(LABDIR, "seats", name, "sock"))
@@ -110,6 +127,9 @@ def cmd_up(args):
     model = opt(args, "--model")
     dry = "--dry" in args
     for name in names:
+        if other_instance(name):
+            print(f"[{name}] seat is up on {seat_instance(name).upper()}, not touched (SWG_INSTANCE={seat_instance(name)} to drive it)", flush=True)
+            continue
         c = dirmap[name]
         if not seat_up(name):
             print(f"[{name}] seating {c['character']} on account {c['account']} …", flush=True)
@@ -141,6 +161,9 @@ def cmd_down(args):
     dirmap = directory()
     names = pick(args, dirmap)
     for name in names:
+        if other_instance(name):
+            print(f"[{name}] seat is up on {seat_instance(name).upper()}, not touched (SWG_INSTANCE={seat_instance(name)} to take it down)", flush=True)
+            continue
         pid = pilot_pid(name)
         if pid and pid_alive(pid):
             os.kill(pid, signal.SIGTERM)
@@ -174,9 +197,9 @@ def cmd_status(args):
             last = json.load(open(os.path.join(LABDIR, "citizens", name, "state.json"))).get("last_wake", "-")
         except (OSError, ValueError):
             pass
-        seat = f"seat up (pid {seat_pid(name)})" if seat_up(name) else "seat down"
+        seat = f"seat up (pid {seat_pid(name)}, {seat_instance(name)})" if seat_up(name) else "seat down"
         pilot = f"pilot pid {pilot_pid(name)}" if pilot_up(name) else "no pilot"
-        print(f"{name:8} {c['character']:10} {seat:22} {pilot:18} last wake {last}")
+        print(f"{name:8} {c['character']:10} {seat:28} {pilot:18} last wake {last}")
 
 
 def cmd_log(args):
