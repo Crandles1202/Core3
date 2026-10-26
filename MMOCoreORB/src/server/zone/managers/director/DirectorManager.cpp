@@ -20,6 +20,8 @@
 #include "server/zone/objects/building/LuaBuildingObject.h"
 #include "server/zone/objects/intangible/LuaIntangibleObject.h"
 #include "server/zone/objects/mission/LuaMissionObject.h"
+#include "server/zone/objects/tangible/wearables/ArmorObject.h"
+#include "server/zone/objects/tangible/weapon/WeaponObject.h"
 #include "server/zone/objects/intangible/ControlDevice.h"
 #include "server/zone/objects/intangible/PetControlDevice.h"
 #include "server/zone/objects/player/LuaPlayerObject.h"
@@ -548,6 +550,7 @@ void DirectorManager::initializeLuaEngine(Lua* luaEngine) {
 	luaEngine->registerFunction("callControlDevice", callControlDevice);
 	luaEngine->registerFunction("storeControlDevice", storeControlDevice);
 	luaEngine->registerFunction("getControlledObject", getControlledObject);
+	luaEngine->registerFunction("getItemStats", getItemStats);
 	luaEngine->registerFunction("getCityRegionAt", getCityRegionAt);
 	luaEngine->registerFunction("setDungeonTicketAttributes", setDungeonTicketAttributes);
 	luaEngine->registerFunction("setQuestStatus", setQuestStatus);
@@ -4985,6 +4988,45 @@ int DirectorManager::getControlledObject(lua_State* L) {
 
 	controlled->_setUpdated(true);
 	lua_pushlightuserdata(L, controlled.get());
+
+	return 1;
+}
+
+// getItemStats(pObject): one line with what a piece of armor or a weapon does (Final Boss lab: the loot kits' ladder is
+// checked by reading the finished piece): "armor kinetic=… energy=… … rating=… maxCondition=… encumbrance=h/a/m" or
+// "weapon min=… max=… speed=… maxCondition=…", "item" for anything else, "none" for nothing
+int DirectorManager::getItemStats(lua_State* L) {
+	if (checkArgumentCount(L, 1) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::getItemStats";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+
+	SceneObject* obj = (SceneObject*)lua_touserdata(L, -1);
+	StringBuffer s;
+
+	if (obj == nullptr) {
+		s << "none";
+	} else if (obj->isArmorObject()) {
+		ArmorObject* a = cast<ArmorObject*>(obj);
+		s << "armor kinetic=" << a->getKinetic() << " energy=" << a->getEnergy() << " blast=" << a->getBlast() << " stun=" << a->getStun()
+		  << " heat=" << a->getHeat() << " cold=" << a->getCold() << " acid=" << a->getAcid() << " electricity=" << a->getElectricity()
+		  << " rating=" << a->getRating() << " maxCondition=" << a->getMaxCondition() << " conditionDamage=" << a->getConditionDamage()
+		  << " encumbrance=" << a->getHealthEncumbrance() << "/" << a->getActionEncumbrance() << "/" << a->getMindEncumbrance();
+		// which types the piece treats as special or vulnerable (the ladder's numbers depend on it)
+		s << " special=";
+		for (int i = 0; i <= 8; ++i) { int t = 1 << i; if (a->isSpecial(t)) s << t << ","; }
+		s << " vulnerable=";
+		for (int i = 0; i <= 8; ++i) { int t = 1 << i; if (a->isVulnerable(t)) s << t << ","; }
+	} else if (obj->isWeaponObject()) {
+		WeaponObject* w = cast<WeaponObject*>(obj);
+		s << "weapon min=" << w->getMinDamage(false) << " max=" << w->getMaxDamage(false) << " speed=" << w->getAttackSpeed(false) << " maxCondition=" << w->getMaxCondition();
+	} else {
+		s << "item";
+	}
+
+	lua_pushstring(L, s.toString().toCharArray());
 
 	return 1;
 }

@@ -25,6 +25,8 @@ class LootkitObject extends TangibleObject {
 
 	@dereferenced
 	protected Vector<unsigned int> reward;
+	@dereferenced
+	protected Vector<string> lootReward;
 
 	protected boolean deleteComponents;
 

@@ -90,7 +90,7 @@ The big "make crafting solo-friendly without nerfing it" phase. This is where yo
     
 - **2.3 \[S\] Component vendors.** Some sub-components (chassis, basic power packs, generic loot kits) sold by NPCs to let solo crafters complete chains without a buddy in every profession.  
     
-- **2.4 \[M\] Loot kits (system-generated crafted-equivalent items).** When mobs drop "Jedi Robes Kit" or "Composite Armor Schematic Fragment", anyone — not just a crafter — can assemble it. Doesn't replace crafting; provides an alternative path.  
+- **2.4 \[M\] Loot kits (system-generated crafted-equivalent items).** ✅ shipped 2026-10-26 — three tiers of kits on the stock loot-kit object, generic parts, the quality ladder of `docs/Loot-Kits-Design.md` (kit gear ≈ two thirds of the best crafted, above every shop), drops by level band and source (scenario `loot-kits`). When mobs drop "Jedi Robes Kit" or "Composite Armor Schematic Fragment", anyone — not just a crafter — can assemble it. Doesn't replace crafting; provides an alternative path.  
     
 - **2.5 \[S\] Bazaar improvements.** Item search filters, 1-year listing times, 100 listings per character (per Tarkin). Bazaars remain the canonical player-economy hub.  
     

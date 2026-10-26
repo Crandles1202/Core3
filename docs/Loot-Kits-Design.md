@@ -1,6 +1,6 @@
 # Loot kits (Phase 2.4) — the quality ladder, draft for sign-off
 
-_Draft 2026-10-26. Everything below is a proposal until Chuck ticks it. Numbers are the game's own units: armor
+_Drafted and **signed off by Chuck 2026-10-26** (all six points). Shipped as Phase 2.4 the same day. Numbers are the game's own units: armor
 "effectiveness" is the percentage of damage the piece stops, "integrity" is the condition pool a piece wears down
 through, weapon damage is the template's damage range scaled._
 
@@ -27,6 +27,8 @@ The rule in one line: **kit gear tops out around two thirds of the best crafted 
 | Crafted, good | good resources, experimentation, layers | 65–80 % | 45 000+ | 100 % | the best gear on the server stays crafted |
 
 Specials: composite sets get the +10 % / +15 % on kinetic, ubese on energy, chitin on blast; kit I has none.
+The effectiveness applies to the types the stock set protects; a set's stock vulnerabilities stay (bone stops only energy
+and electricity, padded nothing against heat, acid or stun, composite nothing against stun). A kit piece comes unworn.
 Encumbrance follows the template's class (padded light, composite heavy); kits do not improve it.
 
 What kit gear never has: skill-mod sockets, experimentation, repair above its integrity. Those stay crafting's.
@@ -39,8 +41,9 @@ What kit gear never has: skill-mod sockets, experimentation, repair above its in
 - **Kits are per piece**: "Bone Armor Chest Plate Kit (I)", "Composite Armor Boots Kit (II)", "DL44 Pistol Kit (II)".
   Drag parts into the kit (the stock Pre-CU loot-kit object); when the last part lands the finished piece pops out
   with the tier's stats rolled inside its band.
-- **Counts**: kit I wants 3 parts (2 plating + 1 mesh), kit II 4 (2 + 2), kit III 5 (3 + 2). Weapons the same with
-  mechanism and power cell.
+- **Counts**: kit I wants 3 parts, kit II 4, kit III 5. The stock kit object cannot ask for two of the same part, so the
+  parts are five *kinds* per class — armor: plating, mesh, fasteners, lining, trim; weapon: mechanism, power cell, barrel
+  assembly, reinforcement core, sight — and a tier wants the first 3 / 4 / 5 of them.
 
 ## Drops
 
@@ -73,9 +76,9 @@ container path and reads the stats.
 
 ## Sign-off
 
-- [ ] the percentages in the ladder (edit the numbers in the table if not)
-- [ ] generic parts by class and tier
-- [ ] three tiers, 3 / 4 / 5 parts
-- [ ] the drop chances
-- [ ] armor first, then the six weapon lines
-- [ ] no skill mods on kit gear
+- [x] the percentages in the ladder
+- [x] generic parts by class and tier
+- [x] three tiers, 3 / 4 / 5 parts
+- [x] the drop chances
+- [x] armor first, then the six weapon lines (both shipped together)
+- [x] no skill mods on kit gear
