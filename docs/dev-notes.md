@@ -1482,3 +1482,6 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   (2026-10-26 14:12). `swg test all` now stretches its own hold to four hours (`lock_stretch`); `bench release` ends it.
 - A fresh clone of the repo is dirty the moment the server boots, because `resource_manager_spawns.lua` is written at boot
   and only the main bench had it `skip-worktree`; `bench2 init` copies the main bench's skip-worktree list.
+- **Every `mysql` in `tools/swg` names `$DBNAME`.** Three calls still said `swgemu` outright; bench2's first gate pruned four
+  Lab characters out of the *main* bench's database (the character oids are the same in a copied database). Lab characters
+  are disposable, nothing else was touched; the ODB objects of the four stay orphaned, which the server ignores.

@@ -929,7 +929,7 @@ account_prune() {
 		if is_running && cmd_cmd "runLuaFunction FbLabTests:isOnline:$(mysql -N "$DBNAME" -e "SELECT firstname FROM characters WHERE character_oid = $oid")" --timeout 5 2>/dev/null | grep -aq '^INFO online'; then
 			warn "prune: $oid is online, skipped"; continue
 		fi
-		mysql swgemu -e "INSERT INTO deleted_characters SELECT *, 0 AS db_deleted FROM characters WHERE character_oid = $oid AND account_id = $acct; DELETE FROM characters WHERE character_oid = $oid AND account_id = $acct;" || die "prune: delete of $oid failed"
+		mysql "$DBNAME" -e "INSERT INTO deleted_characters SELECT *, 0 AS db_deleted FROM characters WHERE character_oid = $oid AND account_id = $acct; DELETE FROM characters WHERE character_oid = $oid AND account_id = $acct;" || die "prune: delete of $oid failed"
 		n=$((n + 1))
 	done
 	say "== prune: $user: $n Lab* character(s) deleted, $keep newest kept"
@@ -956,14 +956,14 @@ cmd_account() {
 			exists=$(mysql -N "$DBNAME" -e "SELECT COUNT(*) FROM accounts WHERE username='$user'")
 			if [ "$exists" != "0" ]; then
 				(( reset == 1 )) || die "account '$user' exists (use --reset to set a new password / level)"
-				mysql swgemu -e "UPDATE accounts SET password='$hash', salt='$salt', admin_level=$level, active=1 WHERE username='$user'" || die "update failed"
+				mysql "$DBNAME" -e "UPDATE accounts SET password='$hash', salt='$salt', admin_level=$level, active=1 WHERE username='$user'" || die "update failed"
 			else
-				mysql swgemu -e "INSERT INTO accounts (username, password, station_id, salt, admin_level) VALUES ('$user','$hash',$station,'$salt',$level)" || die "insert failed"
+				mysql "$DBNAME" -e "INSERT INTO accounts (username, password, station_id, salt, admin_level) VALUES ('$user','$hash',$station,'$salt',$level)" || die "insert failed"
 			fi
 			( umask 077; printf '%s' "$pass" > "$LABDIR/$user.pass" )
-			mysql swgemu -e "SELECT account_id, username, admin_level, active, created FROM accounts WHERE username='$user'"
+			mysql "$DBNAME" -e "SELECT account_id, username, admin_level, active, created FROM accounts WHERE username='$user'"
 			say "password written to $LABDIR/$user.pass (not in the repo)" ;;
-		list) mysql swgemu -e "SELECT account_id, username, admin_level, active, created FROM accounts" ;;
+		list) mysql "$DBNAME" -e "SELECT account_id, username, admin_level, active, created FROM accounts" ;;
 		prune)
 			local user=${2:-} keep=4
 			[ "${3:-}" = "--keep" ] && keep=${4:-4}
