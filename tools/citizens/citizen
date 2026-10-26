@@ -139,7 +139,7 @@ def cmd_new(args):
         env = dict(os.environ, CORE3_CLIENT_PASSWORD=open(passfile).read().strip())
         log = os.path.join(LABDIR, f"citizen-{citizen}.create.log")
         argv = [client, "--username", account, "--login-host", os.environ.get("SWG_LOGIN_HOST", "127.0.0.1"),
-                "--login-port", os.environ.get("SWG_LOGIN_PORT", "44453"),
+                "--login-port", os.environ.get("SWG_LOGIN_PORT", "45453" if os.environ.get("SWG_INSTANCE") == "live" else "44453"),
                 "--create-character", "--char-name", f["name"], "--char-race", f["race"], "--char-profession", f["profession"],
                 "--wait", "3"]
         if f.get("hair"):

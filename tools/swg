@@ -63,6 +63,29 @@ SESSION=${SWG_TMUX_SESSION:-swg}
 SNAPDIR=${SWG_SNAPDIR:-$HOME/swg-snapshots}
 LABDIR=${SWG_LABDIR:-$HOME/.swg-lab}
 LOCKFILE="$LABDIR/server.lock"
+DBNAME=swgemu
+
+# ---------------------------------------------------------------- the live instance (swg --live …, SWG_INSTANCE=live)
+# A second core3 beside the bench: its own runtime (~/swg-live/bin: the binaries and scripts deployed from the bench's
+# unstable by `swg live deploy`, its own conf/config-local.lua, ODB and logs), its own MySQL database (swgemu_live),
+# its own ports (the bench's + 1000: login 45453, zone 45463, ping 45462, status 45455, ORB 45419, web 45460), its own
+# archive folder (~/swg-live/tre: links to the stock archives, its own finalboss.tre), tmux session swg-live and lock.
+# The bench keeps every gate, deploy and build; the live instance is for play and the citizens and restarts only on
+# purpose. start/stop/status/cmd/logs/snap/account work on it; bench/test/build/agent/site/tre are refused.
+INSTANCE=${SWG_INSTANCE:-bench}
+if [ "${1:-}" = "--live" ]; then INSTANCE=live; shift; fi
+LIVE_ROOT=${SWG_LIVE_ROOT:-$HOME/swg-live}
+LIVE_PORT_BASE=${SWG_LIVE_PORT_BASE:-45000}
+if [ "$INSTANCE" = live ]; then
+	BIN="$LIVE_ROOT/bin"
+	LOG="$BIN/screenlog.0"
+	SESSION=${SWG_TMUX_SESSION:-live}   # not "swg-…": tmux matches a session name by prefix when no exact name exists
+	LOCKFILE="$LABDIR/live.lock"
+	SNAPDIR=${SWG_SNAPDIR:-$HOME/swg-snapshots/live}
+	DBNAME=swgemu_live
+	export SWG_INSTANCE=live
+	export SWG_LOGIN_PORT=${SWG_LOGIN_PORT:-$((LIVE_PORT_BASE + 453))}
+fi
 
 # ---------------------------------------------------------------- agents and the bench lock
 
@@ -120,7 +143,7 @@ with_lock() {
 	return $rc
 }
 
-cmd_whoami() { say "$(agent_name)  (checkout $REPO$( [ "$REPO" = "$BENCH" ] && echo ", the bench" || echo "; bench $BENCH"))"; }
+cmd_whoami() { [ "$INSTANCE" = live ] && say "instance: live ($LIVE_ROOT, login $((LIVE_PORT_BASE + 453)))"; say "$(agent_name)  (checkout $REPO$( [ "$REPO" = "$BENCH" ] && echo ", the bench" || echo "; bench $BENCH"))"; }
 
 cmd_lock() {
 	local purpose="" minutes=60
@@ -248,13 +271,21 @@ die()  { warn "$@"; exit 1; }
 
 strip_tty() { sed -e 's/\x1b\[[0-9;?]*[A-Za-z]//g' -e 's/\r$//' -e 's/\r/\n/g'; }
 
-core3_pid()   { pgrep -x core3 | head -n1; }
+core3_pid() {
+	local p want; want=$(readlink -f "$BIN" 2>/dev/null)
+	for p in $(pgrep -x core3); do
+		[ "$(readlink -f "/proc/$p/cwd" 2>/dev/null)" = "$want" ] && { echo "$p"; return; }
+	done
+}
 is_running()  { [ -n "$(core3_pid)" ]; }
-has_session() { tmux has-session -t "$SESSION" 2>/dev/null; }
+# every tmux target is exact: "=$SESSION" for session commands (has-session, kill-session) and "=$SESSION:" for pane
+# commands (send-keys, pipe-pane, display-message). Without the "=" tmux falls back to prefix matching, and with two
+# servers "swg" would reach "swg-live" when the bench session is down (the first live instance died that way, 2026-10-25)
+has_session() { tmux has-session -t "=$SESSION" 2>/dev/null; }
 
 session_running_gdb() {
 	# pane command is "gdb" while gdb owns the pane
-	[ "$(tmux display-message -p -t "$SESSION" '#{pane_current_command}' 2>/dev/null)" = "gdb" ]
+	[ "$(tmux display-message -p -t "=$SESSION:" '#{pane_current_command}' 2>/dev/null)" = "gdb" ]
 }
 
 # core3 alive but stopped under the debugger (a gdb catchpoint fired: SIGSEGV/SIGUSR1); the process
@@ -282,6 +313,8 @@ require_stopped() {
 
 TRE="$REPO/tools/tre"
 TRE_SHA_FILE="$LABDIR/last-tre.sha"
+[ "$INSTANCE" = live ] && TRE_SHA_FILE="$LABDIR/live-last-tre.sha"
+LIVE_RELOAD_MARK="$LABDIR/live.reloadstrings"
 # Build tre-src/ into finalboss.tre and install it into the server's TrePath. Prints the tool's lines.
 # Returns 0 when the installed archive differs from the one the last `swg start` ran with.
 tre_prepare() {
@@ -355,7 +388,12 @@ cmd_start() {
 	nightly_backup_if_due
 
 	local core3_args=""
-	if tre_prepare; then
+	if [ "$INSTANCE" = live ]; then
+		if [ -f "$LIVE_RELOAD_MARK" ]; then
+			core3_args="reloadstrings"
+			say "finalboss.tre was deployed since the last start: core3 will re-read every string table (reloadstrings)"
+		fi
+	elif tre_prepare; then
 		core3_args="reloadstrings"
 		say "finalboss.tre changed since the last start: core3 will re-read every string table (reloadstrings)"
 	fi
@@ -369,15 +407,19 @@ cmd_start() {
 	fi
 
 	tmux new-session -d -s "$SESSION" -c "$BIN" -x 250 -y 50 || die "could not create tmux session"
-	tmux pipe-pane -o -t "$SESSION" "cat >> '$LOG'"
-	tmux send-keys -t "$SESSION" -l -- "$launch"
-	tmux send-keys -t "$SESSION" Enter
+	tmux pipe-pane -o -t "=$SESSION:" "cat >> '$LOG'"
+	tmux send-keys -t "=$SESSION:" -l -- "$launch"
+	tmux send-keys -t "=$SESSION:" Enter
 
-	say "starting core3 ($( [ "$use_gdb" = 1 ] && echo under gdb || echo no gdb ), branch $(git_branch) @ $(git_rev)) in tmux session '$SESSION'"
+	if [ "$INSTANCE" = live ]; then
+		say "starting the live core3 ($( [ "$use_gdb" = 1 ] && echo under gdb || echo no gdb ), deployed $(cat "$LIVE_ROOT/DEPLOYED" 2>/dev/null || echo '?'), ports $((LIVE_PORT_BASE + 453))/$((LIVE_PORT_BASE + 463))) in tmux session '$SESSION'"
+	else
+		say "starting core3 ($( [ "$use_gdb" = 1 ] && echo under gdb || echo no gdb ), branch $(git_branch) @ $(git_rev)) in tmux session '$SESSION'"
+	fi
 	local t0=$SECONDS
 	while (( SECONDS - t0 < START_TIMEOUT )); do
 		if grep -aq '^READY' "$LOG" 2>/dev/null; then
-			tre_mark_seen
+			if [ "$INSTANCE" = live ]; then rm -f "$LIVE_RELOAD_MARK"; else tre_mark_seen; fi
 			say "READY after $((SECONDS - t0))s  (pid $(core3_pid), errors so far: $(count_errors))"
 			return 0
 		fi
@@ -402,10 +444,10 @@ cmd_stop() {
 		if has_session; then
 			if session_running_gdb; then
 				say "core3 not running but gdb is idle in the session — quitting gdb"
-				tmux send-keys -t "$SESSION" -l -- "quit"; tmux send-keys -t "$SESSION" Enter
+				tmux send-keys -t "=$SESSION:" -l -- "quit"; tmux send-keys -t "=$SESSION:" Enter
 				sleep 2
 			fi
-			has_session && tmux kill-session -t "$SESSION"
+			has_session && tmux kill-session -t "=$SESSION"
 			say "cleaned up tmux session '$SESSION'"
 		else
 			say "server is not running"
@@ -418,17 +460,17 @@ cmd_stop() {
 		# no console to type 'shutdown' into: the process sits on a fatal signal. Kill it from gdb
 		# (the periodic ODB backup is the last saved state) and keep the backtrace.
 		warn "core3 is halted in gdb (crashed) — killing it from gdb; backtrace kept in $BIN/gdb.log"
-		tmux send-keys -t "$SESSION" -l -- "kill"; tmux send-keys -t "$SESSION" Enter; sleep 1
-		tmux send-keys -t "$SESSION" -l -- "y"; tmux send-keys -t "$SESSION" Enter; sleep 2
-		tmux send-keys -t "$SESSION" -l -- "quit"; tmux send-keys -t "$SESSION" Enter; sleep 2
-		has_session && tmux kill-session -t "$SESSION"
+		tmux send-keys -t "=$SESSION:" -l -- "kill"; tmux send-keys -t "=$SESSION:" Enter; sleep 1
+		tmux send-keys -t "=$SESSION:" -l -- "y"; tmux send-keys -t "=$SESSION:" Enter; sleep 2
+		tmux send-keys -t "=$SESSION:" -l -- "quit"; tmux send-keys -t "=$SESSION:" Enter; sleep 2
+		has_session && tmux kill-session -t "=$SESSION"
 		is_running && die "core3 still alive after gdb kill — attach with: tmux attach -t $SESSION"
 		mkdir -p "$LABDIR/crashes"; [ -f "$BIN/gdb.log" ] && cp "$BIN/gdb.log" "$LABDIR/crashes/gdb-$(date +%Y%m%d-%H%M%S).log"
 		return 1
 	fi
 	say "sending 'shutdown' to pid $(core3_pid)"
-	tmux send-keys -t "$SESSION" -l -- "shutdown"
-	tmux send-keys -t "$SESSION" Enter
+	tmux send-keys -t "=$SESSION:" -l -- "shutdown"
+	tmux send-keys -t "=$SESSION:" Enter
 
 	local t0=$SECONDS
 	while is_running; do
@@ -444,13 +486,13 @@ cmd_stop() {
 	local w=0
 	while has_session && (( w < 15 )); do
 		if session_running_gdb; then
-			tmux send-keys -t "$SESSION" -l -- "quit"; tmux send-keys -t "$SESSION" Enter
+			tmux send-keys -t "=$SESSION:" -l -- "quit"; tmux send-keys -t "=$SESSION:" Enter
 		fi
 		sleep 1; w=$((w + 1))
 	done
 	if has_session; then
 		warn "tmux session still alive; killing it (core3 itself has already exited)"
-		tmux kill-session -t "$SESSION"
+		tmux kill-session -t "=$SESSION"
 	fi
 	if grep -aqE 'Program received signal|SIG(SEGV|ABRT) Caught' "$LOG" 2>/dev/null; then
 		mkdir -p "$LABDIR/crashes"; [ -f "$BIN/gdb.log" ] && cp "$BIN/gdb.log" "$LABDIR/crashes/gdb-$(date +%Y%m%d-%H%M%S).log"
@@ -470,7 +512,11 @@ cmd_status() {
 	else
 		say "core3 STOPPED  $(has_session && echo "(tmux session '$SESSION' still exists)" || true)"
 	fi
-	say "branch $(git_branch) @ $(git_rev)$( [ "$REPO" != "$BENCH" ] && echo "   (this checkout: $(agent_name); the server runs from the bench $BENCH)")"
+	if [ "$INSTANCE" = live ]; then
+		say "instance LIVE  $LIVE_ROOT  deployed $(head -n1 "$LIVE_ROOT/DEPLOYED" 2>/dev/null || echo '?') ($(sed -n 2p "$LIVE_ROOT/DEPLOYED" 2>/dev/null))  login $((LIVE_PORT_BASE + 453))  db $DBNAME"
+	else
+		say "branch $(git_branch) @ $(git_rev)$( [ "$REPO" != "$BENCH" ] && echo "   (this checkout: $(agent_name); the server runs from the bench $BENCH)")"
+	fi
 	say "bench   $(lock_describe)"
 	[ -x "$BIN/core3" ] && say "binary  $(date -r "$BIN/core3" '+%F %T')  $( [ -x "$BIN/core3client" ] && echo "core3client: yes" || echo "core3client: missing")"
 	if [ -f "$LOG" ]; then
@@ -493,8 +539,8 @@ cmd_cmd() {
 	has_session || die "core3 is not running in tmux session '$SESSION'"
 
 	local before; before=$(log_lines)
-	tmux send-keys -t "$SESSION" -l -- "$command"
-	tmux send-keys -t "$SESSION" Enter
+	tmux send-keys -t "=$SESSION:" -l -- "$command"
+	tmux send-keys -t "=$SESSION:" Enter
 
 	# wait until the log stops growing (2 quiet polls of 0.25 s) or the timeout hits
 	local t0=$SECONDS last=$before now quiet=0
@@ -633,7 +679,7 @@ test_bot() {
 
 	# The galaxy allows 10 characters per account; lab characters accumulate, so make room first.
 	local total
-	total=$(mysql -N swgemu -e "SELECT COUNT(*) FROM characters c JOIN accounts a ON a.account_id = c.account_id WHERE a.username = '$user'" 2>/dev/null || echo 0)
+	total=$(mysql -N "$DBNAME" -e "SELECT COUNT(*) FROM characters c JOIN accounts a ON a.account_id = c.account_id WHERE a.username = '$user'" 2>/dev/null || echo 0)
 	if [ "${total:-0}" -ge 10 ]; then
 		account_prune "$user" 6 || warn "could not prune $user's characters"
 	fi
@@ -641,8 +687,8 @@ test_bot() {
 	# PlayerCreationManager allows admin_level < 9 accounts one new character per hour. When the
 	# account created one recently, zone in as its newest Lab* character instead of failing.
 	local recent newest
-	recent=$(mysql -N swgemu -e "SELECT COUNT(*) FROM characters c JOIN accounts a ON a.account_id = c.account_id WHERE a.username = '$user' AND c.creation_date > NOW() - INTERVAL 1 HOUR" 2>/dev/null || echo 0)
-	newest=$(mysql -N swgemu -e "SELECT c.firstname FROM characters c JOIN accounts a ON a.account_id = c.account_id WHERE a.username = '$user' AND c.firstname LIKE 'Lab%' ORDER BY c.character_oid DESC LIMIT 1" 2>/dev/null)
+	recent=$(mysql -N "$DBNAME" -e "SELECT COUNT(*) FROM characters c JOIN accounts a ON a.account_id = c.account_id WHERE a.username = '$user' AND c.creation_date > NOW() - INTERVAL 1 HOUR" 2>/dev/null || echo 0)
+	newest=$(mysql -N "$DBNAME" -e "SELECT c.firstname FROM characters c JOIN accounts a ON a.account_id = c.account_id WHERE a.username = '$user' AND c.firstname LIKE 'Lab%' ORDER BY c.character_oid DESC LIMIT 1" 2>/dev/null)
 
 	local char mode
 	if [ "${recent:-0}" != "0" ] && [ -n "$newest" ]; then
@@ -800,7 +846,7 @@ cmd_snap() {
 			fi
 			mkdir -p "$dest"
 			say "snap save '$name' -> $dest"
-			mysqldump --single-transaction --quick --routines swgemu | gzip -1 > "$dest/swgemu.sql.gz" || { rm -rf "$dest"; die "mysqldump failed"; }
+			mysqldump --single-transaction --quick --routines "$DBNAME" | gzip -1 > "$dest/swgemu.sql.gz" || { rm -rf "$dest"; die "mysqldump failed"; }
 			cp -a "$BIN/databases" "$dest/databases" || { rm -rf "$dest"; die "copy of bin/databases failed"; }
 			{
 				echo "when $(date '+%F %T')"
@@ -817,12 +863,12 @@ cmd_snap() {
 			[ -f "$src/meta.txt" ] && [ -f "$src/swgemu.sql.gz" ] && [ -d "$src/databases" ] || die "no complete snapshot at $src"
 			require_stopped
 			if [ "${1:-}" != "--yes" ]; then
-				say "This replaces the MySQL database 'swgemu' AND $BIN/databases with snapshot '$name':"
+				say "This replaces the MySQL database '$DBNAME' AND $BIN/databases with snapshot '$name':"
 				sed 's/^/   /' "$src/meta.txt"
 				die "re-run with --yes to proceed (ask Chuck first)"
 			fi
 			say "snap load '$name': restoring MySQL"
-			gzip -dc "$src/swgemu.sql.gz" | mysql swgemu || die "mysql restore failed"
+			gzip -dc "$src/swgemu.sql.gz" | mysql "$DBNAME" || die "mysql restore failed"
 			say "snap load '$name': restoring bin/databases"
 			rm -rf "$BIN/databases"
 			cp -a "$src/databases" "$BIN/databases" || die "copy failed"
@@ -841,12 +887,12 @@ account_prune() {
 	local user=$1 keep=${2:-4}
 	[[ "$user" =~ ^claude-(player|admin)$ ]] || die "prune: only the lab accounts claude-player / claude-admin"
 	[[ "$keep" =~ ^[0-9]+$ ]] || die "prune: --keep needs a number"
-	local acct; acct=$(mysql -N swgemu -e "SELECT account_id FROM accounts WHERE username = '$user'") || die "prune: mysql failed"
+	local acct; acct=$(mysql -N "$DBNAME" -e "SELECT account_id FROM accounts WHERE username = '$user'") || die "prune: mysql failed"
 	[ -n "$acct" ] || die "prune: no account $user"
-	local oids; oids=$(mysql -N swgemu -e "SELECT character_oid FROM characters WHERE account_id = $acct AND firstname LIKE 'Lab%' ORDER BY character_oid DESC LIMIT 1000 OFFSET $keep")
+	local oids; oids=$(mysql -N "$DBNAME" -e "SELECT character_oid FROM characters WHERE account_id = $acct AND firstname LIKE 'Lab%' ORDER BY character_oid DESC LIMIT 1000 OFFSET $keep")
 	local n=0 oid
 	for oid in $oids; do
-		if is_running && cmd_cmd "runLuaFunction FbLabTests:isOnline:$(mysql -N swgemu -e "SELECT firstname FROM characters WHERE character_oid = $oid")" --timeout 5 2>/dev/null | grep -aq '^INFO online'; then
+		if is_running && cmd_cmd "runLuaFunction FbLabTests:isOnline:$(mysql -N "$DBNAME" -e "SELECT firstname FROM characters WHERE character_oid = $oid")" --timeout 5 2>/dev/null | grep -aq '^INFO online'; then
 			warn "prune: $oid is online, skipped"; continue
 		fi
 		mysql swgemu -e "INSERT INTO deleted_characters SELECT *, 0 AS db_deleted FROM characters WHERE character_oid = $oid AND account_id = $acct; DELETE FROM characters WHERE character_oid = $oid AND account_id = $acct;" || die "prune: delete of $oid failed"
@@ -873,7 +919,7 @@ cmd_account() {
 			salt=$(openssl rand -hex 16)
 			hash=$(printf '%s%s%s' "$secret" "$pass" "$salt" | sha256sum | cut -d' ' -f1)
 			station=$(( (RANDOM << 15 | RANDOM) + 1 ))
-			exists=$(mysql -N swgemu -e "SELECT COUNT(*) FROM accounts WHERE username='$user'")
+			exists=$(mysql -N "$DBNAME" -e "SELECT COUNT(*) FROM accounts WHERE username='$user'")
 			if [ "$exists" != "0" ]; then
 				(( reset == 1 )) || die "account '$user' exists (use --reset to set a new password / level)"
 				mysql swgemu -e "UPDATE accounts SET password='$hash', salt='$salt', admin_level=$level, active=1 WHERE username='$user'" || die "update failed"
@@ -932,8 +978,154 @@ cmd_tre() {
 
 usage() { sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//' | sed '1d'; }
 
+# ---------------------------------------------------------------- swg live init|deploy|client|status (run on the bench)
+
+live_sql_hint() {
+	cat >&2 <<EOT
+the MySQL database '$1' does not exist or is not reachable as user swgemu. Chuck creates it once (root):
+  ! sudo mysql -e "CREATE DATABASE $1 CHARACTER SET utf8mb4; GRANT ALL PRIVILEGES ON $1.* TO 'swgemu'@'%'; FLUSH PRIVILEGES;"
+then: swg live init
+EOT
+}
+
+live_config_local() {
+	# the bench's config-local.lua with the live instance's database, ports and archive folder; the secret and the rest stay
+	local src="$BENCH/MMOCoreORB/bin/conf/config-local.lua" dst="$LIVE_ROOT/bin/conf/config-local.lua"
+	[ -f "$src" ] || die "$src missing (the bench's local config holds the DB credentials)"
+	local base=$LIVE_PORT_BASE
+	# top-level statements, so no trailing commas (the first version wrote them and the server booted with no config at all)
+	sed -e "s|^\([[:space:]]*\)DBName[[:space:]]*=.*|\1DBName = \"swgemu_live\"|" \
+	    -e "s|^\([[:space:]]*\)LoginPort[[:space:]]*=.*|\1LoginPort = $((base + 453))|" \
+	    -e "s|^\([[:space:]]*\)PingPort[[:space:]]*=.*|\1PingPort = $((base + 462))|" \
+	    -e "s|^\([[:space:]]*\)StatusPort[[:space:]]*=.*|\1StatusPort = $((base + 455))|" \
+	    -e "s|^\([[:space:]]*\)ZoneServerPort[[:space:]]*=.*|\1ZoneServerPort = $((base + 463))|" \
+	    -e "s|^\([[:space:]]*\)TrePath[[:space:]]*=.*|\1TrePath = \"$LIVE_ROOT/tre\"|" "$src" > "$dst"
+	# the Core3 table entries too (the top-level names are read for some settings only), after the table exists
+	cat >> "$dst" <<EOT
+
+-- the live instance (written by swg live init): its own database, ports and archive folder
+Core3.DBName = "swgemu_live"
+Core3.LoginPort = $((base + 453))
+Core3.PingPort = $((base + 462))
+Core3.StatusPort = $((base + 455))
+Core3.ZoneServerPort = $((base + 463))
+Core3.ORBPort = $((base + 419))
+Core3.WebPorts = $((base + 460))
+Core3.MetricsPort = 0
+Core3.TrePath = "$LIVE_ROOT/tre"
+EOT
+	chmod 600 "$dst"
+	luac -p "$dst" 2>/dev/null || die "$dst does not parse (luac -p); the server would boot with no config"
+}
+
+live_tre_links() {
+	mkdir -p "$LIVE_ROOT/tre"
+	local f
+	for f in /tre/*.tre; do
+		[ "$(basename "$f")" = finalboss.tre ] && continue
+		[ -e "$LIVE_ROOT/tre/$(basename "$f")" ] || ln -s "$f" "$LIVE_ROOT/tre/$(basename "$f")"
+	done
+}
+
+live_sync_runtime() {
+	# binaries, scripts and the shared conf from the bench; never its local config, ODB or logs
+	mkdir -p "$LIVE_ROOT/bin/conf" "$LIVE_ROOT/bin/log"
+	rsync -a --delete "$BENCH/MMOCoreORB/bin/scripts/" "$LIVE_ROOT/bin/scripts/" || die "rsync scripts failed"
+	rsync -a --exclude config-local.lua "$BENCH/MMOCoreORB/bin/conf/" "$LIVE_ROOT/bin/conf/" || die "rsync conf failed"
+	# the generated data too: without the navmeshes the live server rebuilds every one at boot (1.3 GB on the bench)
+	local d
+	for d in navmeshes terrain; do [ -d "$BENCH/MMOCoreORB/bin/$d" ] && { rsync -a "$BENCH/MMOCoreORB/bin/$d/" "$LIVE_ROOT/bin/$d/" || die "rsync $d failed"; }; done
+	cp -p "$BENCH/MMOCoreORB/bin/core3" "$LIVE_ROOT/bin/core3" || die "copy of core3 failed"
+	[ -x "$BENCH/MMOCoreORB/bin/core3client" ] && cp -p "$BENCH/MMOCoreORB/bin/core3client" "$LIVE_ROOT/bin/core3client"
+	local src="$BENCH/MMOCoreORB/bin/tre/finalboss.tre" dst="$LIVE_ROOT/tre/finalboss.tre"
+	[ -f "$src" ] || src=/tre/finalboss.tre
+	if [ -f "$src" ] && ! cmp -s "$src" "$dst" 2>/dev/null; then
+		cp -p "$src" "$dst" && touch "$LIVE_RELOAD_MARK" && say "finalboss.tre deployed (reloadstrings at the next live start)"
+	fi
+	git -C "$BENCH" describe --always --dirty --abbrev=10 > "$LIVE_ROOT/DEPLOYED" 2>/dev/null
+	date '+%F %T' >> "$LIVE_ROOT/DEPLOYED"
+}
+
+live_running() { local p want; want=$(readlink -f "$LIVE_ROOT/bin" 2>/dev/null); for p in $(pgrep -x core3); do [ "$(readlink -f "/proc/$p/cwd" 2>/dev/null)" = "$want" ] && return 0; done; return 1; }
+
+cmd_live() {
+	[ "$INSTANCE" = bench ] || die "swg live … runs on the bench (without --live)"
+	case "${1:-}" in
+		init)
+			shift
+			mysql -N swgemu_live -e 'SELECT 1' >/dev/null 2>&1 || { live_sql_hint swgemu_live; die "live init: no database"; }
+			[ -d "$LIVE_ROOT/bin/databases" ] && [ "${1:-}" != "--force" ] && die "$LIVE_ROOT already has an ODB (use --force to replace it from the bench)"
+			require_stopped
+			live_running && die "the live core3 is running: swg --live stop first"
+			say "== live init: $LIVE_ROOT from the bench ($(git -C "$BENCH" rev-parse --abbrev-ref HEAD) @ $(git -C "$BENCH" rev-parse --short HEAD))"
+			mkdir -p "$LIVE_ROOT/bin" "$LIVE_ROOT/tre"
+			live_tre_links
+			live_sync_runtime
+			live_config_local
+			say "MySQL: swgemu -> swgemu_live (every account, character and the galaxy row)"
+			mysqldump --single-transaction --quick --routines swgemu | mysql swgemu_live || die "copy of the database failed"
+			mysql swgemu_live -e "UPDATE galaxy SET port = $((LIVE_PORT_BASE + 463)), pingport = $((LIVE_PORT_BASE + 462)) WHERE galaxy_id = (SELECT * FROM (SELECT MIN(galaxy_id) FROM galaxy) g)" || die "galaxy row update failed"
+			say "ODB: $BENCH/MMOCoreORB/bin/databases -> $LIVE_ROOT/bin/databases ($(du -sh "$BENCH/MMOCoreORB/bin/databases" | cut -f1))"
+			rm -rf "$LIVE_ROOT/bin/databases"
+			cp -a "$BENCH/MMOCoreORB/bin/databases" "$LIVE_ROOT/bin/databases" || die "copy of the ODB failed"
+			touch "$LIVE_RELOAD_MARK"
+			say "live instance ready: swg --live start   (login port $((LIVE_PORT_BASE + 453)); swg live client points the game client at it)"
+			;;
+		deploy)
+			shift
+			local restart=1; [ "${1:-}" = "--no-restart" ] && restart=0
+			[ -d "$LIVE_ROOT/bin" ] || die "no live instance at $LIVE_ROOT (swg live init)"
+			[ "$(git -C "$BENCH" rev-parse --abbrev-ref HEAD)" = unstable ] || die "the bench is on $(git -C "$BENCH" rev-parse --abbrev-ref HEAD), not unstable: swg bench use unstable first"
+			[ -z "$(git -C "$BENCH" status --porcelain)" ] || die "the bench checkout is dirty"
+			local built; built=$(cat "$(bench_built_file)" 2>/dev/null || true)
+			[ "$built" = "$(git -C "$BENCH" rev-parse HEAD)" ] || die "the bench binary is not built from this commit (swg bench use unstable builds it)"
+			say "== live deploy: unstable @ $(git -C "$BENCH" rev-parse --short HEAD) -> $LIVE_ROOT"
+			if live_running && [ "$restart" = 1 ]; then say "stopping the live core3"; SWG_INSTANCE=live "$0" stop || die "live stop failed"; fi
+			live_sync_runtime
+			if [ "$restart" = 1 ]; then SWG_INSTANCE=live "$0" start || die "live start failed"; else say "deployed; the live core3 picks it up at its next restart (swg --live restart)"; fi
+			;;
+		sync)
+			# whatever the bench has right now, no branch check (deploy is the checked path); the live server reads it at its next start
+			[ -d "$LIVE_ROOT/bin" ] || die "no live instance at $LIVE_ROOT (swg live init)"
+			live_running && die "the live core3 is running: swg --live stop first, or use swg live deploy"
+			live_sync_runtime && say "synced from the bench @ $(git -C "$BENCH" rev-parse --short HEAD); swg --live start"
+			;;
+		config)
+			[ -d "$LIVE_ROOT/bin/conf" ] || die "no live instance at $LIVE_ROOT (swg live init)"
+			live_config_local && say "$LIVE_ROOT/bin/conf/config-local.lua regenerated (restart the live core3 to read it)"
+			;;
+		client)
+			shift
+			local dir cfg port
+			dir=$(cat "$LABDIR/client-dir" 2>/dev/null) || die "no client folder remembered (swg tre install --client DIR first)"
+			cfg="$dir/swgemu_login.cfg"; [ -f "$cfg" ] || die "$cfg missing"
+			port=$((LIVE_PORT_BASE + 453)); [ "${1:-}" = "--bench" ] && port=44453
+			grep -q '^loginServerPort0=' "$cfg" || die "$cfg has no loginServerPort0 line"
+			cp -p "$cfg" "$cfg.swg.bak"
+			sed -i "s/^loginServerPort0=.*/loginServerPort0=$port/" "$cfg"
+			say "$cfg: loginServerPort0=$port ($( [ "$port" = 44453 ] && echo 'the bench' || echo 'the live instance')); restart the game client"
+			;;
+		status|"")
+			say "bench  $( is_running && echo "RUNNING pid $(core3_pid)" || echo STOPPED )  $BENCH @ $(git -C "$BENCH" rev-parse --short HEAD) ($(git -C "$BENCH" rev-parse --abbrev-ref HEAD))  login 44453"
+			if [ -d "$LIVE_ROOT/bin" ]; then
+				say "live   $( live_running && echo "RUNNING pid $(SWG_INSTANCE=live "$0" status 2>/dev/null | sed -n 's/.*pid \([0-9]*\).*/\1/p' | head -n1)" || echo STOPPED )  $LIVE_ROOT  deployed $(head -n1 "$LIVE_ROOT/DEPLOYED" 2>/dev/null || echo '?') ($(sed -n 2p "$LIVE_ROOT/DEPLOYED" 2>/dev/null))  login $((LIVE_PORT_BASE + 453))  db swgemu_live"
+			else
+				say "live   not set up (swg live init)"
+			fi
+			[ -f "$LABDIR/client-dir" ] && say "client $(grep -h '^loginServerPort0=' "$(cat "$LABDIR/client-dir")/swgemu_login.cfg" 2>/dev/null | head -n1 || echo '?')  ($(cat "$LABDIR/client-dir"))"
+			;;
+		*) die "usage: swg live init [--force] | deploy [--no-restart] | sync | config | client [--bench] | status" ;;
+	esac
+}
+
 restart_inner() { cmd_stop && cmd_start "$@"; }
+if [ "$INSTANCE" = live ]; then
+	case "${1:-}" in
+		bench|test|build|agent|site|tre) die "swg --live $1: gates, deploys and builds run on the bench; the live instance takes 'swg live deploy'" ;;
+	esac
+fi
 case "${1:-}" in
+	live)    shift; cmd_live "$@" ;;
 	start)   shift; with_lock "start" cmd_start "$@"; bench_note_running ;;
 	stop)    shift; with_lock "stop" cmd_stop "$@" ;;
 	restart) shift; with_lock "restart" restart_inner "$@"; bench_note_running ;;

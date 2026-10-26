@@ -1434,3 +1434,32 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   caves, the bounty — is complete on `unstable`. The companion took seven bench rounds over one night; the lessons are the
   2026-10-23/24 entries above (hireling pets: naming, the five-second call, the neutral rule, the datapad attack command, zone
   changes storing pets, a dead hireling's device) and the gate's one retry per red scenario.
+
+### 2026-10-25 — the live instance (a second core3 beside the bench)
+
+- **Why**: one bench served gates, deploys, Chuck's play and alice's citizens; a night of gates cost two hours of waiting
+  each way and killed idle citizens with every restart. The live instance restarts only on purpose.
+- **Shape**: a runtime copy, not a checkout — `~/swg-live/bin` gets the bench's binaries, scripts and `conf/config.lua`
+  by rsync (`swg live deploy`, only from a clean, built `unstable` on the bench), keeps its own `config-local.lua`
+  (the bench's with the database, ports and `TrePath` rewritten, plus the same keys as `Core3.*` entries, since the
+  top-level names are read for some settings only), its own ODB and logs. A worktree cannot build its own binary (its
+  `build/` is the bench's), so the bench builds and the live instance copies.
+- **Ports**: the bench's + 1000. Both ORBs, both web ports and the metrics port must differ too (`MetricsPort = 0` on
+  live). The galaxy row in `swgemu_live` carries the live zone and ping ports; the login server hands the client that
+  row, so the client only needs the login port (`swgemu_login.cfg: loginServerPort0`).
+- **Archives**: `~/swg-live/tre` links every stock `.tre` from `/tre` and holds its own `finalboss.tre`, so a bench
+  `swg start` installing a branch's archive into `/tre` cannot change what the live server reads. `reloadstrings` is
+  passed at the next live start when deploy copied a different archive (marker `~/.swg-lab/live.reloadstrings`).
+- **Process identity**: `pgrep -x core3` finds both; `core3_pid` matches `/proc/<pid>/cwd` against the instance's `bin`.
+- **The split**: `swg live init` copies `swgemu` → `swgemu_live` (mysqldump | mysql; Chuck creates the database as root
+  since the swgemu user has rights on `swgemu` only) and `bin/databases` with the bench stopped, so every account and
+  character exists on both afterwards; the bench's copies are test fixtures from then on (Chuck's own accounts still
+  need his word before anything touches them, on either side).
+- **tmux matches a session name by prefix** when no exact name exists: `tmux kill-session -t swg` killed the new `swg-live`
+  session (the first live instance died fifty seconds after READY), and `has-session -t swg` / `send-keys -t swg` would
+  have reached the live console from the bench's tooling whenever the bench session was down. Every target in
+  `tools/swg` is `-t "=$SESSION"` now (exact), and the live session is named `live`. The live runtime also needs the
+  bench's generated `navmeshes/` (1.3 GB) and `terrain/`, or the server rebuilds every navmesh at boot.
+- **Both servers up 2026-10-25 21:13**: bench pid on 44xxx, live on 45xxx, each answering its own console (`swg cmd` /
+  `swg --live cmd`), 0 errors on live. Open: nightly backups cover `swgemu` only (`~/bin/swg-backup-daily.sh`); the live
+  database and ODB have `swg --live snap save <name>` (`~/swg-snapshots/live/`) until the script learns the second database.
