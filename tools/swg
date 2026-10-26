@@ -990,12 +990,13 @@ live_config_local() {
 	local src="$BENCH/MMOCoreORB/bin/conf/config-local.lua" dst="$LIVE_ROOT/bin/conf/config-local.lua"
 	[ -f "$src" ] || die "$src missing (the bench's local config holds the DB credentials)"
 	local base=$LIVE_PORT_BASE
-	sed -e "s|^\([[:space:]]*\)DBName[[:space:]]*=.*|\1DBName = \"swgemu_live\",|" \
-	    -e "s|^\([[:space:]]*\)LoginPort[[:space:]]*=.*|\1LoginPort = $((base + 453)),|" \
-	    -e "s|^\([[:space:]]*\)PingPort[[:space:]]*=.*|\1PingPort = $((base + 462)),|" \
-	    -e "s|^\([[:space:]]*\)StatusPort[[:space:]]*=.*|\1StatusPort = $((base + 455)),|" \
-	    -e "s|^\([[:space:]]*\)ZoneServerPort[[:space:]]*=.*|\1ZoneServerPort = $((base + 463)),|" \
-	    -e "s|^\([[:space:]]*\)TrePath[[:space:]]*=.*|\1TrePath = \"$LIVE_ROOT/tre\",|" "$src" > "$dst"
+	# top-level statements, so no trailing commas (the first version wrote them and the server booted with no config at all)
+	sed -e "s|^\([[:space:]]*\)DBName[[:space:]]*=.*|\1DBName = \"swgemu_live\"|" \
+	    -e "s|^\([[:space:]]*\)LoginPort[[:space:]]*=.*|\1LoginPort = $((base + 453))|" \
+	    -e "s|^\([[:space:]]*\)PingPort[[:space:]]*=.*|\1PingPort = $((base + 462))|" \
+	    -e "s|^\([[:space:]]*\)StatusPort[[:space:]]*=.*|\1StatusPort = $((base + 455))|" \
+	    -e "s|^\([[:space:]]*\)ZoneServerPort[[:space:]]*=.*|\1ZoneServerPort = $((base + 463))|" \
+	    -e "s|^\([[:space:]]*\)TrePath[[:space:]]*=.*|\1TrePath = \"$LIVE_ROOT/tre\"|" "$src" > "$dst"
 	# the Core3 table entries too (the top-level names are read for some settings only), after the table exists
 	cat >> "$dst" <<EOT
 
@@ -1011,6 +1012,7 @@ Core3.MetricsPort = 0
 Core3.TrePath = "$LIVE_ROOT/tre"
 EOT
 	chmod 600 "$dst"
+	luac -p "$dst" 2>/dev/null || die "$dst does not parse (luac -p); the server would boot with no config"
 }
 
 live_tre_links() {
@@ -1076,6 +1078,10 @@ cmd_live() {
 			live_sync_runtime
 			if [ "$restart" = 1 ]; then SWG_INSTANCE=live "$0" start || die "live start failed"; else say "deployed; the live core3 picks it up at its next restart (swg --live restart)"; fi
 			;;
+		config)
+			[ -d "$LIVE_ROOT/bin/conf" ] || die "no live instance at $LIVE_ROOT (swg live init)"
+			live_config_local && say "$LIVE_ROOT/bin/conf/config-local.lua regenerated (restart the live core3 to read it)"
+			;;
 		client)
 			shift
 			local dir cfg port
@@ -1096,7 +1102,7 @@ cmd_live() {
 			fi
 			[ -f "$LABDIR/client-dir" ] && say "client $(grep -h '^loginServerPort0=' "$(cat "$LABDIR/client-dir")/swgemu_login.cfg" 2>/dev/null | head -n1 || echo '?')  ($(cat "$LABDIR/client-dir"))"
 			;;
-		*) die "usage: swg live init [--force] | deploy [--no-restart] | client [--bench] | status" ;;
+		*) die "usage: swg live init [--force] | deploy [--no-restart] | config | client [--bench] | status" ;;
 	esac
 }
 
