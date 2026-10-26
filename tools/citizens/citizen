@@ -63,7 +63,7 @@ def bench_bin():
     out = subprocess.run(["git", "-C", TOOLS, "worktree", "list", "--porcelain"], capture_output=True, text=True).stdout
     first = out.splitlines()[0] if out else ""
     root = first[len("worktree "):] if first.startswith("worktree ") else os.path.dirname(TOOLS)
-    return os.path.join(root, "MMOCoreORB", "bin")
+    return os.environ.get("SWG_BIN") or os.path.join(root, "MMOCoreORB", "bin")   # swg exports SWG_BIN for the instance it runs
 
 
 def character_section(citizen):

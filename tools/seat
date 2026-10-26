@@ -73,7 +73,7 @@ def bench():
         pass
     return REPO
 
-BIN = os.path.join(bench(), "MMOCoreORB", "bin")
+BIN = os.environ.get("SWG_BIN") or os.path.join(bench(), "MMOCoreORB", "bin")   # swg exports SWG_BIN for the instance it runs
 
 # social emotes by canonical name -> row number of datatables/chat/social_types.iff (1-based, the ids
 # ChatManager::loadSocialTypes assigns); tools/seat_emotes.json is generated from the stock table
