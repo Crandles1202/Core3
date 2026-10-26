@@ -1455,3 +1455,8 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   since the swgemu user has rights on `swgemu` only) and `bin/databases` with the bench stopped, so every account and
   character exists on both afterwards; the bench's copies are test fixtures from then on (Chuck's own accounts still
   need his word before anything touches them, on either side).
+- **tmux matches a session name by prefix** when no exact name exists: `tmux kill-session -t swg` killed the new `swg-live`
+  session (the first live instance died fifty seconds after READY), and `has-session -t swg` / `send-keys -t swg` would
+  have reached the live console from the bench's tooling whenever the bench session was down. Every target in
+  `tools/swg` is `-t "=$SESSION"` now (exact), and the live session is named `live`. The live runtime also needs the
+  bench's generated `navmeshes/` (1.3 GB) and `terrain/`, or the server rebuilds every navmesh at boot.

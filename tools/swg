@@ -79,7 +79,7 @@ LIVE_PORT_BASE=${SWG_LIVE_PORT_BASE:-45000}
 if [ "$INSTANCE" = live ]; then
 	BIN="$LIVE_ROOT/bin"
 	LOG="$BIN/screenlog.0"
-	SESSION=${SWG_TMUX_SESSION:-swg-live}
+	SESSION=${SWG_TMUX_SESSION:-live}   # not "swg-…": tmux matches a session name by prefix when no exact name exists
 	LOCKFILE="$LABDIR/live.lock"
 	SNAPDIR=${SWG_SNAPDIR:-$HOME/swg-snapshots/live}
 	DBNAME=swgemu_live
@@ -278,11 +278,13 @@ core3_pid() {
 	done
 }
 is_running()  { [ -n "$(core3_pid)" ]; }
-has_session() { tmux has-session -t "$SESSION" 2>/dev/null; }
+# every tmux target is "=$SESSION": without the "=" tmux falls back to prefix matching, and with two servers "swg" would
+# reach "swg-live" when the bench session is down (the first live instance died that way, 2026-10-25)
+has_session() { tmux has-session -t "=$SESSION" 2>/dev/null; }
 
 session_running_gdb() {
 	# pane command is "gdb" while gdb owns the pane
-	[ "$(tmux display-message -p -t "$SESSION" '#{pane_current_command}' 2>/dev/null)" = "gdb" ]
+	[ "$(tmux display-message -p -t "=$SESSION" '#{pane_current_command}' 2>/dev/null)" = "gdb" ]
 }
 
 # core3 alive but stopped under the debugger (a gdb catchpoint fired: SIGSEGV/SIGUSR1); the process
@@ -404,9 +406,9 @@ cmd_start() {
 	fi
 
 	tmux new-session -d -s "$SESSION" -c "$BIN" -x 250 -y 50 || die "could not create tmux session"
-	tmux pipe-pane -o -t "$SESSION" "cat >> '$LOG'"
-	tmux send-keys -t "$SESSION" -l -- "$launch"
-	tmux send-keys -t "$SESSION" Enter
+	tmux pipe-pane -o -t "=$SESSION" "cat >> '$LOG'"
+	tmux send-keys -t "=$SESSION" -l -- "$launch"
+	tmux send-keys -t "=$SESSION" Enter
 
 	if [ "$INSTANCE" = live ]; then
 		say "starting the live core3 ($( [ "$use_gdb" = 1 ] && echo under gdb || echo no gdb ), deployed $(cat "$LIVE_ROOT/DEPLOYED" 2>/dev/null || echo '?'), ports $((LIVE_PORT_BASE + 453))/$((LIVE_PORT_BASE + 463))) in tmux session '$SESSION'"
@@ -441,10 +443,10 @@ cmd_stop() {
 		if has_session; then
 			if session_running_gdb; then
 				say "core3 not running but gdb is idle in the session — quitting gdb"
-				tmux send-keys -t "$SESSION" -l -- "quit"; tmux send-keys -t "$SESSION" Enter
+				tmux send-keys -t "=$SESSION" -l -- "quit"; tmux send-keys -t "=$SESSION" Enter
 				sleep 2
 			fi
-			has_session && tmux kill-session -t "$SESSION"
+			has_session && tmux kill-session -t "=$SESSION"
 			say "cleaned up tmux session '$SESSION'"
 		else
 			say "server is not running"
@@ -457,17 +459,17 @@ cmd_stop() {
 		# no console to type 'shutdown' into: the process sits on a fatal signal. Kill it from gdb
 		# (the periodic ODB backup is the last saved state) and keep the backtrace.
 		warn "core3 is halted in gdb (crashed) — killing it from gdb; backtrace kept in $BIN/gdb.log"
-		tmux send-keys -t "$SESSION" -l -- "kill"; tmux send-keys -t "$SESSION" Enter; sleep 1
-		tmux send-keys -t "$SESSION" -l -- "y"; tmux send-keys -t "$SESSION" Enter; sleep 2
-		tmux send-keys -t "$SESSION" -l -- "quit"; tmux send-keys -t "$SESSION" Enter; sleep 2
-		has_session && tmux kill-session -t "$SESSION"
+		tmux send-keys -t "=$SESSION" -l -- "kill"; tmux send-keys -t "=$SESSION" Enter; sleep 1
+		tmux send-keys -t "=$SESSION" -l -- "y"; tmux send-keys -t "=$SESSION" Enter; sleep 2
+		tmux send-keys -t "=$SESSION" -l -- "quit"; tmux send-keys -t "=$SESSION" Enter; sleep 2
+		has_session && tmux kill-session -t "=$SESSION"
 		is_running && die "core3 still alive after gdb kill — attach with: tmux attach -t $SESSION"
 		mkdir -p "$LABDIR/crashes"; [ -f "$BIN/gdb.log" ] && cp "$BIN/gdb.log" "$LABDIR/crashes/gdb-$(date +%Y%m%d-%H%M%S).log"
 		return 1
 	fi
 	say "sending 'shutdown' to pid $(core3_pid)"
-	tmux send-keys -t "$SESSION" -l -- "shutdown"
-	tmux send-keys -t "$SESSION" Enter
+	tmux send-keys -t "=$SESSION" -l -- "shutdown"
+	tmux send-keys -t "=$SESSION" Enter
 
 	local t0=$SECONDS
 	while is_running; do
@@ -483,13 +485,13 @@ cmd_stop() {
 	local w=0
 	while has_session && (( w < 15 )); do
 		if session_running_gdb; then
-			tmux send-keys -t "$SESSION" -l -- "quit"; tmux send-keys -t "$SESSION" Enter
+			tmux send-keys -t "=$SESSION" -l -- "quit"; tmux send-keys -t "=$SESSION" Enter
 		fi
 		sleep 1; w=$((w + 1))
 	done
 	if has_session; then
 		warn "tmux session still alive; killing it (core3 itself has already exited)"
-		tmux kill-session -t "$SESSION"
+		tmux kill-session -t "=$SESSION"
 	fi
 	if grep -aqE 'Program received signal|SIG(SEGV|ABRT) Caught' "$LOG" 2>/dev/null; then
 		mkdir -p "$LABDIR/crashes"; [ -f "$BIN/gdb.log" ] && cp "$BIN/gdb.log" "$LABDIR/crashes/gdb-$(date +%Y%m%d-%H%M%S).log"
@@ -536,8 +538,8 @@ cmd_cmd() {
 	has_session || die "core3 is not running in tmux session '$SESSION'"
 
 	local before; before=$(log_lines)
-	tmux send-keys -t "$SESSION" -l -- "$command"
-	tmux send-keys -t "$SESSION" Enter
+	tmux send-keys -t "=$SESSION" -l -- "$command"
+	tmux send-keys -t "=$SESSION" Enter
 
 	# wait until the log stops growing (2 quiet polls of 0.25 s) or the timeout hits
 	local t0=$SECONDS last=$before now quiet=0
@@ -1029,6 +1031,9 @@ live_sync_runtime() {
 	mkdir -p "$LIVE_ROOT/bin/conf" "$LIVE_ROOT/bin/log"
 	rsync -a --delete "$BENCH/MMOCoreORB/bin/scripts/" "$LIVE_ROOT/bin/scripts/" || die "rsync scripts failed"
 	rsync -a --exclude config-local.lua "$BENCH/MMOCoreORB/bin/conf/" "$LIVE_ROOT/bin/conf/" || die "rsync conf failed"
+	# the generated data too: without the navmeshes the live server rebuilds every one at boot (1.3 GB on the bench)
+	local d
+	for d in navmeshes terrain; do [ -d "$BENCH/MMOCoreORB/bin/$d" ] && { rsync -a "$BENCH/MMOCoreORB/bin/$d/" "$LIVE_ROOT/bin/$d/" || die "rsync $d failed"; }; done
 	cp -p "$BENCH/MMOCoreORB/bin/core3" "$LIVE_ROOT/bin/core3" || die "copy of core3 failed"
 	[ -x "$BENCH/MMOCoreORB/bin/core3client" ] && cp -p "$BENCH/MMOCoreORB/bin/core3client" "$LIVE_ROOT/bin/core3client"
 	local src="$BENCH/MMOCoreORB/bin/tre/finalboss.tre" dst="$LIVE_ROOT/tre/finalboss.tre"
@@ -1078,6 +1083,12 @@ cmd_live() {
 			live_sync_runtime
 			if [ "$restart" = 1 ]; then SWG_INSTANCE=live "$0" start || die "live start failed"; else say "deployed; the live core3 picks it up at its next restart (swg --live restart)"; fi
 			;;
+		sync)
+			# whatever the bench has right now, no branch check (deploy is the checked path); the live server reads it at its next start
+			[ -d "$LIVE_ROOT/bin" ] || die "no live instance at $LIVE_ROOT (swg live init)"
+			live_running && die "the live core3 is running: swg --live stop first, or use swg live deploy"
+			live_sync_runtime && say "synced from the bench @ $(git -C "$BENCH" rev-parse --short HEAD); swg --live start"
+			;;
 		config)
 			[ -d "$LIVE_ROOT/bin/conf" ] || die "no live instance at $LIVE_ROOT (swg live init)"
 			live_config_local && say "$LIVE_ROOT/bin/conf/config-local.lua regenerated (restart the live core3 to read it)"
@@ -1102,7 +1113,7 @@ cmd_live() {
 			fi
 			[ -f "$LABDIR/client-dir" ] && say "client $(grep -h '^loginServerPort0=' "$(cat "$LABDIR/client-dir")/swgemu_login.cfg" 2>/dev/null | head -n1 || echo '?')  ($(cat "$LABDIR/client-dir"))"
 			;;
-		*) die "usage: swg live init [--force] | deploy [--no-restart] | config | client [--bench] | status" ;;
+		*) die "usage: swg live init [--force] | deploy [--no-restart] | sync | config | client [--bench] | status" ;;
 	esac
 }
 
