@@ -143,7 +143,7 @@ with_lock() {
 	return $rc
 }
 
-cmd_whoami() { say "$(agent_name)  (checkout $REPO$( [ "$REPO" = "$BENCH" ] && echo ", the bench" || echo "; bench $BENCH"))"; }
+cmd_whoami() { [ "$INSTANCE" = live ] && say "instance: live ($LIVE_ROOT, login $((LIVE_PORT_BASE + 453)))"; say "$(agent_name)  (checkout $REPO$( [ "$REPO" = "$BENCH" ] && echo ", the bench" || echo "; bench $BENCH"))"; }
 
 cmd_lock() {
 	local purpose="" minutes=60
@@ -509,7 +509,11 @@ cmd_status() {
 	else
 		say "core3 STOPPED  $(has_session && echo "(tmux session '$SESSION' still exists)" || true)"
 	fi
-	say "branch $(git_branch) @ $(git_rev)$( [ "$REPO" != "$BENCH" ] && echo "   (this checkout: $(agent_name); the server runs from the bench $BENCH)")"
+	if [ "$INSTANCE" = live ]; then
+		say "instance LIVE  $LIVE_ROOT  deployed $(head -n1 "$LIVE_ROOT/DEPLOYED" 2>/dev/null || echo '?') ($(sed -n 2p "$LIVE_ROOT/DEPLOYED" 2>/dev/null))  login $((LIVE_PORT_BASE + 453))  db $DBNAME"
+	else
+		say "branch $(git_branch) @ $(git_rev)$( [ "$REPO" != "$BENCH" ] && echo "   (this checkout: $(agent_name); the server runs from the bench $BENCH)")"
+	fi
 	say "bench   $(lock_describe)"
 	[ -x "$BIN/core3" ] && say "binary  $(date -r "$BIN/core3" '+%F %T')  $( [ -x "$BIN/core3client" ] && echo "core3client: yes" || echo "core3client: missing")"
 	if [ -f "$LOG" ]; then
