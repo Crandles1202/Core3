@@ -1491,3 +1491,24 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   Lua `SceneObject:transferObject` skips `canAddObject`: the lab can push a wrong part into a kit that the client could not.
   The scenario therefore checks only that wrong parts do not finish a kit.
 - A loot group's weights must sum to exactly 10 000 000 (`LuaLootGroupsTest`): the generator gives the last entry the remainder.
+### 2026-10-26 — the second bench
+
+- **Why**: the live instance took play and the citizens off the bench but not the gates; two agents still took turns at
+  one test server, an hour per gate. Chuck's call: nobody waits for the other.
+- **Shape**: a full clone (`git clone --recurse-submodules -b unstable ~/workspace/Core3 ~/swg-bench2/Core3`, remote
+  renamed `local`), because a worktree's `MMOCoreORB/build` is the main bench's tree and cannot build its own binary.
+  `bench use <branch>` on bench2 fetches `local` first and resolves `local/<branch>`; `release` checks out `local/unstable`.
+  Runtime and ports like the live instance (base 46000, `~/swg-bench2/tre`, `swgemu_bench2`), stamps `bench2.built/running`,
+  lock `bench2.lock`. The gate stamp stays one file keyed by commit, so a pass on either bench lets the main bench merge.
+- `swg` exports `SWG_BENCH` / `SWG_BIN` for its children: `tools/tre` reads the instance's config for the TrePath and
+  `tools/scenarios/lib.sh` runs the instance's `core3client`; the bot's login port rides on `SWG_LOGIN_PORT` as before.
+- The seat-state hazard (one set of pid files for every instance) is alice's guard on `feature/alice`; bench chains must
+  not run `crew`/`seat` for the live citizens.
+- **A hold lock outlives nothing by itself.** `bench use` holds the bench for 90 minutes; a build plus a full gate runs
+  longer, and my waiter read the expired lock as a free bench and stopped the main server under the loot-kits gate
+  (2026-10-26 14:12). `swg test all` now stretches its own hold to four hours (`lock_stretch`); `bench release` ends it.
+- A fresh clone of the repo is dirty the moment the server boots, because `resource_manager_spawns.lua` is written at boot
+  and only the main bench had it `skip-worktree`; `bench2 init` copies the main bench's skip-worktree list.
+- **Every `mysql` in `tools/swg` names `$DBNAME`.** Three calls still said `swgemu` outright; bench2's first gate pruned four
+  Lab characters out of the *main* bench's database (the character oids are the same in a copied database). Lab characters
+  are disposable, nothing else was touched; the ODB objects of the four stay orphaned, which the server ignores.
