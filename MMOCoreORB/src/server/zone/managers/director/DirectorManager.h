@@ -212,6 +212,7 @@ namespace server {
 		static int callControlDevice(lua_State* L);
 		static int storeControlDevice(lua_State* L);
 		static int getControlledObject(lua_State* L);
+		static int getItemStats(lua_State* L);
 		static int getCityRegionAt(lua_State* L);
 		static int setDungeonTicketAttributes(lua_State* L);
 		static int setQuestStatus(lua_State* L);

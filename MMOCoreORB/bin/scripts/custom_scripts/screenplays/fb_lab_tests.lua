@@ -825,6 +825,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkKnight()
 		FbLabTests.checkCompanion()
 		FbLabTests.checkCrystals()
+		FbLabTests.checkKits()
 		FbLabTests.checkBounty()
 	end)
 	if not ok then
@@ -3580,6 +3581,106 @@ function FbLabTests.checkCompanion()
 		end
 		check("companion.strings", #missing == 0, #missing == 0 and "every line" or ("missing: " .. table.concat(missing, ", ")))
 	end
+end
+
+-- ---------------------------------------------------------------- Phase 2.4: loot kits
+
+local function kitInventory(pPlayer) return SceneObject(pPlayer):getSlottedObject("inventory") end
+local function kitItems(pInv, fragment)
+	local list = {}
+	for i = 0, SceneObject(pInv):getContainerObjectsSize() - 1 do
+		local pItem = SceneObject(pInv):getContainerObject(i)
+		if pItem ~= nil and SceneObject(pItem):getTemplateObjectPath():find(fragment, 1, true) then list[#list + 1] = pItem end
+	end
+	return list
+end
+-- kits → what the kit data and the roll look like from here
+function FbLabTests:kits()
+	local f = io.open("scripts/custom_scripts/object/tangible/fb_kits/fb_kits.lua", "r")
+	local kits, parts = 0, 0
+	if f ~= nil then for line in f:lines() do if line:find("templateType = LOOTKIT", 1, true) then kits = kits + 1 elseif line:find("SharedTangibleObjectTemplate:new", 1, true) then parts = parts + 1 end end; f:close() end
+	print(string.format("INFO kits loaded=%s kitTemplates=%d partTemplates=%d tiers=%d", tostring(FbLootKits ~= nil), kits, parts, FbLootKits and #FbLootKits.tiers or 0))
+	return "ok"
+end
+-- kitGive:<char>:<kitId> → that kit in the bag (kitId as in the generated data: bone_chest_plate_1, dl44_2 …)
+function FbLabTests:kitGive(charName, kitId)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pInv = kitInventory(pPlayer)
+	createLoot(pInv, "fb_kit_" .. kitId, 10, false)
+	local have = kitItems(pInv, "fb_kits/kit_" .. kitId .. ".iff")
+	print("INFO kitGive kit=" .. kitId .. " oid=" .. (have[#have] and tostring(SceneObject(have[#have]):getObjectID()) or "-") .. " count=" .. #have)
+	return "ok"
+end
+-- kitParts:<char>:<class>:<tier> → the tier's parts of that class (armor / weapon) in the bag, one of each kind
+function FbLabTests:kitParts(charName, class, tier)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pInv = kitInventory(pPlayer)
+	local kinds = class == "weapon" and { "mechanism", "cell", "barrel", "core", "sight" } or { "plating", "mesh", "fastener", "lining", "trim" }
+	local n = 0
+	for _, k in ipairs(kinds) do if createLoot(pInv, "fb_part_" .. class .. "_" .. k .. "_" .. tier, 10, false) ~= nil then n = n + 1 end end
+	print("INFO kitParts class=" .. class .. " tier=" .. tostring(tier) .. " made=" .. n .. " inBag=" .. #kitItems(pInv, "fb_kits/part_"))
+	return "ok"
+end
+-- kitAssemble:<char>:<kitOid> → every part in the bag moved into the kit (the stock container path: the last one makes the piece)
+function FbLabTests:kitAssemble(charName, kitOid)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pKit = getSceneObject(tonumber(kitOid) or 0)
+	if pKit == nil then print("ERROR no kit " .. tostring(kitOid)); return "none" end
+	local pInv = kitInventory(pPlayer)
+	local moved = 0
+	for _, pPart in ipairs(kitItems(pInv, "fb_kits/part_")) do
+		if SceneObject(pKit):transferObject(pPart, -1, true) then moved = moved + 1 end
+	end
+	local gone = getSceneObject(tonumber(kitOid)) == nil
+	print("INFO kitAssemble moved=" .. moved .. " kitGone=" .. tostring(gone) .. " partsLeft=" .. #kitItems(pInv, "fb_kits/part_"))
+	return "ok"
+end
+-- itemStats:<oid> → what the piece does (getItemStats, DirectorManager)
+function FbLabTests:itemStats(oid)
+	local pObj = getSceneObject(tonumber(oid) or 0)
+	if pObj == nil then print("ERROR no object " .. tostring(oid)); return "none" end
+	print("INFO itemStats oid=" .. tostring(oid) .. " path=" .. SceneObject(pObj):getTemplateObjectPath() .. " " .. getItemStats(pObj))
+	return "ok"
+end
+-- kitRoll:<char>:<level>:<humanoid 0/1>[:<socialGroup>[:force]] → the drop roll into the character's bag; force skips the dice
+function FbLabTests:kitRoll(charName, level, humanoid, social, force)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pInv = kitInventory(pPlayer)
+	local before = #kitItems(pInv, "fb_kits/")
+	local what = FbLootKits:roll(pInv, tonumber(level) or 0, humanoid == "1", social or "", force == "force")
+	print("INFO kitRoll level=" .. tostring(level) .. " humanoid=" .. tostring(humanoid) .. " social=" .. tostring(social or "") .. " " .. what .. " newKitItems=" .. (#kitItems(pInv, "fb_kits/") - before))
+	return "ok"
+end
+
+function FbLabTests.checkKits()
+	check("kits.loaded", FbLootKits ~= nil and FbLootKits.tiers ~= nil)
+	if FbLootKits == nil then return end
+	local function text(path) local f = io.open(path, "r"); if f == nil then return nil end; local t = f:read("a"); f:close(); return t end
+	local tpl = text("scripts/custom_scripts/object/tangible/fb_kits/fb_kits.lua") or ""
+	local items = text("scripts/custom_scripts/loot/items/fb_kits.lua") or ""
+	local kits, parts = 0, 0
+	for _ in tpl:gmatch("templateType = LOOTKIT") do kits = kits + 1 end
+	for _ in tpl:gmatch("SharedTangibleObjectTemplate:new") do parts = parts + 1 end
+	check("kits.templates", kits >= 70 and parts == 30, kits .. " kits, " .. parts .. " parts")
+	local missing = {}
+	for id in tpl:gmatch('collectibleLootReward = { "([%w_]+)" }') do if not items:find('addLootItemTemplate("' .. id .. '"', 1, true) then missing[#missing + 1] = id end end
+	check("kits.rewards_are_loot_items", #missing == 0, #missing == 0 and "every kit's reward exists" or ("missing: " .. table.concat(missing, ", ")))
+	for t = 1, 3 do
+		for _, s in ipairs(FbLootKits.sets[t]) do check("kits.group.fb_kits_" .. s .. "_" .. t, items:find('addLootGroupTemplate("fb_kits_' .. s .. '_' .. t .. '"', 1, true) ~= nil) end
+		check("kits.group.fb_kits_weapon_" .. t, items:find('addLootGroupTemplate("fb_kits_weapon_' .. t .. '"', 1, true) ~= nil)
+		check("kits.group.fb_kit_parts_" .. t, items:find('addLootGroupTemplate("fb_kit_parts_armor_' .. t .. '"', 1, true) ~= nil and items:find('addLootGroupTemplate("fb_kit_parts_weapon_' .. t .. '"', 1, true) ~= nil)
+	end
+	check("kits.hook", (text("scripts/custom_scripts/screenplays/fb_attunement.lua") or ""):find("FbLootKits:onKill", 1, true) ~= nil)
+	check("kits.binding", type(getItemStats) == "function", "getItemStats (DirectorManager)")
+	local stf = text("../../tre-src/string/en/fb_kits.stf.txt") or ""
+	local nameless = {}
+	for key in tpl:gmatch('objectName = "@fb_kits:([%w_]+)"') do if not stf:find("\n" .. key .. " = ", 1, true) then nameless[#nameless + 1] = key end end
+	check("kits.strings", #nameless == 0, #nameless == 0 and "every kit and part is named" or ("unnamed: " .. table.concat(nameless, ", "):sub(1, 200)))
+	check("kits.ladder", FbLootKits:tierFor(10) ~= nil and FbLootKits:tierFor(10).tier == 1 and FbLootKits:tierFor(40).tier == 2 and FbLootKits:tierFor(80).tier == 3 and FbLootKits:tierFor(2) == nil)
 end
 
 -- ---------------------------------------------------------------- Phase 4a.0: crystal formations

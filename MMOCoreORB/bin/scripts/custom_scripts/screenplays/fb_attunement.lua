@@ -398,6 +398,7 @@ function FbAttunement:onKill(pPlayer, pVictim)
 	if FbAlignment ~= nil then FbAlignment:onKill(pPlayer, pVictim) end   -- 4b.3: the score
 	if FbBounty ~= nil then FbBounty:maybe(pPlayer) end   -- 4c: a fight may bring the hunters
 	if FbCompanion ~= nil then FbCompanion:onKill(pPlayer, pVictim) end   -- 4b.5: the companion grows with the kills it sees
+	if FbLootKits ~= nil then FbLootKits:onKill(pPlayer, pVictim) end   -- 2.4: kit parts and kits fall from the kill
 	-- the fight may still be on: look again in 20 s
 	createEvent(20000, "FbAttunement", "maybeVisitLater", pPlayer, "")
 	return 0

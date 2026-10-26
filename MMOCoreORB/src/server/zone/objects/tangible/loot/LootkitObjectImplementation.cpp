@@ -12,6 +12,9 @@
 #include "server/zone/ZoneServer.h"
 #include "server/zone/ZoneProcessServer.h"
 #include "templates/tangible/LootkitObjectTemplate.h"
+#include "server/zone/managers/loot/LootManager.h"
+#include "server/zone/managers/loot/LootGroupMap.h"
+#include "server/zone/objects/transaction/TransactionLog.h"
 
 void LootkitObjectImplementation::fillAttributeList(AttributeListMessage* alm, CreatureObject* object) {
 	TangibleObjectImplementation::fillAttributeList(alm,object);
@@ -35,6 +38,7 @@ void LootkitObjectImplementation::loadTemplateData(SharedObjectTemplate* templat
 		return;
 
 	components = lootkitData->getComponents();
+	lootReward = lootkitData->getLootReward();
 	attributes = lootkitData->getAttributes();
 
 	comps = lootkitData->getComps();
@@ -110,7 +114,32 @@ void LootkitObjectImplementation::createItem() {
 
 		ZoneServer* zoneServer = server->getZoneServer();
 
-		ManagedReference<SceneObject*> rewardObject = zoneServer->createObject(reward.get(System::random(reward.size()-1)), 2);
+		ManagedReference<SceneObject*> rewardObject = nullptr;
+
+		if (lootReward.size() > 0) {
+			// Final Boss (Phase 2.4): a kit whose template names loot items gets its reward from the loot manager, so the
+			// piece carries the loot item's rolled stats (the stock path below makes a bare template: fine for rugs and gongs)
+			const String& name = lootReward.get(System::random(lootReward.size() - 1));
+			const LootItemTemplate* lootTemplate = LootGroupMap::instance()->getLootItemTemplate(name);
+
+			if (lootTemplate == nullptr) {
+				error() << "loot kit " << getObjectID() << ": no loot item template '" << name << "'";
+				return;
+			}
+
+			LootManager* lootManager = zoneServer->getLootManager();
+
+			if (lootManager == nullptr) {
+				return;
+			}
+
+			TransactionLog trx(TrxCode::LUALOOT, player);
+			trx.addState("lootKit", getObjectID());
+			// level 10: below the rank where the loot manager rolls exceptional or legendary modifiers; the tier is in the item
+			rewardObject = lootManager->createLootObject(trx, lootTemplate, 10, false);
+		} else if (reward.size() > 0) {
+			rewardObject = zoneServer->createObject(reward.get(System::random(reward.size()-1)), 2);
+		}
 
 		if (rewardObject == nullptr) {
 			return;
