@@ -154,6 +154,15 @@ lock_acquire() {
 		die "bench $(lock_describe). Try again later, SWG_WAIT=1 to wait, or 'swg unlock --force' if it is abandoned. (you are: $me)"
 	done
 }
+# a hold (pid 0) set by `bench use` expires after 90 min, shorter than a build + a full gate: a gate stretches its own hold,
+# or a waiter sees an expired lock as a free bench and stops the server under the running tests (2026-10-26)
+lock_stretch() {
+	local me; me=$(agent_name)
+	[ -f "$LOCKFILE" ] || return 0
+	[ "$(lock_field 1)" = "$me" ] && [ "$(lock_field 3)" = 0 ] || return 0
+	printf '%s|%s|%s|%s|%s\n' "$me" "$(lock_field 2)" 0 "$(lock_field 4)" "$(( $(date +%s) + ${1:-14400} ))" >"$LOCKFILE"
+}
+
 lock_release() { [ "${LOCK_MINE:-}" = auto ] && rm -f "$LOCKFILE"; LOCK_MINE=; }
 # run a command under the lock (nested swg calls from the same agent pass through)
 with_lock() {
@@ -807,6 +816,7 @@ cmd_test() {
 		scenario) test_scenario "$@" ;;
 		planner) test_planner ;;
 		all)
+			lock_stretch 14400
 			local rc=0
 			if is_running; then say "== all: stopping the running server for unit tests"; cmd_stop || exit 1; fi
 			test_unit || rc=1
@@ -1042,6 +1052,8 @@ cmd_bench2() {
 				git clone -q --recurse-submodules -b unstable "$main" "$BENCH2_ROOT" || die "clone failed"
 				git -C "$BENCH2_ROOT" remote rename origin local
 			fi
+			# the server writes resource_manager_spawns.lua at boot: the main bench keeps it skip-worktree, the clone must too
+			local sw; for sw in $(git -C "$main" ls-files -v | sed -n 's/^S //p'); do git -C "$BENCH2_ROOT" update-index --skip-worktree "$sw" 2>/dev/null; done
 			# 2. runtime: config, archive folder, the generated data the server would otherwise rebuild, gdb log dir
 			mkdir -p "$BENCH2_ROOT/MMOCoreORB/bin/conf" "$BENCH2_ROOT/MMOCoreORB/bin/log" "$BENCH2_TRE"
 			bench2_config_local

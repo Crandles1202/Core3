@@ -1477,3 +1477,8 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   `tools/scenarios/lib.sh` runs the instance's `core3client`; the bot's login port rides on `SWG_LOGIN_PORT` as before.
 - The seat-state hazard (one set of pid files for every instance) is alice's guard on `feature/alice`; bench chains must
   not run `crew`/`seat` for the live citizens.
+- **A hold lock outlives nothing by itself.** `bench use` holds the bench for 90 minutes; a build plus a full gate runs
+  longer, and my waiter read the expired lock as a free bench and stopped the main server under the loot-kits gate
+  (2026-10-26 14:12). `swg test all` now stretches its own hold to four hours (`lock_stretch`); `bench release` ends it.
+- A fresh clone of the repo is dirty the moment the server boots, because `resource_manager_spawns.lua` is written at boot
+  and only the main bench had it `skip-worktree`; `bench2 init` copies the main bench's skip-worktree list.
