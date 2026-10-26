@@ -1483,4 +1483,12 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   unless `--force`; `crew up` and `crew down` skip such a seat with "seat is up on LIVE, not touched"; `crew status` shows
   the instance per seat (`seat up (pid N, live)`). Proven from the bench view with both seats on live: down, stop and up
   all refused, the seats stayed up. Seats older than the file read as `bench`.
+- **A third instance is coming** (the other lane's `feature/bench2`: a second bench at `~/swg-bench2`, ports 46xxx, so neither
+  agent waits for the other's gate). The seat tools hard-coded "live or bench" and two ports, which would have sent a
+  `SWG_INSTANCE=bench2` seat (and every seat scenario of a bench2 gate) to the main bench's login port 44453 without a word.
+  Now one table in `tools/seat`, `tools/citizens/crew`, `tools/citizens/citizen` and `tools/scenarios/lib.sh`
+  (`INSTANCE_PORTS` / `login_port`): `bench` 44453, `live` 45453, `bench2` 46453; `SWG_LOGIN_PORT` still wins; an unknown
+  instance name dies instead of defaulting (a typo in `SWG_INSTANCE` must not reach the wrong server). The seat's
+  `instance` file carries the name as given, so the mismatch guard works for three servers unchanged. A new instance
+  is one row in each of the four places.
 

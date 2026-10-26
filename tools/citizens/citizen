@@ -47,6 +47,18 @@ def die(msg, code=1):
     sys.exit(code)
 
 
+# login port per server instance (SWG_INSTANCE): the bench, the live instance (+1000), the second bench (+2000);
+# an explicit SWG_LOGIN_PORT wins (same table as tools/seat and crew).
+INSTANCE_PORTS = {"bench": "44453", "live": "45453", "bench2": "46453"}
+
+
+def login_port():
+    inst = os.environ.get("SWG_INSTANCE", "").strip().lower() or "bench"
+    if inst not in INSTANCE_PORTS:
+        die(f"unknown SWG_INSTANCE '{inst}' (one of {', '.join(INSTANCE_PORTS)})")
+    return os.environ.get("SWG_LOGIN_PORT") or INSTANCE_PORTS[inst]
+
+
 def bench_bin():
     out = subprocess.run(["git", "-C", TOOLS, "worktree", "list", "--porcelain"], capture_output=True, text=True).stdout
     first = out.splitlines()[0] if out else ""
@@ -139,7 +151,7 @@ def cmd_new(args):
         env = dict(os.environ, CORE3_CLIENT_PASSWORD=open(passfile).read().strip())
         log = os.path.join(LABDIR, f"citizen-{citizen}.create.log")
         argv = [client, "--username", account, "--login-host", os.environ.get("SWG_LOGIN_HOST", "127.0.0.1"),
-                "--login-port", os.environ.get("SWG_LOGIN_PORT", "45453" if os.environ.get("SWG_INSTANCE") == "live" else "44453"),
+                "--login-port", login_port(),
                 "--create-character", "--char-name", f["name"], "--char-race", f["race"], "--char-profession", f["profession"],
                 "--wait", "3"]
         if f.get("hair"):
