@@ -3618,8 +3618,9 @@ function FbLabTests:kitParts(charName, class, tier)
 	if pPlayer == nil then return "offline" end
 	local pInv = kitInventory(pPlayer)
 	local kinds = class == "weapon" and { "mechanism", "cell", "barrel", "core", "sight" } or { "plating", "mesh", "fastener", "lining", "trim" }
+	local want = ({ 3, 4, 5 })[tonumber(tier) or 1] or 5   -- a tier's kit asks for the first 3 / 4 / 5 kinds
 	local n = 0
-	for _, k in ipairs(kinds) do if createLoot(pInv, "fb_part_" .. class .. "_" .. k .. "_" .. tier, 10, false) ~= nil then n = n + 1 end end
+	for i, k in ipairs(kinds) do if i <= want and createLoot(pInv, "fb_part_" .. class .. "_" .. k .. "_" .. tier, 10, false) ~= nil then n = n + 1 end end
 	print("INFO kitParts class=" .. class .. " tier=" .. tostring(tier) .. " made=" .. n .. " inBag=" .. #kitItems(pInv, "fb_kits/part_"))
 	return "ok"
 end
@@ -3634,8 +3635,20 @@ function FbLabTests:kitAssemble(charName, kitOid)
 	for _, pPart in ipairs(kitItems(pInv, "fb_kits/part_")) do
 		if SceneObject(pKit):transferObject(pPart, -1, true) then moved = moved + 1 end
 	end
-	local gone = getSceneObject(tonumber(kitOid)) == nil
+	local gone = #kitItems(pInv, "fb_kits/kit_") == 0   -- the finished kit destroys itself; a destroyed object may still resolve by id for a moment
 	print("INFO kitAssemble moved=" .. moved .. " kitGone=" .. tostring(gone) .. " partsLeft=" .. #kitItems(pInv, "fb_kits/part_"))
+	return "ok"
+end
+-- lootItem:<char>:<lootItemName> → that loot item made straight into the bag (the kit path aside) and its stats
+function FbLabTests:lootItem(charName, name)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pInv = kitInventory(pPlayer)
+	local before = SceneObject(pInv):getContainerObjectsSize()
+	createLoot(pInv, name, 10, false)
+	local pNew = SceneObject(pInv):getContainerObject(SceneObject(pInv):getContainerObjectsSize() - 1)
+	if SceneObject(pInv):getContainerObjectsSize() == before or pNew == nil then print("ERROR lootItem: nothing made for " .. tostring(name)); return "none" end
+	print("INFO lootItem name=" .. name .. " oid=" .. tostring(SceneObject(pNew):getObjectID()) .. " " .. getItemStats(pNew))
 	return "ok"
 end
 -- itemStats:<oid> → what the piece does (getItemStats, DirectorManager)

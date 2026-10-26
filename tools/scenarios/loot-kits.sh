@@ -31,7 +31,7 @@ kv() { sed -n "s/.*[[:space:]]$2=\([^[:space:]]*\).*/\1/p" <<<"$1" | head -n1; }
 assemble bone_chest_plate_1 armor 1 "armor/bone/armor_bone_s01_chest_plate"
 check "kit_consumed_its_parts" "$(grep -q 'kitGone=true' <<<"$A" && grep -q 'partsLeft=0' <<<"$A" && echo 1 || echo 0)" "$A"
 check "bone_chest_made" "$( [ -n "$REWARD" ] && echo 1 || echo 0 )" "$STATS"
-check "tier1_effectiveness_28_33" "$(within "$(kv "$STATS" kinetic)" 28 33 && within "$(kv "$STATS" energy)" 28 33 && echo 1 || echo 0)" "$STATS"
+check "tier1_effectiveness_28_33" "$(within "$(kv "$STATS" energy)" 28 33 && within "$(kv "$STATS" electricity)" 28 33 && echo 1 || echo 0)" "bone protects energy and electricity (the stock set is vulnerable to the rest); $STATS"
 check_eq "tier1_integrity" "$(kv "$STATS" maxCondition)" "15000"
 check_eq "bone_encumbrance_from_template" "$(kv "$STATS" encumbrance)" "56/22/4"
 
@@ -66,7 +66,7 @@ check "tusken_drops_matching_kit" "$(grep -q 'kit=fb_kits_\(bone\|padded\|weapon
 R=$(lab "kitRoll:$CHAR:40:1:stormtrooper:force")
 check "stormtrooper_drops_composite_or_weapon_2" "$(grep -q 'kit=fb_kits_\(composite\|weapon\)_2' <<<"$R" && echo 1 || echo 0)" "$R"
 R=$(lab "kitRoll:$CHAR:80:1:nightsister:force")
-check "level80_nightsister_tier3" "$(grep -q 'kit=fb_kits_\(composite_adv\|weapon\)_3' <<<"$R" && grep -q 'parts=fb_kit_parts_[a-z]*_3' <<<"$R" && echo 1 || echo 0)" "chitin has no tier III, so the tier's pool; $R"
+check "level80_nightsister_tier3" "$(grep -q 'kit=fb_kits_\(3\|weapon_3\)' <<<"$R" && grep -q 'parts=fb_kit_parts_[a-z]*_3' <<<"$R" && echo 1 || echo 0)" "chitin has no tier III, so the tier's whole pool; $R"
 R=$(lab "kitRoll:$CHAR:2:1:tusken_raider:force")
 check "below_the_first_band_nothing" "$(grep -q 'parts=-,kit=-' <<<"$R" && echo 1 || echo 0)" "$R"
 # the real path: the kill hook schedules the drop into the corpse

@@ -76,7 +76,8 @@ for t,sets in SETS.items():
             kid=f"{sid}_{pid}_{t}"; reward=f"fb_reward_{kid}"
             cv=[f'{{"armor_effectiveness", {a["lo"]}, {a["hi"]}, 0}}', f'{{"armor_integrity", {a["integ"]}, {a["integ"]}, 0}}',
                 f'{{"armor_health_encumbrance", {eh}, {eh}, 0}}', f'{{"armor_action_encumbrance", {ea}, {ea}, 0}}', f'{{"armor_mind_encumbrance", {em}, {em}, 0}}']
-            if special and a["special"]: cv.append(f'{{"{special}", {a["lo"]+a["special"]}, {a["hi"]+a["special"]}, 0}}')
+            # the set's special type shows base + this (ArmorObject::getTypeValue: specialProtection + the type's own value)
+            if special and a["special"]: cv.append(f'{{"{special}", {a["special"]}, {a["special"]}, 0}}')
             items.append(f'{reward} = {{ minimumLevel = 0, maximumLevel = -1, customObjectName = "", directObjectTemplate = "object/tangible/wearables/armor/{tpl(pid)}.iff", craftingValues = {{ {", ".join(cv)} }}, customizationStringNames = {{}}, customizationValues = {{}} }}')
             items.append(f'addLootItemTemplate("{reward}", {reward})')
             kit(kid, f"{slabel} {plabel}", "armor", t, reward)
