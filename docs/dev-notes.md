@@ -1468,7 +1468,7 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 
 - **Why**: the live instance took play and the citizens off the bench but not the gates; two agents still took turns at
   one test server, an hour per gate. Chuck's call: nobody waits for the other.
-- **Shape**: a full clone (`git clone --recurse-submodules -b unstable ~/workspace/Core3 ~/workspace/Core3-bench2`, remote
+- **Shape**: a full clone (`git clone --recurse-submodules -b unstable ~/workspace/Core3 ~/swg-bench2/Core3`, remote
   renamed `local`), because a worktree's `MMOCoreORB/build` is the main bench's tree and cannot build its own binary.
   `bench use <branch>` on bench2 fetches `local` first and resolves `local/<branch>`; `release` checks out `local/unstable`.
   Runtime and ports like the live instance (base 46000, `~/swg-bench2/tre`, `swgemu_bench2`), stamps `bench2.built/running`,

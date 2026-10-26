@@ -83,7 +83,7 @@ LIVE_PORT_BASE=${SWG_LIVE_PORT_BASE:-45000}
 # repo (remote "local"), its own database swgemu_bench2, ODB, logs, archive folder (~/swg-bench2/tre), ports 46xxx,
 # tmux session bench2 and lock. Everything a bench does works here (use / test / build / release); the gate stamp is
 # per commit and shared, and `bench merge` runs only from the main bench, whose checkout is the canonical unstable.
-BENCH2_ROOT=${SWG_BENCH2_ROOT:-$HOME/workspace/Core3-bench2}
+BENCH2_ROOT=${SWG_BENCH2_ROOT:-$HOME/swg-bench2/Core3}   # not under ~/workspace: an agent worktree of the same name lives there
 BENCH2_PORT_BASE=${SWG_BENCH2_PORT_BASE:-46000}
 BENCH2_TRE=${SWG_BENCH2_TRE:-$HOME/swg-bench2/tre}
 if [ "$INSTANCE" = bench2 ]; then
