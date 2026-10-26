@@ -31,6 +31,14 @@ def die(msg, code=1):
     sys.exit(code)
 
 
+def instance_line():
+    """Which server the seats talk to: the live instance (SWG_INSTANCE=live, login 45453) or the bench (44453);
+    an explicit SWG_LOGIN_PORT wins. A seat on the wrong server is otherwise invisible."""
+    inst = os.environ.get("SWG_INSTANCE", "").lower()
+    port = os.environ.get("SWG_LOGIN_PORT") or ("45453" if inst == "live" else "44453")
+    return f"instance {'LIVE' if inst == 'live' else 'bench'}  login port {port}"
+
+
 def directory():
     try:
         return json.load(open(DIRECTORY))
@@ -96,6 +104,7 @@ def opt(args, flag, default=None):
 
 def cmd_up(args):
     dirmap = directory()
+    print(f"crew: {instance_line()}", flush=True)
     names = pick(args, dirmap)
     idle = opt(args, "--idle", "300")
     model = opt(args, "--model")
@@ -154,6 +163,7 @@ def cmd_down(args):
 
 def cmd_status(args):
     dirmap = directory()
+    print(f"crew: {instance_line()}")
     for name in sorted(dirmap):
         c = dirmap[name]
         if not c.get("character"):
