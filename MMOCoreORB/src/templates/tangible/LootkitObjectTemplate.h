@@ -19,6 +19,7 @@ protected:
 	Vector<uint32> reward;
 
 	bool deleteComponents;
+	Vector<String> lootReward;   // Final Boss: loot item names; the reward is made by the loot manager with rolled stats
 
 
 public:
@@ -59,6 +60,13 @@ public:
 		}
 		rewards.pop();
 
+		lootReward.removeAll();
+		LuaObject lootRewards = templateData->getObjectField("collectibleLootReward");
+		for (int i = 1; i <= lootRewards.getTableSize(); ++i) {
+			lootReward.add(lootRewards.getStringAt(i));
+		}
+		lootRewards.pop();
+
 	}
 
 	VectorMap<uint32, bool> getComponents() const {
@@ -75,6 +83,10 @@ public:
 
 	Vector<uint32> getReward() const {
 		return reward;
+	}
+
+	const Vector<String>& getLootReward() const {
+		return lootReward;
 	}
 
 	bool getDeleteComponents() const {
