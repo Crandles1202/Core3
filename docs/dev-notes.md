@@ -1490,3 +1490,4 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 - A kit refuses anything that is not one of its parts (`LootkitObject::canAddObject` → `@loot_kit:incorrect_item`), but the
   Lua `SceneObject:transferObject` skips `canAddObject`: the lab can push a wrong part into a kit that the client could not.
   The scenario therefore checks only that wrong parts do not finish a kit.
+- A loot group's weights must sum to exactly 10 000 000 (`LuaLootGroupsTest`): the generator gives the last entry the remainder.

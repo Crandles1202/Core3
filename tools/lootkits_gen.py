@@ -120,8 +120,9 @@ for t in (1,2,3):
     groups[f"fb_kits_{t}"]=[k for name,ks in groups.items() if name.startswith("fb_kits_") and name.endswith(f"_{t}") and name!=f"fb_kits_{t}" for k in ks]
 items.append("")
 for name,ks in groups.items():
-    wgt=10000000//len(ks)
-    items.append(f"{name} = {{ description = \"\", minimumLevel = 0, maximumLevel = 0, lootItems = {{ " + ", ".join(f'{{itemTemplate = "{k}", weight = {wgt}}}' for k in ks) + " } }")
+    # the unit test (LuaLootGroupsTest) wants the weights of a group to sum to exactly 10 000 000: the last entry takes the remainder
+    wgt=10000000//len(ks); last=10000000-wgt*(len(ks)-1)
+    items.append(f"{name} = {{ description = \"\", minimumLevel = 0, maximumLevel = 0, lootItems = {{ " + ", ".join(f'{{itemTemplate = "{k}", weight = {wgt if i < len(ks)-1 else last}}}' for i,k in enumerate(ks)) + " } }")
     items.append(f'addLootGroupTemplate("{name}", {name})')
 os.makedirs("MMOCoreORB/bin/scripts/custom_scripts/object/tangible/fb_kits", exist_ok=True)
 open("tre-src/string/en/fb_kits.stf.txt","w").write("\n".join(strings)+"\n")
