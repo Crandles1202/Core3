@@ -556,7 +556,7 @@ def cmd_start(args):
     env["CORE3_CLIENT_PASSWORD"] = open(passfile).read().strip()
     argv = [client, "--username", user,
             "--login-host", os.environ.get("SWG_LOGIN_HOST", "127.0.0.1"),
-            "--login-port", os.environ.get("SWG_LOGIN_PORT", "44453"),
+            "--login-port", os.environ.get("SWG_LOGIN_PORT", "45453" if os.environ.get("SWG_INSTANCE") == "live" else "44453"),
             "--character-firstname", char,
             "--seat", sp, "--seat-timeout", str(timeout)]
     proc = subprocess.Popen(argv, cwd=BIN, env=env, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
