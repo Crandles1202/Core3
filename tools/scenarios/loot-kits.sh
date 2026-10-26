@@ -49,7 +49,7 @@ check "tier3_kinetic_special_plus_15" "$(python3 -c "import sys; sys.exit(0 if a
 check_eq "new_piece_unworn" "$(kv "$STATS" conditionDamage)" "0"
 check_eq "tier3_integrity" "$(kv "$STATS" maxCondition)" "35000"
 check "tier3_needs_five_parts" "$(grep -q 'moved=5' <<<"$A" && echo 1 || echo 0)" "$A"
-check "kit_short_of_parts_waits" "$(lab "kitGive:$CHAR:padded_boots_1" >/dev/null; K2=$(lab "findItem:$CHAR:fb_kits/kit_padded_boots_1.iff" | sed -n 's/.*oid=\([0-9]*\).*/\1/p' | tail -n1); lab "kitParts:$CHAR:weapon:1" >/dev/null; lab "kitAssemble:$CHAR:$K2" | grep -q 'moved=0.*kitGone=false' && echo 1 || echo 0)" "weapon parts do not fit an armor kit"
+check "kit_short_of_parts_waits" "$(lab "kitGive:$CHAR:padded_boots_1" >/dev/null; K2=$(lab "findItem:$CHAR:fb_kits/kit_padded_boots_1.iff" | sed -n 's/.*oid=\([0-9]*\).*/\1/p' | tail -n1); lab "kitParts:$CHAR:weapon:1" >/dev/null; lab "kitAssemble:$CHAR:$K2" | grep -q 'kitGone=false' && echo 1 || echo 0)" "weapon parts do not finish an armor kit (the lab's transfer skips canAddObject, which refuses them with @loot_kit:incorrect_item in play)"
 lab "takeItems:$CHAR:fb_kits/" >/dev/null
 
 # --- C: a tier II DL44 ---------------------------------------------------------------------------------------------------

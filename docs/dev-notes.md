@@ -1487,3 +1487,6 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   set's bonus), `armor_special_type` the exact bits, `armor_special_effectiveness` the base band; a vulnerable type (the
   stock piece's `vulnerability = …`) shows nothing whatever the keys say (`getTypeValue` checks vulnerability first). The
   generator parses each piece's vulnerability. Loot items get random condition damage unless `maxCondition`; a kit's piece is new.
+- A kit refuses anything that is not one of its parts (`LootkitObject::canAddObject` → `@loot_kit:incorrect_item`), but the
+  Lua `SceneObject:transferObject` skips `canAddObject`: the lab can push a wrong part into a kit that the client could not.
+  The scenario therefore checks only that wrong parts do not finish a kit.
