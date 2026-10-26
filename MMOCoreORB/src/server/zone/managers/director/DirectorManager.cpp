@@ -5012,8 +5012,13 @@ int DirectorManager::getItemStats(lua_State* L) {
 		ArmorObject* a = cast<ArmorObject*>(obj);
 		s << "armor kinetic=" << a->getKinetic() << " energy=" << a->getEnergy() << " blast=" << a->getBlast() << " stun=" << a->getStun()
 		  << " heat=" << a->getHeat() << " cold=" << a->getCold() << " acid=" << a->getAcid() << " electricity=" << a->getElectricity()
-		  << " rating=" << a->getRating() << " maxCondition=" << a->getMaxCondition()
+		  << " rating=" << a->getRating() << " maxCondition=" << a->getMaxCondition() << " conditionDamage=" << a->getConditionDamage()
 		  << " encumbrance=" << a->getHealthEncumbrance() << "/" << a->getActionEncumbrance() << "/" << a->getMindEncumbrance();
+		// which types the piece treats as special or vulnerable (the ladder's numbers depend on it)
+		s << " special=";
+		for (int i = 0; i <= 8; ++i) { int t = 1 << i; if (a->isSpecial(t)) s << t << ","; }
+		s << " vulnerable=";
+		for (int i = 0; i <= 8; ++i) { int t = 1 << i; if (a->isVulnerable(t)) s << t << ","; }
 	} else if (obj->isWeaponObject()) {
 		WeaponObject* w = cast<WeaponObject*>(obj);
 		s << "weapon min=" << w->getMinDamage(false) << " max=" << w->getMaxDamage(false) << " speed=" << w->getAttackSpeed(false) << " maxCondition=" << w->getMaxCondition();
