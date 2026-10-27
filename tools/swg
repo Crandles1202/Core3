@@ -1170,8 +1170,9 @@ live_pre_deploy_snapshot() {
 	local name; name="pre-deploy-$(date +%Y%m%d-%H%M)"
 	say "snapshot of the live data before the deploy: $name"
 	SWG_INSTANCE=live "$0" snap save "$name" --force >/dev/null || die "pre-deploy snapshot failed (nothing deployed; swg --live snap save by hand to see why)"
-	say "   $(du -sh "$SNAPDIR/$name" | cut -f1) in $SNAPDIR/$name  (swg --live snap load $name --yes rolls back)"
-	local d; for d in $(ls -1d "$SNAPDIR"/pre-deploy-*/ 2>/dev/null | sort | head -n -3); do rm -rf "$d"; say "   pruned $(basename "$d")"; done
+	local sdir=${SWG_SNAPDIR:-$HOME/swg-snapshots/live}   # the live instance keeps its snapshots apart from the bench's
+	say "   $(du -sh "$sdir/$name" | cut -f1) in $sdir/$name  (swg --live snap load $name --yes rolls back)"
+	local d; for d in $(ls -1d "$sdir"/pre-deploy-*/ 2>/dev/null | sort | head -n -3); do rm -rf "$d"; say "   pruned $(basename "$d")"; done
 }
 
 # live_run_hooks pre|post <tag> <rev>: the executable files of tools/live-hooks/<phase>/ in name order (tools/live-hooks/README.md)
