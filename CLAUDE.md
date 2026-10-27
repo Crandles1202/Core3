@@ -346,7 +346,10 @@ Persisted object fields (`containerVolumeLimit`, …) are only read from the tem
   lab lines. Always run the worktree's `tools/swg` (CLAUDE.md's `tools/swg …` means that one). **And which server you talk to is `SWG_INSTANCE`:** seat and pilot state is shared by the bench and the live instance, so `crew`/`seat` record the instance per seat and refuse to touch a seat of the other one (a bench-side `crew down` logged two live citizens out on 2026-10-26); every command for a live citizen needs `SWG_INSTANCE=live`. The instance names and login ports are one table in `tools/seat`, `crew`, `citizen` and `scenarios/lib.sh` (`bench` 44453, `live` 45453, `bench2` 46453; `SWG_LOGIN_PORT` wins, an unknown name is refused), so a seat scenario on the second bench runs under `SWG_INSTANCE=bench2` with no port flag.
 - **Wild creatures spawn only around a player who moves** (`SpawnArea::notifyPositionUpdate` → `tryToSpawn`, lairs near the
   player, never inside a city's no-spawn circle): an oracle count at a quiet spot says nothing about the hunting there — walk
-  a bot through it first. The **bench kills idle citizens**: every gate's `sandstorm` scenario sends Tusken raiders over Mos
+  a bot through it first. A **zone switch counts as a move**: the visions scenario came home from the vision plane into a
+  fresh scyk lair on its own spot and the trigger refused a fighting character (two gates 2026-10-26); lab
+  `clearWild:<planet>:<x>:<y>[:radius]` removes wild lairs and creatures (never players, pets or lab spawns) around a
+  scenario spot — call it before a check that needs the character out of combat. The **bench kills idle citizens**: every gate's `sandstorm` scenario sends Tusken raiders over Mos
   Eisley's east outskirts (Teyla died there 2026-10-22); a dead character gets the revive window on login and the pilot's
   `clone` tool answers it. The `story-ticker` scenario fires the weekly story in every gate too: five level-19 Tusken
   raiders camp at 3985,−4770 for a week after each bench run (`FbLabTests:story` says where) — a hunting ground is

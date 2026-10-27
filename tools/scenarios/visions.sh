@@ -39,8 +39,10 @@ check "client_got_enter_and_fade" "$(grep -aq 'fb_force:vision_enter' "$BOTLOG" 
 sleep 8
 bot_bg --wait 90
 wait_online || die "$CHAR never came back online"
+lab "clearWild:tatooine:4100:-4700:80" >/dev/null           # the trip home is a position update: the world may have rolled a lair onto the spot
 lab "attunementAccept:$CHAR" >/dev/null                      # called → the 'calling' vision is due (the shortcut marks all seen)
 lab "visionsReset:$CHAR" >/dev/null
+sleep 2                                                      # a scyk's last swing: out of combat before the trigger
 check_eq "calling_due" "$(lab_kv "visions:$CHAR" due)" "calling" "$(lab "visions:$CHAR")"
 T=$(lab "trialTick:$CHAR")                                   # the attunement trigger
 check "trigger_begins_the_vision" "$(grep -q 'sent=true' <<<"$T" && lab "visions:$CHAR" | grep -q 'active=calling' && echo 1 || echo 0)" "$T; $(lab "visions:$CHAR")"

@@ -1552,3 +1552,7 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   the stamp), stops live, `snap save pre-deploy-<stamp>` (needs the instance stopped, keeps three), syncs, starts, releases
   the bench. `tools/backup-nightly` replaces Chuck's `~/bin/swg-backup-daily.sh` (which carried a password fallback in the
   file; the new one reads `~/.my.cnf`) and adds the live ODB with `rsync --link-dest`. First tag `chuck-stable-20261026`.
+- **Visions flake, found (2026-10-26).** Two gates red on `visions.trigger_begins_the_vision`; `trialTickWhy` said `combat=true`.
+  `objectsNear` at 4100,-4700 showed three scyks on the character and a lair 35 m away, with oids right after the vision
+  figures': the trip home from dungeon1 is a position update and the spawn area rolled a lair there. Lab `clearWild` before
+  the part-B trigger; the same can hit any scenario that teleports a character and then needs it out of combat.
