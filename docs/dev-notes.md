@@ -1501,6 +1501,13 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   because the newest character then existed on both). `db_name()` in lib.sh now follows `SWG_DBNAME`, else `SWG_INSTANCE`
   (`swgemu`, `swgemu_live`, `swgemu_bench2`), the same shape as `login_port()`. Rule for every tool: nothing names
   `swgemu` or `44453` directly; the instance table decides.
+- **Gate of the merged `unstable` f7eb41bb79 on bench2** (rollout + alice together, never run as one before): PASS, 60/60,
+  two retries. `seat-fight.objectsNear_level` scanned 5 m around the raider's spawn point and the aggressive raider had
+  already walked off it (the threat row a second earlier had it 1.6 m away); the scan radius is 40 m now. `bounty.hunter_closes_in`
+  found the level-1 character already incapacitated by the thug when it polled (the check wants combat=true and standing):
+  a race the scenario loses when the thug lands its first shots fast; left as is, it is the retry's kind of flake. The
+  earlier `bounty` flake today was different (the fixer's first conversation in the cantina timed out) — the indoor
+  first-converse flake is now on three gates; still unexplained.
 
 
 

@@ -55,7 +55,7 @@ check "threats_strength" "$( [ "${STRENGTH:-0}" -ge 1 ] && echo 1 || echo 0 )" "
 ROW=$(grep -a '^INFO threat ' <<<"$TH" | grep -a "oid=$RAIDER" | head -n1)
 check "raider_is_a_threat" "$( grep -q 'aggressive=true' <<<"$ROW" && echo 1 || echo 0 )" "${ROW:-no threat row for the raider}"
 check "threat_level_read" "$( grep -q 'level=19' <<<"$ROW" && echo 1 || echo 0 )" "$(grep -o 'level=[0-9]*' <<<"$ROW")"
-LVL=$(lab "objectsNear:tatooine:$X0:$((Y0 + 110)):5:1025" 8 | grep -a "oid=$RAIDER" | grep -o 'level=[0-9]*' | head -n1)
+LVL=$(lab "objectsNear:tatooine:$X0:$((Y0 + 110)):40:1025" 8 | grep -a "oid=$RAIDER" | grep -o 'level=[0-9]*' | head -n1)
 check_eq "objectsNear_level" "${LVL:-none}" "level=19" "the object scan carries the level the pilot picks prey by"
 cleanup   # the creature too: a leftover level-10 rat at the shared desert spot kills the next scenario's character
 trap - EXIT
