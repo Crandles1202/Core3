@@ -126,12 +126,12 @@ function FbConvoys:routeFor(city)
 	if path == nil or #path < 2 then return nil end
 	local route, lx, ly = { { cfg.from[1], 0, cfg.from[2] } }, cfg.from[1], cfg.from[2]
 	for i = 2, #path do
-		local p = path[i]
-		if (p.cell or 0) == 0 then
-			local dx, dy = p.x - lx, p.y - ly
+		local p = path[i]   -- { x, z, y, cell }
+		if (p[4] or 0) == 0 then
+			local dx, dy = p[1] - lx, p[3] - ly
 			if i == #path or dx * dx + dy * dy >= self.legMetres * self.legMetres then
-				route[#route + 1] = { p.x, 0, p.y }
-				lx, ly = p.x, p.y
+				route[#route + 1] = { p[1], 0, p[3] }
+				lx, ly = p[1], p[3]
 			end
 		end
 	end

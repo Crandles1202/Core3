@@ -2644,13 +2644,13 @@ function FbLabTests:pathBetween(planet, x1, y1, x2, y2)
 	local path = findPath(planet, x1, y1, x2, y2)
 	if path == nil or #path == 0 then print(string.format("INFO path planet=%s points=0", planet)); return "0" end
 	local outdoor, length, lx, ly = 0, 0, x1, y1
-	for _, pt in ipairs(path) do
-		if (pt.cell or 0) == 0 then outdoor = outdoor + 1 end
-		length = length + math.sqrt((pt.x - lx) ^ 2 + (pt.y - ly) ^ 2); lx, ly = pt.x, pt.y
+	for _, pt in ipairs(path) do   -- rows are { x, z, y, cell }
+		if (pt[4] or 0) == 0 then outdoor = outdoor + 1 end
+		length = length + math.sqrt((pt[1] - lx) ^ 2 + (pt[3] - ly) ^ 2); lx, ly = pt[1], pt[3]
 	end
 	local last = path[#path]
-	local short = math.sqrt((last.x - x2) ^ 2 + (last.y - y2) ^ 2)
-	print(string.format("INFO path planet=%s points=%d outdoor=%d length=%.0f endX=%.0f endY=%.0f short=%.0f", planet, #path, outdoor, length, last.x, last.y, short))
+	local short = math.sqrt((last[1] - x2) ^ 2 + (last[3] - y2) ^ 2)
+	print(string.format("INFO path planet=%s points=%d outdoor=%d length=%.0f endX=%.0f endY=%.0f short=%.0f", planet, #path, outdoor, length, last[1], last[3], short))
 	return tostring(#path)
 end
 
