@@ -1491,6 +1491,16 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   instance name dies instead of defaulting (a typo in `SWG_INSTANCE` must not reach the wrong server). The seat's
   `instance` file carries the name as given, so the mismatch guard works for three servers unchanged. A new instance
   is one row in each of the four places.
+- **Lua 5.3 `%d` refuses a float**: `bazaarNear` printed `distance=%d` from `math.sqrt` and `string.format` threw
+  `bad argument #13 to 'format' (number has no integer representation)` — three ERROR lines in every gate, found by the
+  other lane in `logs --errors`, nothing failed on it (the scenario reads the return value). `%.0f` for anything computed;
+  `%d` only for oids, counts and cell numbers that are integers by construction.
+- **A bench2 gate's scenarios logged in as ghosts.** `scenarios/lib.sh` picked the bot's character with `mysql swgemu` —
+  the *main* bench's database — so on bench2 (a copy as of 14:12) it chose a character the main bench's gates created
+  since, and 47 scenarios died with "never came online" / client exit 105 (the first bench2 gate of the day passed only
+  because the newest character then existed on both). `db_name()` in lib.sh now follows `SWG_DBNAME`, else `SWG_INSTANCE`
+  (`swgemu`, `swgemu_live`, `swgemu_bench2`), the same shape as `login_port()`. Rule for every tool: nothing names
+  `swgemu` or `44453` directly; the instance table decides.
 
 
 

@@ -959,11 +959,11 @@ function FbLabTests:bazaarNear(charName, radius)
 	for _, o in ipairs(objects) do o.distance = math.sqrt((o.x - px) ^ 2 + (o.y - py) ^ 2) end
 	table.sort(objects, function(a, b) return a.distance < b.distance end)
 	for _, o in ipairs(objects) do
-		print(string.format("INFO bazaar oid=%d name=%s x=%.1f y=%.1f z=%.1f cell=%d cellName=%s building=%d localX=%.2f localY=%.2f localZ=%.2f distance=%d",
+		print(string.format("INFO bazaar oid=%d name=%s x=%.1f y=%.1f z=%.1f cell=%d cellName=%s building=%d localX=%.2f localY=%.2f localZ=%.2f distance=%.0f",
 			o.oid, (o.name ~= "" and o.name or "bazaar_terminal"):gsub("%s", "_"), o.x, o.y, o.z, o.cell, o.cellName ~= "" and o.cellName or "-", o.building,
 			o.localX or 0, o.localY or 0, o.localZ or 0, o.distance))
 	end
-	print(string.format("INFO bazaars char=%s zone=%s radius=%d count=%d", charName, zone, radius, #objects))
+	print(string.format("INFO bazaars char=%s zone=%s radius=%.0f count=%d", charName, zone, radius, #objects))
 	return tostring(#objects)
 end
 
