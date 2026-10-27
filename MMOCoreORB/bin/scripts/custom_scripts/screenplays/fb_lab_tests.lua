@@ -2245,8 +2245,24 @@ function FbLabTests:spawnNpcAt(template, planet, x, y, cell, z)
 		FbLabTests.spawns[template] = list
 		FbLabTests.registryAdd(list[#list])
 	end
-	print(string.format("INFO spawnNpcAt oid=%d template=%s planet=%s x=%.1f y=%.1f z=%.1f cell=%d", oid, template, planet, x, y, z, cell))
+	-- read the object back by its id: two gates (2026-10-27) saw a console spawn report the id of a cantina patron
+	-- churned on another thread, and the scenario then destroyed the patron. Until that is understood, a mismatch is an error.
+	local pBack = getSceneObject(oid)
+	local backTemplate = pBack ~= nil and SceneObject(pBack):getObjectName() or "-"
+	local backX = pBack ~= nil and SceneObject(pBack):getWorldPositionX() or 0
+	print(string.format("INFO spawnNpcAt oid=%d template=%s planet=%s x=%.1f y=%.1f z=%.1f cell=%d back=%s backX=%.1f", oid, template, planet, x, y, z, cell, tostring(backTemplate):gsub("%s", "_"), backX))
+	if pBack ~= pMobile then print("ERROR spawnNpcAt: the object at that id is not the one just spawned"); return "none" end
 	return tostring(oid)
+end
+
+-- oidInfo:<oid> → what object an id resolves to (template, name, position, cell, zone)
+function FbLabTests:oidInfo(oid)
+	local p = getSceneObject(tonumber(oid))
+	if p == nil then print("INFO oid=" .. tostring(oid) .. " none=1"); return "none" end
+	print(string.format("INFO oid=%s template=%s name=%s zone=%s x=%.1f y=%.1f z=%.1f cell=%d", tostring(oid), SceneObject(p):getTemplateObjectPath(),
+		tostring(SceneObject(p):getObjectName()):gsub("%s", "_"), SceneObject(p):getZoneName(), SceneObject(p):getWorldPositionX(), SceneObject(p):getWorldPositionY(),
+		SceneObject(p):getWorldPositionZ(), SceneObject(p):getParentID()))
+	return "ok"
 end
 
 -- Lab check: no placed Final Boss NPC is boxed into geometry, floating, or has wandered off (one

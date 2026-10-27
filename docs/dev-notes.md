@@ -1569,3 +1569,8 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   use their stock outdoor spawn spots as the in-town loop; three outposts have neither. All three cantina shells share one floor
   plan but two furniture files, so two seat presets cover seventeen cantinas. `getWaterHeightAt` reads 0 where there is no
   water body, so "land" is terrain above the water height, and a Dathomir hollow at −22 m counts as water: the ring skips it.
+- **Console output bleeds between consecutive `lab` calls** (gate 2026-10-27, twice): `npc-placement` ran the full audit (380 spawns,
+  hundreds of INFO lines, the ambient seats last) and then `spawnNpcAt`; the scenario took "the first `oid=` in the next
+  capture" and got the *last seat line of the audit* (Vreni Island seat 4, then Wayfar seat 2), so it audited and destroyed a
+  cantina patron. Parse the exact INFO prefix you asked for (`INFO spawnNpcAt oid=`), never the first `oid=`; `spawnNpcAt`
+  now reads its object back and `oidInfo:<oid>` says what an id is before anything is destroyed.
