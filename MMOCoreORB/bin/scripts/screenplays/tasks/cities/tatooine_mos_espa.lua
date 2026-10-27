@@ -12,7 +12,7 @@ FbCities:add {
 		rebel    = { leader = "rebel_commando", troops = { "rebel_trooper", "rebel_trooper" } },
 	},
 	patrols = {   -- 3.2: one squad per faction; the holder walks a stock in-town loop, the other side a loop outside the walls
-		imperial = { points = { { -2922, 5, 2144 }, { -2912, 5, 2157 }, { -2856, 5, 2154 }, { -2902, 5, 2148 }, { -2922, 5, 2111 } } },   -- the stock walking loop cll8_1 of cities/tatooine_mos_espa.lua
+		imperial = { points = { { -2922, nil, 2144 }, { -2912, nil, 2157 }, { -2856, nil, 2154 }, { -2902, nil, 2148 }, { -2922, nil, 2111 } } },   -- the stock walking loop cll8_1 of cities/tatooine_mos_espa.lua (height from the terrain)
 		rebel = { points = { { -3494, nil, 2618 }, { -3261, nil, 2812 }, { -2968, nil, 2889 }, { -2670, nil, 2836 } } },   -- open ground 700 m out, bearing 308° (north-west), land-checked
 	},
 	relays = {   -- 3.10: HoloNet relay droids

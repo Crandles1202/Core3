@@ -12,7 +12,7 @@ FbCities:add {
 		rebel    = { leader = "rebel_commando", troops = { "rebel_trooper", "rebel_trooper" } },
 	},
 	patrols = {   -- 3.2: one squad per faction; the holder walks a stock in-town loop, the other side a loop outside the walls
-		imperial = { points = { { 1565, 7, 3111 }, { 1515, 7, 3109 }, { 1493, 7, 3094 }, { 1452, 7, 3093 }, { 1493, 7, 3094 }, { 1515, 7, 3109 } } },   -- the stock walking loop r4_1 of cities/tatooine_mos_entha.lua
+		imperial = { points = { { 1565, nil, 3111 }, { 1515, nil, 3109 }, { 1493, nil, 3094 }, { 1452, nil, 3093 }, { 1493, nil, 3094 }, { 1515, nil, 3109 } } },   -- the stock walking loop r4_1 of cities/tatooine_mos_entha.lua (height from the terrain)
 		rebel = { points = { { 1961, nil, 3663 }, { 2089, nil, 3425 }, { 2104, nil, 3155 }, { 2003, nil, 2904 } } },   -- open ground 624 m out, bearing 49° (north-east), land-checked
 	},
 	convoy = { from = { 1308, 3101 }, to = { 1565, 3111 } },   -- 3.11: navmesh route from 55 m off the pad -> plaza (262 m, 38 path points, ends 0 m short)

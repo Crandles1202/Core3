@@ -687,6 +687,7 @@ function FbLabTests.checkWeatherEvents()
 			check("weather." .. planet .. ".party_" .. party.key .. "_on_terrain", getTerrainHeightAt(planet, party.spawn[1], party.spawn[2]) ~= 0 and getTerrainHeightAt(planet, party.rally[1], party.rally[2]) ~= 0)
 		end
 		local pw = getZoneWeather(planet)
+		pcall(function() FbWeatherEvents:tick(planet) end)   -- the first minute tick may not have fired yet after a boot
 		local st = FbWeatherEvents:status(planet)
 		local active = st:find("active=1", 1, true) ~= nil
 		local between = pw > (cfg.clearAt or 1) and pw < (cfg.stormAt or 3)

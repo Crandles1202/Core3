@@ -12,7 +12,7 @@ FbCities:add {
 		rebel    = { leader = "rebel_commando", troops = { "specforce_marine", "specforce_marine" } },
 	},
 	patrols = {   -- 3.2: one squad per faction; the holder walks a stock in-town loop, the other side a loop outside the walls
-		imperial = { points = { { -147, 28, -4775 }, { -139, 28, -4751 }, { -164, 28, -4729 }, { -145, 28, -4691 }, { -105, 28, -4665 }, { -77, 28, -4637 }, { -105, 28, -4665 }, { -145, 28, -4691 } } },   -- the stock walking loop cll8_1 of cities/corellia_coronet.lua
+		imperial = { points = { { -147, nil, -4775 }, { -139, nil, -4751 }, { -164, nil, -4729 }, { -145, nil, -4691 }, { -105, nil, -4665 }, { -77, nil, -4637 }, { -105, nil, -4665 }, { -145, nil, -4691 } } },   -- the stock walking loop cll8_1 of cities/corellia_coronet.lua (height from the terrain)
 		rebel = { points = { { -509, nil, -3887 }, { -217, nil, -3805 }, { 82, nil, -3854 }, { 332, nil, -4025 } } },   -- open ground 700 m out, bearing 332° (north-west), land-checked
 	},
 	convoy = { from = { -105, -4641 }, to = { -147, -4775 } },   -- 3.11: navmesh route from 80 m off the pad -> stock loop cll8_1 point (144 m, 19 path points, ends 0 m short)

@@ -12,7 +12,7 @@ FbCities:add {
 		rebel    = { leader = "rebel_commando", troops = { "specforce_marine", "specforce_marine" } },
 	},
 	patrols = {   -- 3.2: one squad per faction; the holder walks a stock in-town loop, the other side a loop outside the walls
-		rebel = { points = { { -5696, 14.6, -6154 }, { -5693, 14.6, -6163 }, { -5688, 14.6, -6180 }, { -5673, 14.6, -6180 }, { -5688, 14.6, -6180 } } },   -- the stock walking loop cll8_1 of cities/corellia_vreni_island.lua
+		rebel = { points = { { -5696, nil, -6154 }, { -5693, nil, -6163 }, { -5688, nil, -6180 }, { -5673, nil, -6180 }, { -5688, nil, -6180 } } },   -- the stock walking loop cll8_1 of cities/corellia_vreni_island.lua (height from the terrain)
 		imperial = { points = { { -5349, nil, -6599 }, { -5498, nil, -6621 }, { -5644, nil, -6577 }, { -5756, nil, -6476 } } },   -- open ground 350 m out, bearing 159° (south), land-checked
 	},
 	relays = {   -- 3.10: HoloNet relay droids

@@ -12,7 +12,7 @@ FbCities:add {
 		rebel    = { leader = "rebel_resistance_leader", troops = { "rebel_gungan_bomber", "rebel_trooper" } },
 	},
 	patrols = {   -- 3.2: one squad per faction; the holder walks a stock in-town loop, the other side a loop outside the walls
-		rebel = { points = { { 4795, 4, -4722 }, { 4770, 4, -4731 }, { 4759, 4, -4750 }, { 4751, 4, -4730 } } },   -- the stock walking loop npc_1 of cities/naboo_moenia.lua
+		rebel = { points = { { 4795, nil, -4722 }, { 4770, nil, -4731 }, { 4759, nil, -4750 }, { 4751, nil, -4730 } } },   -- the stock walking loop npc_1 of cities/naboo_moenia.lua (height from the terrain)
 		imperial = { points = { { 4265, nil, -4811 }, { 4303, nil, -4582 }, { 4435, nil, -4391 }, { 4635, nil, -4274 } } },   -- open ground 536 m out, bearing 267° (west), land-checked
 	},
 	relays = {   -- 3.10: HoloNet relay droids

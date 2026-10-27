@@ -6,16 +6,16 @@ FbCities:add {
 	lean = 80,   -- 3.4: default Imperial %
 	centre = { -2171, 2296 }, radius = 240,   -- the stock city region talus_imperial_outpost
 	starport = { -2227, 2320 },   -- travel point "Talus Imperial Outpost"
-	plaza = { -2171, 2296 },   -- the city centre
+	plaza = { -2192, 2269 },   -- a stock outdoor spawn spot in town
 	factions = {
 		imperial = { leader = "stormtrooper_squad_leader", troops = { "stormtrooper", "stormtrooper" } },
 		rebel    = { leader = "rebel_commando", troops = { "rebel_trooper", "rebel_trooper" } },
 	},
 	patrols = {   -- 3.2: one squad per faction; the holder walks a stock in-town loop, the other side a loop outside the walls
+		imperial = { points = { { -2192, nil, 2269 }, { -2168, nil, 2411 }, { -2195, nil, 2345 }, { -2170, nil, 2308 } } },   -- stock outdoor spawn spots of cities/talus_imperial_outpost.lua (no walking loop there; height from the terrain)
 		rebel = { points = { { -1935, nil, 1986 }, { -2089, nil, 1915 }, { -2257, nil, 1916 }, { -2410, nil, 1988 } } },   -- open ground 390 m out, bearing 143° (south-east), land-checked
 	},
 	relays = {   -- 3.10: HoloNet relay droids
 		{ key = "starport", label = "Talus Imperial Outpost Starport", x = -2207, y = 2311, dir = 5, cell = 0 },   -- 22 m from the pad toward town
 	},
 }
--- citygen notes: no stock walking loop and no outdoor spawn spots: the in-town squad is missing

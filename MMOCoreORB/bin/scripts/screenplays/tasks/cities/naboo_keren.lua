@@ -12,10 +12,10 @@ FbCities:add {
 		rebel    = { leader = "rebel_resistance_leader", troops = { "rebel_gungan_bomber", "rebel_trooper" } },
 	},
 	patrols = {   -- 3.2: one squad per faction; the holder walks a stock in-town loop, the other side a loop outside the walls
-		imperial = { points = { { 1982, 11, 2185 }, { 0, 11, 1 }, { 1209, 13, 2786 }, { 1686, 12, 2610 } } },   -- stock outdoor spawn spots of cities/naboo_keren.lua (no walking loop there)
+		imperial = { points = { { 1982, nil, 2185 }, { 1209, nil, 2786 }, { 1846, nil, 2772 }, { 1627, nil, 2439 } } },   -- stock outdoor spawn spots of cities/naboo_keren.lua (no walking loop there; height from the terrain)
 		rebel = { points = { { 1649, nil, 2039 }, { 1348, nil, 2006 }, { 1061, nil, 2103 }, { 842, nil, 2313 } } },   -- open ground 700 m out, bearing 161° (south), land-checked
 	},
-	convoy = { from = { 1372, 2748 }, to = { 0, 1 } },   -- 3.11: navmesh route from 0 m off the pad -> stock outdoor spot (3069 m, 2 path points, ends 0 m short)
+	convoy = { from = { 1398, 2725 }, to = { 1209, 2786 } },   -- 3.11: navmesh route from 35 m off the pad -> stock outdoor spot (135 m, 30 path points, ends 83 m short)
 	relays = {   -- 3.10: HoloNet relay droids
 		{ key = "starport", label = "Keren Starport", x = 1388, y = 2733, dir = 5, cell = 0 },   -- 22 m from the pad toward town
 		{ key = "cantina", label = "Keren Cantina", x = -14.0, z = -0.9, y = 0.0, dir = 90, cell = 5 },   -- main room of shared_cantina_naboo (building 2)

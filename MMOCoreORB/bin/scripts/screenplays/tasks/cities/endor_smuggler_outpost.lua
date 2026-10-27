@@ -12,7 +12,7 @@ FbCities:add {
 		rebel    = { leader = "rebel_commando", troops = { "rebel_trooper", "rebel_trooper" } },
 	},
 	patrols = {   -- 3.2: one squad per faction; the holder walks a stock in-town loop, the other side a loop outside the walls
-		rebel = { points = { { -889, 76, 1592 }, { -888, 76, 1597 }, { -883, 76, 1601 }, { -884, 76, 1595 }, { -880, 76, 1593 } } },   -- the stock walking loop npc_3 of cities/endor_smuggler_outpost.lua
+		rebel = { points = { { -889, nil, 1592 }, { -888, nil, 1597 }, { -883, nil, 1601 }, { -884, nil, 1595 }, { -880, nil, 1593 } } },   -- the stock walking loop npc_3 of cities/endor_smuggler_outpost.lua (height from the terrain)
 		imperial = { points = { { -434, nil, 1883 }, { -353, nil, 1659 }, { -373, nil, 1422 }, { -492, nil, 1216 } } },   -- open ground 550 m out, bearing 57° (north-east), land-checked
 	},
 	relays = {   -- 3.10: HoloNet relay droids

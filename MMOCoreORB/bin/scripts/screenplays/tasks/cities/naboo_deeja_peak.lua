@@ -11,7 +11,7 @@ FbCities:add {
 		rebel    = { leader = "rebel_resistance_leader", troops = { "rebel_gungan_bomber", "rebel_trooper" } },
 	},
 	patrols = {   -- 3.2: one squad per faction; the holder walks a stock in-town loop, the other side a loop outside the walls
-		imperial = { points = { { 5178, 326, -1554 }, { 0, 4754, 330 }, { 4702, 330, -1372 }, { 300, -21.3, 3 } } },   -- stock outdoor spawn spots of cities/naboo_deeja_peak.lua (no walking loop there)
+		imperial = { points = { { 5178, nil, -1554 }, { 4688, nil, -1342 }, { 4923, nil, -1411 }, { 5332, nil, -1568 } } },   -- stock outdoor spawn spots of cities/naboo_deeja_peak.lua (no walking loop there; height from the terrain)
 		rebel = { points = { { 5048, nil, -828 }, { 5344, nil, -894 }, { 5584, nil, -1078 }, { 5724, nil, -1347 } } },   -- open ground 700 m out, bearing 0° (north), land-checked
 	},
 }

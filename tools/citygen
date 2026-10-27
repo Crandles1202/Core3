@@ -254,18 +254,37 @@ def stock_loops(stock):
     return loops
 
 def stock_outdoor_spots(stock):
-    """outdoor (cell 0) spawn spots of the stock city file — faction guards, stationary commoners, static NPCs — as a
-    source of known-open ground in a city that has no walking loop"""
+    """outdoor (cell 0) spawn spots of the stock city file — faction guards (gcwMobs), stationary commoners, static NPCs
+    (mobiles) — as a source of known-open ground in a city that has no walking loop. Each block has its own row layout."""
     f = os.path.join(SCRIPTS, "screenplays/cities", stock + ".lua")
     if not os.path.exists(f): return []
     s = read(f)
+    def block(name):
+        m = re.search(r'\n\t' + name + r'\s*=\s*\{(.*?)\n\t\}', s, re.S)
+        return m.group(1) if m else ""
+    num = r'(-?[\d.]+)'
     pts = []
-    for m in re.finditer(r'\{\s*"[^"]+"\s*,\s*"[^"]+"\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*-?[\d.]+\s*,\s*(\d+)', s):   # long gcw rows
-        if int(m.group(4)) == 0: pts.append((float(m.group(1)), float(m.group(2)), float(m.group(3))))
-    for m in re.finditer(r'\{\s*"[^"]+"\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*-?[\d.]+\s*,\s*(\d+)', s):   # short gcw rows / mobiles
-        if int(m.group(4)) == 0: pts.append((float(m.group(1)), float(m.group(2)), float(m.group(3))))
-    for m in re.finditer(r'\{\s*\d+\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*-?[\d.]+\s*,\s*(\d+)', s):   # stationary rows
-        if int(m.group(4)) == 0: pts.append((float(m.group(1)), float(m.group(2)), float(m.group(3))))
+    for row in re.findall(r'\{([^{}]*)\}', block("gcwMobs")):
+        parts = [x.strip() for x in row.split(",")]
+        strs = [i for i, x in enumerate(parts) if x.startswith('"')]
+        if len(strs) >= 2 and strs[1] == 1 and len(parts) >= 7:      # long: imp, reb, x, z, y, heading, cell
+            try: x, z, y, cell = float(parts[2]), float(parts[3]), float(parts[4]), int(parts[6])
+            except ValueError: continue
+        elif len(parts) >= 6:                                          # short: tpl, x, z, y, heading, cell
+            try: x, z, y, cell = float(parts[1]), float(parts[2]), float(parts[3]), int(parts[5])
+            except ValueError: continue
+        else: continue
+        if cell == 0: pts.append((x, z, y))
+    for row in re.findall(r'\{([^{}]*)\}', block("stationaryMobiles")):          # respawn, x, z, y, dir, cell
+        parts = [x.strip() for x in row.split(",")]
+        try:
+            if len(parts) >= 6 and int(parts[5]) == 0: pts.append((float(parts[1]), float(parts[2]), float(parts[3])))
+        except ValueError: pass
+    for row in re.findall(r'\{([^{}]*)\}', block("mobiles")):                    # tpl, respawn, x, z, y, heading, cell
+        parts = [x.strip() for x in row.split(",")]
+        try:
+            if len(parts) >= 7 and int(parts[6]) == 0: pts.append((float(parts[2]), float(parts[3]), float(parts[4])))
+        except ValueError: pass
     return pts
 
 def spread(pts, n=4):
@@ -442,9 +461,9 @@ def build(plan, facts, existing_ambient=None, log=print):
     lines.append("\tpatrols = {   -- 3.2: one squad per faction; the holder walks a stock in-town loop, the other side a loop outside the walls")
     if loop_key:
         pts = loops[loop_key]
-        lines.append(f"\t\t{town} = {{ points = {{ " + ", ".join("{ %d, %g, %d }" % (round(x), z, round(y)) for x, z, y, c in pts) + f" }} }},   -- the stock walking loop {loop_key} of cities/{plan['stock']}.lua")
+        lines.append(f"\t\t{town} = {{ points = {{ " + ", ".join("{ %d, nil, %d }" % (round(x), round(y)) for x, z, y, c in pts) + f" }} }},   -- the stock walking loop {loop_key} of cities/{plan['stock']}.lua (height from the terrain)")
     elif fallback_loop:
-        lines.append(f"\t\t{town} = {{ points = {{ " + ", ".join("{ %d, %g, %d }" % (round(x), z, round(y)) for x, z, y in fallback_loop) + f" }} }},   -- stock outdoor spawn spots of cities/{plan['stock']}.lua (no walking loop there)")
+        lines.append(f"\t\t{town} = {{ points = {{ " + ", ".join("{ %d, nil, %d }" % (round(x), round(y)) for x, z, y in fallback_loop) + f" }} }},   -- stock outdoor spawn spots of cities/{plan['stock']}.lua (no walking loop there; height from the terrain)")
     else:
         notes.append("no stock walking loop and no outdoor spawn spots: the in-town squad is missing")
     if arc:

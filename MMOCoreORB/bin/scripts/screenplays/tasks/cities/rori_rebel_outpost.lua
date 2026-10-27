@@ -6,13 +6,13 @@ FbCities:add {
 	lean = 20,   -- 3.4: default Imperial %
 	centre = { 3677, -6447 }, radius = 150,   -- the stock city region sdungeon_rebel_outpost
 	starport = { 3692, -6403 },   -- travel point "Rebel Outpost"
-	plaza = { 360, 103 },   -- a stock outdoor spawn spot in town
+	plaza = { 3702, -6440 },   -- a stock outdoor spawn spot in town
 	factions = {
 		imperial = { leader = "stormtrooper_squad_leader", troops = { "stormtrooper", "stormtrooper" } },
 		rebel    = { leader = "rebel_commando", troops = { "rebel_trooper", "rebel_trooper" } },
 	},
 	patrols = {   -- 3.2: one squad per faction; the holder walks a stock in-town loop, the other side a loop outside the walls
-		rebel = { points = { { 360, 3632, 103 }, { 3702, 96, -6440 }, { 60, 3681, 96 }, { 360, 0, 0 } } },   -- stock outdoor spawn spots of cities/rori_rebel_outpost.lua (no walking loop there)
+		rebel = { points = { { 3702, nil, -6440 }, { 3645, nil, -6494 }, { 3644, nil, -6404 }, { 3660, nil, -6443 } } },   -- stock outdoor spawn spots of cities/rori_rebel_outpost.lua (no walking loop there; height from the terrain)
 		imperial = { points = { { 3580, nil, -6731 }, { 3469, nil, -6663 }, { 3397, nil, -6555 }, { 3378, nil, -6427 } } },   -- open ground 300 m out, bearing 199° (south), land-checked
 	},
 	relays = {   -- 3.10: HoloNet relay droids

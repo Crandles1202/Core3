@@ -12,7 +12,7 @@ FbCities:add {
 		rebel    = { leader = "rebel_resistance_leader", troops = { "rebel_gungan_bomber", "rebel_trooper" } },
 	},
 	patrols = {   -- 3.2: one squad per faction; the holder walks a stock in-town loop, the other side a loop outside the walls
-		imperial = { points = { { -5320, 6, 4236 }, { -5332, 6, 4213 }, { -5327, 6, 4180 }, { -5279, 6, 4207 }, { -5327, 6, 4180 }, { -5318, 6, 4154 }, { -5363, 6, 4167 }, { -5348, 6, 4174 } } },   -- the stock walking loop npc_5 of cities/naboo_theed.lua
+		imperial = { points = { { -5320, nil, 4236 }, { -5332, nil, 4213 }, { -5327, nil, 4180 }, { -5279, nil, 4207 }, { -5327, nil, 4180 }, { -5318, nil, 4154 }, { -5363, nil, 4167 }, { -5348, nil, 4174 } } },   -- the stock walking loop npc_5 of cities/naboo_theed.lua (height from the terrain)
 		rebel = { points = { { -5395, nil, 5064 }, { -5094, nil, 5030 }, { -4835, nil, 4873 }, { -4667, nil, 4621 } } },   -- open ground 700 m out, bearing 354° (north), land-checked
 	},
 	convoy = { from = { -4859, 4164 }, to = { -5320, 4236 } },   -- 3.11: navmesh route from 0 m off the pad -> stock loop npc_5 point (528 m, 63 path points, ends 0 m short)

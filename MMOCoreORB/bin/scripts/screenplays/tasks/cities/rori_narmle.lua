@@ -12,7 +12,7 @@ FbCities:add {
 		rebel    = { leader = "rebel_commando", troops = { "rebel_trooper", "rebel_trooper" } },
 	},
 	patrols = {   -- 3.2: one squad per faction; the holder walks a stock in-town loop, the other side a loop outside the walls
-		imperial = { points = { { -5154, 80, -2343 }, { -5165, 80, -2348 }, { -5166, 80, -2422 }, { -5165, 80, -2348 }, { -5145, 80, -2333 }, { -5117, 80, -2331 }, { -5145, 80, -2333 } } },   -- the stock walking loop cll8_1 of cities/rori_narmle.lua
+		imperial = { points = { { -5154, nil, -2343 }, { -5165, nil, -2348 }, { -5166, nil, -2422 }, { -5165, nil, -2348 }, { -5145, nil, -2333 }, { -5117, nil, -2331 }, { -5145, nil, -2333 } } },   -- the stock walking loop cll8_1 of cities/rori_narmle.lua (height from the terrain)
 		rebel = { points = { { -5197, nil, -2880 }, { -5448, nil, -2826 }, { -5652, nil, -2671 }, { -5771, nil, -2444 } } },   -- open ground 592 m out, bearing 180° (south), land-checked
 	},
 	convoy = { from = { -5305, -2228 }, to = { -5154, -2343 } },   -- 3.11: navmesh route from 80 m off the pad -> plaza (213 m, 51 path points, ends 0 m short)
