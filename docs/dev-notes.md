@@ -1547,3 +1547,8 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   the deploy's exact-hash check refused. Now `bench use` re-stamps whenever no build was needed, and the deploy compares the
   stamp's `MMOCoreORB/src` tree with HEAD instead of the hashes. The deploy also wants the bench checkout *on* `unstable`
   (not detached at the same commit): `bench release` first.
+- **Production (2026-10-26).** Chuck: the live instance is production, stable tags only, citizens stay as players. `swg live tag`
+  tags the pushed `unstable` tip; `swg live deploy [<tag>]` runs `bench use <tag>` (a build only when the C++ differs from
+  the stamp), stops live, `snap save pre-deploy-<stamp>` (needs the instance stopped, keeps three), syncs, starts, releases
+  the bench. `tools/backup-nightly` replaces Chuck's `~/bin/swg-backup-daily.sh` (which carried a password fallback in the
+  file; the new one reads `~/.my.cnf`) and adds the live ODB with `rsync --link-dest`. First tag `chuck-stable-20261026`.
