@@ -663,11 +663,15 @@ end
 -- Phase 3.11: the convoy screenplay is loaded with a walkable route and loot plan, and is idle or consistent.
 function FbLabTests.checkConvoys()
 	if FbConvoys == nil then check("convoys.loaded", false); return end
-	check("convoys.route", #FbConvoys.route >= 4, #FbConvoys.route .. " points")
+	check("convoys.cities", #FbConvoys.order >= 1, #FbConvoys.order .. " cities")
+	for _, city in ipairs(FbConvoys.order) do
+		local route = FbConvoys:routeFor(city)
+		check("convoys." .. city .. ".route", route ~= nil and #route >= 2, route and (#route .. " points") or "no route")
+		local st = FbConvoys:status(city)
+		check("convoys." .. city .. ".status_readable", st:find("active=", 1, true) ~= nil, st)
+	end
 	check("convoys.crate_template", templateExists(FbConvoys.crateTemplate), FbConvoys.crateTemplate)
 	check("convoys.loot_plan", #FbConvoys.crateLoot >= 1)
-	local st = FbConvoys:status()
-	check("convoys.status_readable", st:find("active=", 1, true) ~= nil, st)
 end
 
 -- Phase 3.9: weather is readable from Lua, the sandstorm event is loaded and consistent with the sky.
@@ -676,14 +680,18 @@ function FbLabTests.checkWeatherEvents()
 	local w = getZoneWeather("tatooine")
 	check("weather.readable", w ~= nil and w >= 0 and w <= 4, "base=" .. tostring(w))
 	check("weather.no_manager_is_minus_one", getZoneWeather("no_such_zone") == -1)
-	check("weather.parties", #FbWeatherEvents.parties >= 3)
-	for _, party in ipairs(FbWeatherEvents.parties) do
-		check("weather.party_" .. party.key .. "_on_terrain", getTerrainHeightAt("tatooine", party.spawn[1], party.spawn[2]) ~= 0 and getTerrainHeightAt("tatooine", party.rally[1], party.rally[2]) ~= 0)
+	check("weather.parties", #FbWeatherEvents.planets.tatooine.parties >= 3)
+	for _, planet in ipairs(FbWeatherEvents.order) do
+		local cfg = FbWeatherEvents.planets[planet]
+		for _, party in ipairs(cfg.parties or {}) do
+			check("weather." .. planet .. ".party_" .. party.key .. "_on_terrain", getTerrainHeightAt(planet, party.spawn[1], party.spawn[2]) ~= 0 and getTerrainHeightAt(planet, party.rally[1], party.rally[2]) ~= 0)
+		end
+		local pw = getZoneWeather(planet)
+		local st = FbWeatherEvents:status(planet)
+		local active = st:find("active=1", 1, true) ~= nil
+		local between = pw > (cfg.clearAt or 1) and pw < (cfg.stormAt or 3)
+		check("weather." .. planet .. ".event_matches_sky", pw < 0 or between or ((pw >= (cfg.stormAt or 3)) == active), st)
 	end
-	local st = FbWeatherEvents:status()
-	local active = st:find("active=1", 1, true) ~= nil
-	local between = w > FbWeatherEvents.clearAt and w < FbWeatherEvents.stormAt
-	check("weather.event_matches_sky", between or ((w >= FbWeatherEvents.stormAt) == active), st)
 	local env = loadIsolated("scripts/managers/weather_manager.lua")
 	check("weather.tatooine_sandstorms_damaging", env ~= nil and env.tatooine ~= nil and env.tatooine.hasDamagingSandstorms == 1)
 end
@@ -1543,33 +1551,43 @@ function FbLabTests:weatherSet(zone, w)
 	return tostring(now)
 end
 
--- storm → the sandstorm event's status line
-function FbLabTests:storm()
+-- storm[:<planet>] → the storm event's status line (default tatooine)
+function FbLabTests:storm(planet)
 	if FbWeatherEvents == nil then print("ERROR FbWeatherEvents not loaded"); return "none" end
-	print("INFO storm " .. FbWeatherEvents:status())
+	print("INFO storm " .. FbWeatherEvents:status(planet))
 	return "ok"
 end
 
--- stormTick → evaluate the weather now instead of waiting for the minute tick; prints what it did
-function FbLabTests:stormTick()
+-- stormTick[:<planet>] → evaluate the weather now instead of waiting for the minute tick; prints what it did
+function FbLabTests:stormTick(planet)
 	if FbWeatherEvents == nil then print("ERROR FbWeatherEvents not loaded"); return "none" end
-	local did = FbWeatherEvents:tick()
-	print("INFO stormTick did=" .. tostring(did) .. " " .. FbWeatherEvents:status())
+	local did = FbWeatherEvents:tick(planet)
+	print("INFO stormTick did=" .. tostring(did) .. " " .. FbWeatherEvents:status(planet))
 	return did
 end
 
--- convoy → the convoy event's status line
-function FbLabTests:convoy()
+-- convoy[:<city>] → the convoy event's status line (default the first city, Mos Eisley)
+function FbLabTests:convoy(city)
 	if FbConvoys == nil then print("ERROR FbConvoys not loaded"); return "none" end
-	print("INFO convoy " .. FbConvoys:status())
+	print("INFO convoy " .. FbConvoys:status(city))
 	return "ok"
 end
 
--- convoySpawn → form a convoy now (what the 30-60 min schedule does)
-function FbLabTests:convoySpawn()
+-- convoySpawn[:<city>] → form a convoy now (what the 30-60 min schedule does)
+function FbLabTests:convoySpawn(city)
 	if FbConvoys == nil then print("ERROR FbConvoys not loaded"); return "none" end
-	print("INFO convoy " .. tostring(FbConvoys:spawn()))
+	print("INFO convoy " .. tostring(FbConvoys:spawn(city)))
 	return "ok"
+end
+
+-- cities → one INFO line per city in the registry (3.13)
+function FbLabTests:cities()
+	if FbCities == nil then print("ERROR FbCities not loaded"); return "none" end
+	for _, c in ipairs(FbCities.list) do
+		print(string.format("INFO city key=%s planet=%s label=%s lean=%d patrols=%d relays=%d ambient=%d convoy=%s invasion=%s", c.key, c.planet, c.label:gsub(" ", "_"),
+			c.lean, (c.patrols.imperial and 1 or 0) + (c.patrols.rebel and 1 or 0), #c.relays, #c.ambient, c.convoy and "1" or "0", c.invasion and "1" or "0"))
+	end
+	return tostring(#FbCities.list)
 end
 
 -- killNpc:<char>:<oid> → the character deals a lethal blow to an NPC (observers see the character as attacker)

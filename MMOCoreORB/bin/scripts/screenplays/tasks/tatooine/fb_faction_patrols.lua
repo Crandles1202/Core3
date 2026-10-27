@@ -15,20 +15,23 @@ FbFactionPatrols = ScreenPlay:new {
 	retrySeconds = 30,             -- when the leader is fighting or missing
 }
 
-FbFactionPatrols.routes = {
-	{
-		key = "mos_eisley_imperial", planet = "tatooine", faction = "imperial", region = "mos_eisley",
-		leader = "stormtrooper_squad_leader", members = { "stormtrooper", "stormtrooper" },
-		-- the stock city patrol loop through Mos Eisley (cities/tatooine_mos_eisley.lua cll8_1): known walkable
-		points = { { 3318, 5, -4811 }, { 3359, 5, -4755 }, { 3403, 5, -4775 }, { 3430, 5, -4772 }, { 3470, 5, -4795 }, { 3377, 5, -4745 } },
-	},
-	{
-		key = "mos_eisley_rebel", planet = "tatooine", faction = "rebel", region = "mos_eisley",
-		leader = "rebel_commando", members = { "rebel_trooper", "rebel_trooper" },
-		-- open desert west of the city walls; height from the terrain
-		points = { { 3150, nil, -4750 }, { 3200, nil, -4650 }, { 3280, nil, -4680 }, { 3240, nil, -4790 } },
-	},
-}
+-- 3.13: one route per city and faction from the city files (patrols.<faction>.points; leader/members from the city's
+-- factions or the defaults). Route keys stay "<city>_<faction>", the region is the city.
+FbFactionPatrols.routes = {}
+if FbCities ~= nil then
+	for _, c in ipairs(FbCities.list) do
+		for _, faction in ipairs({ "imperial", "rebel" }) do
+			local pr = c.patrols[faction]
+			if pr ~= nil and pr.points ~= nil and #pr.points > 0 then
+				local f = FbCities:faction(c, faction)
+				FbFactionPatrols.routes[#FbFactionPatrols.routes + 1] = {
+					key = c.key .. "_" .. faction, planet = c.planet, faction = faction, region = c.key,
+					leader = pr.leader or f.leader, members = pr.members or f.troops, points = pr.points,
+				}
+			end
+		end
+	end
+end
 
 registerScreenPlay("FbFactionPatrols", true)
 

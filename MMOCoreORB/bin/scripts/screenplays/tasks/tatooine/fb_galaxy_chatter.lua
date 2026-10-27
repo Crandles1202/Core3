@@ -65,10 +65,11 @@ function FbGalaxyChatter.newsLines()
 end
 
 -- Live facts, each guarded: a missing screenplay or a Lua error just drops that line.
-function FbGalaxyChatter.liveLines()
+-- liveLines(planet): with a planet, only the lines a speaker there would know (3.13)
+function FbGalaxyChatter.liveLines(planet)
 	local out = {}
 	pcall(function()
-		if FbTradeHall ~= nil and FbTradeHall:isOpen() then
+		if FbTradeHall ~= nil and FbTradeHall:isOpen() and (planet == nil or planet == "tatooine") then
 			out[#out + 1] = "The traders by the Mos Eisley starport moved indoors. New Trade Hall, east of the square. About time."
 		end
 		if FbTravelingMerchant ~= nil then
@@ -80,7 +81,7 @@ function FbGalaxyChatter.liveLines()
 	end)
 	pcall(function()
 		if FbTerritory ~= nil then
-			for _, region in ipairs(FbTerritory.order) do
+			for _, region in ipairs(FbTerritory.onPlanet(planet)) do
 				local f, label = FbTerritory.faction(region), FbTerritory.regions[region].label
 				if f == "rebel" then out[#out + 1] = "The Rebels run " .. label .. " these days. Stormtroopers don't leave the garrison after dark."
 				elseif f == "contested" then out[#out + 1] = label .. "'s anyone's. Saw Imperials and Rebels drinking at opposite ends of the same bar."
@@ -89,7 +90,7 @@ function FbGalaxyChatter.liveLines()
 		end
 	end)
 	pcall(function()
-		if BestineElection ~= nil and type(BestineElection.getCurrentPhase) == "function" then
+		if BestineElection ~= nil and type(BestineElection.getCurrentPhase) == "function" and (planet == nil or planet == "tatooine") then
 			local phase = BestineElection:getCurrentPhase()
 			if phase == 1 then
 				out[#out + 1] = "Bestine's election is on. Both candidates are promising lower water taxes. Both are lying."
@@ -101,16 +102,17 @@ function FbGalaxyChatter.liveLines()
 	return out
 end
 
-function FbGalaxyChatter.lines()
+function FbGalaxyChatter.lines(planet)
 	local all = {}
 	for _, l in ipairs(FbGalaxyChatter.static) do all[#all + 1] = l end
 	for _, l in ipairs(FbGalaxyChatter.newsLines()) do all[#all + 1] = l end
-	for _, l in ipairs(FbGalaxyChatter.liveLines()) do all[#all + 1] = l end
+	for _, l in ipairs(FbGalaxyChatter.liveLines(planet)) do all[#all + 1] = l end
 	return all
 end
 
-function FbGalaxyChatter.pick()
-	local all = FbGalaxyChatter.lines()
+-- pick([planet]): one line; a speaker on a planet does not gossip about the other planets' territory
+function FbGalaxyChatter.pick(planet)
+	local all = FbGalaxyChatter.lines(planet)
 	if #all == 0 then return nil end
 	return all[getRandomNumber(1, #all)]
 end

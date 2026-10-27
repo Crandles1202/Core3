@@ -16,11 +16,17 @@ FbHoloNet = ScreenPlay:new {
 	listenRange = 25,
 }
 
-FbHoloNet.locations = {
-	{ key = "mos_eisley_starport", label = "Mos Eisley Starport", region = "mos_eisley", planet = "tatooine", x = 3530, y = -4809, dir = 3, cell = 0 },   -- open plaza in front of the FB vendor row; (3540,-4816) behind the plinth was never found by a player, (3512,-4790) had no line of sight for conversations
-	{ key = "mos_eisley_cantina",  label = "Mos Eisley Cantina",  region = "mos_eisley", planet = "tatooine", x = 10.5, z = -0.9, y = 8.5, dir = 3, cell = 1082877 },
-	{ key = "bestine_cantina",     label = "Bestine Cantina",     region = "bestine", planet = "tatooine", x = 9.0,  z = 0.4,  y = -8.5, dir = 3, cell = 1528397 },
-}
+-- 3.13: the relays come from the city files (relays = { { key, label, x, y[, z], dir, cell } }); a location's key is
+-- "<city>_<key>" and its region the city
+FbHoloNet.locations = {}
+if FbCities ~= nil then
+	for _, c in ipairs(FbCities.list) do
+		for _, r in ipairs(c.relays) do
+			FbHoloNet.locations[#FbHoloNet.locations + 1] = { key = c.key .. "_" .. r.key, label = r.label or (c.label .. " " .. r.key),
+				region = c.key, planet = c.planet, x = r.x, y = r.y, z = r.z, dir = r.dir, cell = r.cell or 0 }
+		end
+	end
+end
 
 FbHoloNet.stings = {
 	"*static* ...this is HoloNet News. Galactic update.",
@@ -30,13 +36,13 @@ FbHoloNet.stings = {
 FbHoloNet.propaganda = {
 	"A message from the Imperial Governor's office: order is prosperity. Report unlawful gatherings.",
 	"Travellers are reminded that unregistered weapons are subject to confiscation at starports.",
-	"The Empire thanks the citizens of Tatooine for another month of record moisture output.",
+	"The Empire thanks the citizens of {planet} for another month of record output.",
 }
 -- Phase 3.4: when the Rebellion holds the relay's region, the relay has been "liberated"
 FbHoloNet.rebelPropaganda = {
 	"A message from the Alliance: this relay is free. The Empire's lies stop here.",
 	"Citizens: the garrison answers to you now. Report Imperial sympathizers to the local cell.",
-	"The Alliance thanks the farmers of Tatooine for their quiet support. Water flows both ways.",
+	"The Alliance thanks the people of {planet} for their quiet support. Help flows both ways.",
 }
 FbHoloNet.outros = {
 	"This has been HoloNet News. Next update in one standard hour.",
@@ -116,7 +122,7 @@ function FbHoloNet:segment(li)
 	end
 
 	if FbGalaxyChatter ~= nil then
-		local news = FbGalaxyChatter.pick()
+		local news = FbGalaxyChatter.pick(loc.planet)
 		if news ~= nil then lines[#lines + 1] = "In other news: " .. news end
 	end
 
@@ -127,14 +133,15 @@ function FbHoloNet:segment(li)
 
 	if FbTerritory ~= nil then
 		local parts = {}
-		for _, region in ipairs(FbTerritory.order) do
+		for _, region in ipairs(FbTerritory.onPlanet(loc.planet)) do   -- 3.13: the relay's own planet
 			local f = FbTerritory.faction(region)
 			parts[#parts + 1] = FbTerritory.regions[region].label .. " " .. (f == "imperial" and "Imperial-held" or f == "rebel" and "Rebel-held" or "contested")
 		end
-		lines[#lines + 1] = "Sector report: " .. table.concat(parts, ", ") .. "."
+		if #parts > 0 then lines[#lines + 1] = "Sector report: " .. table.concat(parts, ", ") .. "." end
 	end
 	local holder = (FbTerritory ~= nil and loc.region) and FbTerritory.faction(loc.region) or "imperial"
-	lines[#lines + 1] = pick(holder == "rebel" and self.rebelPropaganda or self.propaganda)
+	local planetLabel = FbCities ~= nil and FbCities.planetLabel(loc.planet) or "the sector"
+	lines[#lines + 1] = (pick(holder == "rebel" and self.rebelPropaganda or self.propaganda):gsub("{planet}", planetLabel))
 	lines[#lines + 1] = pick(self.outros)
 	return lines
 end
