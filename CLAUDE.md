@@ -399,9 +399,9 @@ Settings are read at session start, so restart Claude Code after creating it.
 
 ## Current status
 
-_Updated: 2026-10-25 (Phase 4 complete: 4a.0 crystals, 4a.1–4a.4, 4b.1–4b.5, 4c all on `unstable`; Phase 7 citizens live beside it. Earlier: sessions 3–5: Phase 2.12 tooling complete — Lab Remote, site builder, site planner with game loop, world edits, terrain — and Phase 4 begun with 4a.1 attunement; Phase 1 done, Phase 2 bar 2.4, Phase 3 bar 3.12 / 3.3 time-of-day / 3.11 escort)_
+_Updated: 2026-10-27 (the live instance is production on stable tags, a second bench, Phase 2.4 loot kits — Phase 0 complete. Earlier: Phase 4 complete: 4a.0 crystals, 4a.1–4a.4, 4b.1–4b.5, 4c all on `unstable`; Phase 7 citizens live beside it. Earlier: sessions 3–5: Phase 2.12 tooling complete — Lab Remote, site builder, site planner with game loop, world edits, terrain — and Phase 4 begun with 4a.1 attunement; Phase 1 done, Phase 2 bar 2.4, Phase 3 bar 3.12 / 3.3 time-of-day / 3.11 escort)_
 
-- `unstable` = `origin/unstable` (`b2a1b1f686`, 2026-10-25), no local feature branches of mine (alice's `feature/alice-bazaar` worktree is hers), stash empty. Every feature
+- `unstable` = `origin/unstable` (`6203fcc71d`, 2026-10-27), no local feature branches of mine (alice's `feature/alice` worktree is hers), stash empty. **Three servers** (Run / stop): the bench and bench2 test, the live instance is production and runs `chuck-stable-20261026` (= `10f6472af2`; the merges after it — production tooling 6203fcc71d, alice's next batch — reach it with the next `swg live tag` + `swg live deploy` once Chuck has played them on the bench). Open for Chuck: the gate's one retry (keep or strict), the Phase 1–4 play-test, the next roadmap pick (suggested 3.13 galaxy-wide rollout). Every feature
   went through its own `feature/<name>` branch, a `--no-ff` merge and a push. **Where things stand:** the
   Phase 1–3 content from 2026-10-17/18 is still unplay-tested by Chuck except what he saw while placing the
   Trade Hall (2.11 hall, vendors, HoloNet, 2.12 tooling — all good); the Phase 4 content (4a.1) is new today
