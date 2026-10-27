@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Seat the citizens that pre/20-citizens-down logged out.
+set -uo pipefail
+CREW="$SWG_REPO/tools/citizens/crew"
+LIST="${SWG_LABDIR:-$HOME/.swg-lab}/live-deploy-citizens"
+[ -x "$CREW" ] && [ -f "$LIST" ] || exit 0
+UP=$(cat "$LIST"); rm -f "$LIST"
+[ -n "${UP// /}" ] || exit 0
+echo "   seating again: $UP"
+SWG_INSTANCE=live "$CREW" up $UP 2>&1 | sed 's/^/   /' | tail -n 6

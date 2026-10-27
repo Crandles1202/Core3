@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Log the seated citizens out cleanly before the restart (a restart under a seat leaves an orphaned client that still reads
+# as "seat up"); remember who was up so post/20-citizens-up seats them again.
+set -uo pipefail
+CREW="$SWG_REPO/tools/citizens/crew"
+LIST="${SWG_LABDIR:-$HOME/.swg-lab}/live-deploy-citizens"
+[ -x "$CREW" ] || exit 0
+UP=$(SWG_INSTANCE=live "$CREW" status 2>/dev/null | awk '/seat up \(pid [0-9]+, live\)/ { print $1 }' | tr '\n' ' ')
+if [ -z "${UP// /}" ]; then echo "   no citizens seated on production"; rm -f "$LIST"; exit 0; fi
+printf '%s\n' "$UP" > "$LIST"
+echo "   taking down: $UP"
+SWG_INSTANCE=live "$CREW" down $UP 2>&1 | sed 's/^/   /' | tail -n 4
