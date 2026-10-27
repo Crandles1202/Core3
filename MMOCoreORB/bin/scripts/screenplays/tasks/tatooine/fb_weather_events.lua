@@ -31,8 +31,49 @@ FbWeatherEvents.planets = {
 		clearBroadcast = "Tatooine: the sandstorm has passed. The Tuskens are pulling back into the wastes.",
 		stormNews = "A sandstorm hit Mos Eisley and the Tuskens came in with it. Farms on the east side took losses.",
 	},
+	-- 3.13: Dathomir storms bring the Nightsisters down on the outposts (spawn 350 m out on land, rally 150 m out; tools/citygen spots)
+	dathomir = {
+		stormAt = 3, clearAt = 1,
+		raidLeader = "nightsister_initiate",
+		raiders = { "nightsister_sentry", "nightsister_sentry", "nightsister_sentry" },
+		parties = {
+			{ key = "trade_east",    spawn = { 902, 3221 },  rally = { 729, 3121 } },     -- the Trade Outpost, from the north-east
+			{ key = "trade_south",   spawn = { 599, 2696 },  rally = { 599, 2896 } },
+			{ key = "science_east",  spawn = { 265, -1600 }, rally = { 65, -1600 } },    -- the Science Outpost
+			{ key = "science_west",  spawn = { -435, -1600 }, rally = { -235, -1600 } },
+		},
+		stormBroadcast = "Dathomir: a storm is breaking over the plateau. Nightsister war parties are moving on the outposts. Stay inside the walls.",
+		clearBroadcast = "Dathomir: the storm has passed. The Nightsisters have melted back into the forest.",
+		stormNews = "The storm on Dathomir brought the Nightsisters out. The outposts held, barely.",
+	},
+	-- Endor storms bring the Marauders out of the plains
+	endor = {
+		stormAt = 3, clearAt = 1,
+		raidLeader = "frenzied_marauder",
+		raiders = { "feral_marauder", "feral_marauder", "feral_marauder" },
+		parties = {
+			{ key = "smuggler_east",  spawn = { -555, 1584 },  rally = { -755, 1584 } },   -- the Smuggler Outpost
+			{ key = "smuggler_west",  spawn = { -1255, 1584 }, rally = { -1055, 1584 } },
+			{ key = "research_south", spawn = { 3221, -3821 }, rally = { 3221, -3671 } },  -- the Research Outpost
+			{ key = "research_north", spawn = { 3221, -3121 }, rally = { 3221, -3321 } },
+		},
+		stormBroadcast = "Endor: a storm front is crossing the forest moon. Marauder bands have been sighted near the outposts.",
+		clearBroadcast = "Endor: the storm has passed. The Marauders are drifting back into the trees.",
+		stormNews = "Storm on Endor and the Marauders came with it. The Research Outpost lost a supply speeder.",
+	},
+	-- Naboo and Corellia rain is only weather: the broadcasts, nothing walks in
+	naboo = {
+		stormAt = 3, clearAt = 1, parties = {},
+		stormBroadcast = "Naboo: heavy rain is sweeping the lake country. Shuttle schedules may slip.",
+		clearBroadcast = "Naboo: the rain has cleared over the lake country.",
+	},
+	corellia = {
+		stormAt = 3, clearAt = 1, parties = {},
+		stormBroadcast = "Corellia: a storm is coming in off the sea. CorSec advises travellers to keep to the cities.",
+		clearBroadcast = "Corellia: the storm has blown out to sea.",
+	},
 }
-FbWeatherEvents.order = { "tatooine" }
+FbWeatherEvents.order = { "tatooine", "dathomir", "endor", "naboo", "corellia" }
 for planet, _ in pairs(FbWeatherEvents.planets) do
 	local listed = false
 	for _, p in ipairs(FbWeatherEvents.order) do if p == planet then listed = true end end

@@ -1556,3 +1556,9 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   `objectsNear` at 4100,-4700 showed three scyks on the character and a lair 35 m away, with oids right after the vision
   figures': the trip home from dungeon1 is a position update and the spawn area rolled a lair there. Lab `clearWild` before
   the part-B trigger; the same can hit any scenario that teleports a character and then needs it out of combat.
+- **Two `swg cmd` at once interleave on the console** (2026-10-27): the generator's probes and a `citygen spots` run shared the
+  tmux pane and one command arrived as `…landAt:naboo:5306:-4729runLuaFunction FbLabTests:landAt:tatooine:…` → "ERROR landAt:
+  planet x y". The console is one keyboard: serialise anything that sends to it (the lock covers agents, not two processes
+  of the same agent).
+- **`findPath` rows are positional** `{ x, z, y, cell }` (DirectorManager::findPath), not named fields; `pathBetween` and the
+  convoy route sampler read `pt[1], pt[3], pt[4]`.

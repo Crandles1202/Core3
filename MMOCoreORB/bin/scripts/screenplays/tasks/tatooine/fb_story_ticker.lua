@@ -49,6 +49,87 @@ FbStoryTicker.stories = {
 		planet = "tatooine", x = -740, y = -3690, radius = 14,
 		mobs = { { template = "stormtrooper", count = 3 }, { template = "stormtrooper_squad_leader", count = 1 } },
 	},
+	-- 3.13: one story per planet (camp spots probed for land by tools/citygen spots)
+	{
+		key = "borvo_moenia", title = "Borvo the Hutt's thugs camped north of Moenia",
+		broadcast = "Moenia constabulary: Borvo the Hutt's enforcers have set up north of the city. Travellers on the lake road should go in company.",
+		news = {
+			"Borvo's thugs are shaking down farmers north of Moenia. The constables are 'investigating'.",
+			"A Hutt's men camped outside Moenia and nobody from Theed has lifted a finger.",
+		},
+		planet = "naboo", x = 4786, y = -4209, radius = 16,
+		mobs = { { template = "borvos_thug", count = 4 }, { template = "borvos_mercenary", count = 1 } },
+	},
+	{
+		key = "meatlumps_coronet", title = "Meatlump gang holed up east of Coronet",
+		broadcast = "CorSec bulletin: a Meatlump gang has been traced to a camp east of Coronet. CorSec requests the public's assistance.",
+		news = {
+			"The Meatlumps robbed a speeder lot east of Coronet. Took the wheels, left the speeders.",
+			"CorSec put a bounty on the Meatlump camp outside Coronet. Easy credits, if you can stand the smell.",
+		},
+		planet = "corellia", x = 582, y = -4504, radius = 16,
+		mobs = { { template = "meatlump_clod", count = 4 }, { template = "grecks_smuggler", count = 1 } },
+	},
+	{
+		key = "binayre_dearic", title = "Binayre pirates landed north of Dearic",
+		broadcast = "Dearic port authority: Binayre pirates have put a shuttle down north of the city. The garrison is not responding. Hunters welcome.",
+		news = {
+			"Binayre pirates are camped north of Dearic. The garrison says it's a CorSec matter. CorSec says it's the garrison's.",
+			"Somebody saw a Sif mercenary with the pirates outside Dearic. That's new.",
+		},
+		planet = "talus", x = 422, y = -2444, radius = 16,
+		mobs = { { template = "binayre_pirate", count = 4 }, { template = "sif_mercenary", count = 1 } },
+	},
+	{
+		key = "garyn_narmle", title = "Garyn's raiders working the swamp road east of Narmle",
+		broadcast = "Narmle militia: Garyn's raiders are stopping travellers on the swamp road east of town. Go armed or go round.",
+		news = {
+			"Garyn's lot hit three speeders on the Narmle swamp road this week. Nobody hurt. Nothing left, either.",
+			"The militia offered a reward for Garyn's camp east of Narmle. Half the town laughed, the other half went to look.",
+		},
+		planet = "rori", x = -4747, y = -2258, radius = 16,
+		mobs = { { template = "garyns_raider", count = 4 }, { template = "garyns_pirate", count = 1 } },
+	},
+	{
+		key = "blood_razor_nym", title = "Blood Razor pirates massing north-east of Nym's stronghold",
+		broadcast = "Nym's word: Blood Razor scum are camped north-east of the stronghold. Anyone who thins them out drinks free.",
+		news = {
+			"Blood Razors outside the stronghold again. Nym's guards are taking bets on how long they last.",
+			"A Blood Razor captain was seen north-east of the walls. That's a bounty if you can collect it.",
+		},
+		planet = "lok", x = 780, y = 5786, radius = 16,
+		mobs = { { template = "blood_razor_cutthroat", count = 4 }, { template = "blood_razor_captain", count = 1 } },
+	},
+	{
+		key = "dantari_mining", title = "Dantari raiding party east of the Mining Outpost",
+		broadcast = "Dantooine Mining Outpost: a Dantari raiding party is camped east of the walls. Prospectors should stay in pairs.",
+		news = {
+			"The Dantari hit a survey team east of the mining outpost. The team walked back. The equipment didn't.",
+			"Raiders east of the Dantooine mining outpost. The foreman wants them gone before the next shipment.",
+		},
+		planet = "dantooine", x = -320, y = 2486, radius = 16,
+		mobs = { { template = "dantari_raider", count = 5 } },
+	},
+	{
+		key = "nightsisters_trade", title = "Nightsister hunting party south-east of the Trade Outpost",
+		broadcast = "Dathomir Trade Outpost: a Nightsister hunting party has been seen south-east of the walls. Nobody leaves alone.",
+		news = {
+			"The Nightsisters are hunting south-east of the trade outpost. Hunting what, nobody wants to know.",
+			"A trader's bodyguard came back from the south-east ridge alone. He isn't talking.",
+		},
+		planet = "dathomir", x = 902, y = 2871, radius = 16,
+		mobs = { { template = "nightsister_sentry", count = 4 }, { template = "nightsister_initiate", count = 1 } },
+	},
+	{
+		key = "outcasts_research", title = "Ewok outcasts raiding west of the Research Outpost",
+		broadcast = "Endor Research Outpost: Ewok outcasts with a Marauder among them are camped west of the station. Keep the perimeter lights on.",
+		news = {
+			"Outcast Ewoks are stealing from the research outpost's stores. The scientists think it's charming. The guards don't.",
+			"There's a Marauder running with the outcasts west of the research station. That's not charming.",
+		},
+		planet = "endor", x = 2871, y = -3471, radius = 16,
+		mobs = { { template = "ewok_outcast_raider", count = 4 }, { template = "feral_marauder", count = 1 } },
+	},
 }
 
 registerScreenPlay("FbStoryTicker", true)
