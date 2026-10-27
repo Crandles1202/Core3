@@ -177,6 +177,30 @@ sudo systemctl restart mariadb
 
 ---
 
+## The production server
+
+Since 2026-10-26 the server you *play* on is the **live instance** at `~/swg-live`, separate from the two test benches
+(`~/workspace/Core3`, `~/swg-bench2/Core3`): its own MySQL database `swgemu_live`, its own object store, ports 45xxx
+(login **45453**), tmux session `live`. Rules:
+
+- It only ever runs a **stable tag** (`chuck-stable-YYYYMMDD`). Nothing tests there: `swg --live` refuses gates, builds and bots.
+- **Release ritual.** Play the new content on the bench first (`tools/swg live client --bench` points the game client at
+  the bench, `tools/swg live client` back at production). When it is good:
+  ```bash
+  tools/swg live tag            # chuck-stable-<today> on the pushed unstable tip
+  tools/swg live deploy         # newest tag: bench build if needed, live stopped, pre-deploy snapshot, sync, start
+  ```
+  `tools/swg live deploy chuck-stable-20261026` deploys a particular tag (a rollback is just the older tag plus, if the
+  data must go back too, `tools/swg --live snap load pre-deploy-<stamp> --yes`). Players and the citizens are off for the
+  restart (about three minutes); say so first.
+- **Daily driving:** `tools/swg --live status|logs --errors|cmd "<console command>"`; `tools/swg --live stop` / `start`
+  when it must come down by hand. Never Ctrl+C it.
+- **Backups:** `tools/backup-nightly` dumps every `swgemu*` database and copies the live object store (hard-linked days)
+  into `~/backups/daily`, keeping seven. `swg start` runs it when the newest dump is a day old; for a true nightly job,
+  a Windows Task Scheduler task (daily 03:00, run whether logged on or not):
+  `wsl -d Debian -- /home/chuck/workspace/Core3/tools/backup-nightly`.
+- **Accounts:** yours (`Chuckertons`, `chuck`) and the citizens'. The lab accounts stay on the benches.
+
 ## Connecting a client
 
 ### One-time client setup

@@ -1542,3 +1542,17 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 - **Every `mysql` in `tools/swg` names `$DBNAME`.** Three calls still said `swgemu` outright; bench2's first gate pruned four
   Lab characters out of the *main* bench's database (the character oids are the same in a copied database). Lab characters
   are disposable, nothing else was touched; the ODB objects of the four stay orphaned, which the server ignores.
+- **`swg live deploy` after a Lua-only merge** (2026-10-26): the built stamp (`~/.swg-lab/bench.built`) named the loot-kits
+  commit the binary was built from, the merged tip had the same C++, `bench use` chose *reload* and left the stamp alone, and
+  the deploy's exact-hash check refused. Now `bench use` re-stamps whenever no build was needed, and the deploy compares the
+  stamp's `MMOCoreORB/src` tree with HEAD instead of the hashes. The deploy also wants the bench checkout *on* `unstable`
+  (not detached at the same commit): `bench release` first.
+- **Production (2026-10-26).** Chuck: the live instance is production, stable tags only, citizens stay as players. `swg live tag`
+  tags the pushed `unstable` tip; `swg live deploy [<tag>]` runs `bench use <tag>` (a build only when the C++ differs from
+  the stamp), stops live, `snap save pre-deploy-<stamp>` (needs the instance stopped, keeps three), syncs, starts, releases
+  the bench. `tools/backup-nightly` replaces Chuck's `~/bin/swg-backup-daily.sh` (which carried a password fallback in the
+  file; the new one reads `~/.my.cnf`) and adds the live ODB with `rsync --link-dest`. First tag `chuck-stable-20261026`.
+- **Visions flake, found (2026-10-26).** Two gates red on `visions.trigger_begins_the_vision`; `trialTickWhy` said `combat=true`.
+  `objectsNear` at 4100,-4700 showed three scyks on the character and a lair 35 m away, with oids right after the vision
+  figures': the trip home from dungeon1 is a position update and the spawn area rolled a lair there. Lab `clearWild` before
+  the part-B trigger; the same can hit any scenario that teleports a character and then needs it out of combat.

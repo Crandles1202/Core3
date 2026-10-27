@@ -2569,6 +2569,33 @@ function FbLabTests:objectsNear(planet, x, y, range, otype)
 	return tostring(#objects)
 end
 
+-- clearWild:<planet>:<x>:<y>[:<radius>] → remove the wild lairs and the wild creatures (type 0x400, not pets, not lab
+-- spawns) around a scenario spot. The world rolls for lairs around a player on every position update — a walk, and a
+-- zone switch home from a vision: the visions scenario came back to 4100,-4700 into three scyks (gate 2026-10-26).
+function FbLabTests:clearWild(planet, x, y, range)
+	x, y, range = tonumber(x), tonumber(y), tonumber(range or 80)
+	if planet == nil or x == nil or y == nil then print("ERROR clearWild: planet x y [radius]"); return "none" end
+	local objects = getObjectsInRange(planet, x, y, range)
+	if objects == nil then print("ERROR clearWild: no zone " .. tostring(planet)); return "none" end
+	local ours = {}
+	for _, r in ipairs(FbLabTests.registryLive()) do ours[r.oid] = true end
+	local lairs, creatures = 0, 0
+	for _, o in ipairs(objects) do
+		local isLair = string.find(o.template or "", "/lair/", 1, true) ~= nil
+		local isWild = o.type == 0x400 and not ours[o.oid]
+		if isLair or isWild then
+			local p = getSceneObject(o.oid)
+			if p ~= nil and not SceneObject(p):isPlayerCreature() and not (SceneObject(p):isAiAgent() and AiAgent(p):isPet()) then
+				SceneObject(p):destroyObjectFromWorld(true)
+				SceneObject(p):destroyObjectFromDatabase()
+				if isLair then lairs = lairs + 1 else creatures = creatures + 1 end
+			end
+		end
+	end
+	print(string.format("INFO clearWild zone=%s x=%.0f y=%.0f radius=%.0f lairs=%d creatures=%d", planet, x, y, range, lairs, creatures))
+	return tostring(lairs + creatures)
+end
+
 -- structures:<char> → the structures the character owns (oid per line) and the lots left.
 function FbLabTests:structures(charName)
 	local t = getOwnedStructures(charName)
