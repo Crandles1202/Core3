@@ -3,7 +3,7 @@
 # PLANET set). Lab-only, no bot: every city of the planet is read back — its territory region, its patrol squads
 # (and one squad is stepped), its HoloNet relays (one reads a segment), its convoy (formed and sent home), its
 # invasion state, its ambient seats. Placement (line of sight, terrain, cells) is the Lua gate's checkPlacement.
-source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 : "${PLANET:?PLANET must be set by the wrapper}"
 
 CITIES=$(lab "cities" | grep "^INFO city " | grep " planet=$PLANET " | sed -n 's/.*key=\([^ ]*\).*/\1/p')
