@@ -23,7 +23,19 @@ PASSFILE="$LABDIR/$BOT_USER.pass"
 SCENARIO=${SCENARIO:-$(basename "${BASH_SOURCE[1]:-scenario}" .sh)}
 BOTLOG="$LABDIR/scenario-$SCENARIO.bot.log"
 
-CHAR=${SWG_BOT_CHAR:-$(mysql -N swgemu -e "SELECT c.firstname FROM characters c JOIN accounts a ON a.account_id = c.account_id WHERE a.username = '$BOT_USER' AND c.firstname LIKE 'Lab%' ORDER BY c.character_oid DESC LIMIT 1" 2>/dev/null)}
+# db_name → the instance's MySQL database: SWG_DBNAME, else by SWG_INSTANCE (bench swgemu, live swgemu_live, bench2 swgemu_bench2).
+# bench2 is a copy of the main database, so a character created on the main bench since does not exist there: asking
+# the main database for the newest Lab character made every scenario of a bench2 gate log in as a ghost (2026-10-26).
+db_name() {
+	if [ -n "${SWG_DBNAME:-}" ]; then echo "$SWG_DBNAME"; return; fi
+	case "${SWG_INSTANCE:-bench}" in
+		bench|"") echo swgemu ;;
+		live) echo swgemu_live ;;
+		bench2) echo swgemu_bench2 ;;
+		*) echo "lib.sh: unknown SWG_INSTANCE '$SWG_INSTANCE'" >&2; exit 2 ;;
+	esac
+}
+CHAR=${SWG_BOT_CHAR:-$(mysql -N "$(db_name)" -e "SELECT c.firstname FROM characters c JOIN accounts a ON a.account_id = c.account_id WHERE a.username = '$BOT_USER' AND c.firstname LIKE 'Lab%' ORDER BY c.character_oid DESC LIMIT 1" 2>/dev/null)}
 
 _pass=0; _fail=0
 
