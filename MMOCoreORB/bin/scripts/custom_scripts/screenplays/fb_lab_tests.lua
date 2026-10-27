@@ -2614,6 +2614,39 @@ function FbLabTests:clearWild(planet, x, y, range)
 	return tostring(lairs + creatures)
 end
 
+-- landAt:<planet>:<x>:<y> → what the ground is at a point: terrain height, water height, land (terrain above water),
+-- building permitted (outside no-build), in the planet (3.13 city generator; every generated point passes through it)
+function FbLabTests:landAt(planet, x, y)
+	x, y = tonumber(x), tonumber(y)
+	if planet == nil or x == nil or y == nil then print("ERROR landAt: planet x y"); return "none" end
+	if math.abs(x) >= 8000 or math.abs(y) >= 8000 then print(string.format("INFO land planet=%s x=%.0f y=%.0f inside=0", planet, x, y)); return "0" end
+	local z = getTerrainHeightAt(planet, x, y)
+	local w = getWaterHeightAt(planet, x, y)
+	local water = (w ~= nil and w > -10000) and w or -10000
+	local land = z > water
+	local build = isBuildingPermittedAt(planet, x, y) and 1 or 0
+	print(string.format("INFO land planet=%s x=%.0f y=%.0f inside=1 z=%.1f water=%s land=%d build=%d", planet, x, y, z, water > -10000 and string.format("%.1f", water) or "-", land and 1 or 0, build))
+	return land and "1" or "0"
+end
+
+-- pathBetween:<planet>:<x1>:<y1>:<x2>:<y2> → the navmesh path between two outdoor points: point count, how many are
+-- outdoors (cell 0), its length, and where it really ends (a path that stops short means the mesh has a gap)
+function FbLabTests:pathBetween(planet, x1, y1, x2, y2)
+	x1, y1, x2, y2 = tonumber(x1), tonumber(y1), tonumber(x2), tonumber(y2)
+	if planet == nil or x1 == nil or y1 == nil or x2 == nil or y2 == nil then print("ERROR pathBetween: planet x1 y1 x2 y2"); return "none" end
+	local path = findPath(planet, x1, y1, x2, y2)
+	if path == nil or #path == 0 then print(string.format("INFO path planet=%s points=0", planet)); return "0" end
+	local outdoor, length, lx, ly = 0, 0, x1, y1
+	for _, pt in ipairs(path) do
+		if (pt.cell or 0) == 0 then outdoor = outdoor + 1 end
+		length = length + math.sqrt((pt.x - lx) ^ 2 + (pt.y - ly) ^ 2); lx, ly = pt.x, pt.y
+	end
+	local last = path[#path]
+	local short = math.sqrt((last.x - x2) ^ 2 + (last.y - y2) ^ 2)
+	print(string.format("INFO path planet=%s points=%d outdoor=%d length=%.0f endX=%.0f endY=%.0f short=%.0f", planet, #path, outdoor, length, last.x, last.y, short))
+	return tostring(#path)
+end
+
 -- structures:<char> → the structures the character owns (oid per line) and the lots left.
 function FbLabTests:structures(charName)
 	local t = getOwnedStructures(charName)
