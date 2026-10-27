@@ -1508,6 +1508,12 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   a race the scenario loses when the thug lands its first shots fast; left as is, it is the retry's kind of flake. The
   earlier `bounty` flake today was different (the fixer's first conversation in the cantina timed out) — the indoor
   first-converse flake is now on three gates; still unexplained.
+- **The "noise" was Wex's whole day.** The `bazaarNear` `%d` error was not only three ERROR lines per gate: the oracle
+  threw on its first terminal row and printed nothing, so the pilot's `sell` read "no bazaar terminal within 800 m" —
+  Wex shuttled from Corellia to Anchorhead, then Mos Espa, walked into town twice and asked passers-by where the bazaar
+  was, carrying 143 000 units of Abeism, all day on the production build (`10f6472af2`). With `chuck-stable-20261027`
+  the same call lists four terminals 96–140 m from where he stands. Lesson: an ERROR line from a lab oracle the pilot
+  calls is a broken citizen tool, never cosmetic; `logs --errors` after a gate is part of reading the gate.
 
 
 
