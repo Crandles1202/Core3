@@ -73,7 +73,7 @@ def bench():
         pass
     return REPO
 
-BIN = os.path.join(bench(), "MMOCoreORB", "bin")
+BIN = os.environ.get("SWG_BIN") or os.path.join(bench(), "MMOCoreORB", "bin")   # swg exports SWG_BIN for the instance it runs
 
 # social emotes by canonical name -> row number of datatables/chat/social_types.iff (1-based, the ids
 # ChatManager::loadSocialTypes assigns); tools/seat_emotes.json is generated from the stock table
@@ -401,6 +401,32 @@ def path_length(points):
     return total
 
 
+# login port per server instance (SWG_INSTANCE): the bench, the live instance (+1000), the second bench (+2000);
+# an explicit SWG_LOGIN_PORT wins. An unknown instance name is refused rather than sent to the main bench by mistake.
+INSTANCE_PORTS = {"bench": "44453", "live": "45453", "bench2": "46453"}
+
+
+def current_instance():
+    """The server this command talks to: SWG_INSTANCE (bench, live, bench2), 'bench' when unset."""
+    inst = os.environ.get("SWG_INSTANCE", "").strip().lower() or "bench"
+    if inst not in INSTANCE_PORTS:
+        die(f"unknown SWG_INSTANCE '{inst}' (one of {', '.join(INSTANCE_PORTS)})")
+    return inst
+
+
+def login_port():
+    return os.environ.get("SWG_LOGIN_PORT") or INSTANCE_PORTS[current_instance()]
+
+
+def seat_instance(name):
+    """The server a seat was started against ('bench' for seats older than the instance file)."""
+    try:
+        with open(os.path.join(seat_dir(name), "instance")) as f:
+            return f.read().strip() or "bench"
+    except OSError:
+        return "bench"
+
+
 def seat_dir(name):
     d = os.path.join(SEATS, name)
     os.makedirs(d, exist_ok=True)
@@ -556,7 +582,7 @@ def cmd_start(args):
     env["CORE3_CLIENT_PASSWORD"] = open(passfile).read().strip()
     argv = [client, "--username", user,
             "--login-host", os.environ.get("SWG_LOGIN_HOST", "127.0.0.1"),
-            "--login-port", os.environ.get("SWG_LOGIN_PORT", "45453" if os.environ.get("SWG_INSTANCE") == "live" else "44453"),
+            "--login-port", login_port(),
             "--character-firstname", char,
             "--seat", sp, "--seat-timeout", str(timeout)]
     proc = subprocess.Popen(argv, cwd=BIN, env=env, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
@@ -564,6 +590,8 @@ def cmd_start(args):
         f.write(str(proc.pid))
     with open(os.path.join(d, "character"), "w") as f:
         f.write(char)
+    with open(os.path.join(d, "instance"), "w") as f:   # which server the seat sits on (crew/stop refuse a mismatch)
+        f.write(current_instance())
 
     # wait for the socket (login + zone-in takes a few seconds)
     for _ in range(90):
@@ -582,9 +610,13 @@ def cmd_start(args):
 
 def cmd_stop(args):
     if not args:
-        die("stop <name>")
+        die("stop <name> [--force]")
     name = args[0]
     d = seat_dir(name)
+    # seat state is shared by both servers: a stop issued for the other instance would log a live citizen out
+    if seat_instance(name) != current_instance() and "--force" not in args and os.path.exists(os.path.join(d, "pid")):
+        die(f"seat '{name}' sits on {seat_instance(name).upper()} and this command talks to {current_instance().upper()}: "
+            f"set SWG_INSTANCE={seat_instance(name)} (or --force)")
     pidfile = os.path.join(d, "pid")
     pid = int(open(pidfile).read()) if os.path.exists(pidfile) else None
     try:

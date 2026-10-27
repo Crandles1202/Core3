@@ -1464,6 +1464,36 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   `swg --live cmd`), 0 errors on live. Open: nightly backups cover `swgemu` only (`~/bin/swg-backup-daily.sh`); the live
   database and ODB have `swg --live snap save <name>` (`~/swg-snapshots/live/`) until the script learns the second database.
 
+### 2026-10-26 — the citizens move to the live server (alice)
+
+- Teyla and Wex were moved from the bench to the live instance the same day it came up: `crew down teyla wex` on the
+  bench, then `SWG_INSTANCE=live tools/citizens/crew up teyla wex` (seats on 45453, lab calls through the live console
+  under `~/.swg-lab/live.lock`). Verified three ways before trusting it: `SWG_INSTANCE=live swg cmd --shared
+  "runLuaFunction FbLabTests:where:Teyla"` places her on live, the plain bench console answers `offline Teyla`, and the
+  pilot process carries `SWG_INSTANCE=live` in its environment (crew inherits the variable; `crew status` prints the
+  instance and port it reads). **Every crew/seat/pilot command for a live citizen needs the variable** — without it
+  `crew up` seats the character on the bench, where the next gate restart kills the seat, and `swg cmd` asks the wrong
+  server. The other ten citizens stay on the bench until the two have run a clean day on live. The live server runs the
+  `2e0e53e231` build; `swg live deploy` (restarts live: take the live citizens down first) brings it to a newer
+  `unstable` when Chuck wants.
+- **The shared seat state bit within the hour.** Another lane ran a courtesy `crew down teyla wex` from the bench (no
+  `SWG_INSTANCE`) at 15:44 UTC and took the two *live* seats and pilots down: seat and pilot state (`~/.swg-lab/seats/<name>/pid`,
+  `citizens/<name>/pilot.pid`) is one set of files for both servers, and `crew down` / `seat stop` acted by pid. Guard:
+  `tools/seat start` writes `seats/<name>/instance` (`live` or `bench`); `seat stop` refuses a seat of the other instance
+  unless `--force`; `crew up` and `crew down` skip such a seat with "seat is up on LIVE, not touched"; `crew status` shows
+  the instance per seat (`seat up (pid N, live)`). Proven from the bench view with both seats on live: down, stop and up
+  all refused, the seats stayed up. Seats older than the file read as `bench`.
+- **A third instance is coming** (the other lane's `feature/bench2`: a second bench at `~/swg-bench2`, ports 46xxx, so neither
+  agent waits for the other's gate). The seat tools hard-coded "live or bench" and two ports, which would have sent a
+  `SWG_INSTANCE=bench2` seat (and every seat scenario of a bench2 gate) to the main bench's login port 44453 without a word.
+  Now one table in `tools/seat`, `tools/citizens/crew`, `tools/citizens/citizen` and `tools/scenarios/lib.sh`
+  (`INSTANCE_PORTS` / `login_port`): `bench` 44453, `live` 45453, `bench2` 46453; `SWG_LOGIN_PORT` still wins; an unknown
+  instance name dies instead of defaulting (a typo in `SWG_INSTANCE` must not reach the wrong server). The seat's
+  `instance` file carries the name as given, so the mismatch guard works for three servers unchanged. A new instance
+  is one row in each of the four places.
+
+
+
 ### 2026-10-26 — 2.4 loot kits
 
 - **The stock loot-kit object is the Pre-CU kit**: `LootkitObjectTemplate` (`collectibleComponents`, `collectibleReward`,

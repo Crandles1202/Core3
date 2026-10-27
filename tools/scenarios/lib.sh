@@ -70,12 +70,23 @@ lab_kv() { lab "$1" | sed -n "s/.*[[:space:]]$2=\([^[:space:]]*\).*/\1/p" | head
 # ham <pool>  → current value of health|action|mind for $CHAR
 ham() { lab "ham:$CHAR" | sed -n "s/.*[[:space:]]$1=\([0-9]*\)\/.*/\1/p" | head -n1; }
 
+# login_port → the bot's login port: SWG_LOGIN_PORT, else by SWG_INSTANCE (bench 44453, live 45453, bench2 46453)
+login_port() {
+	if [ -n "${SWG_LOGIN_PORT:-}" ]; then echo "$SWG_LOGIN_PORT"; return; fi
+	case "${SWG_INSTANCE:-bench}" in
+		bench|"") echo 44453 ;;
+		live) echo 45453 ;;
+		bench2) echo 46453 ;;
+		*) die "unknown SWG_INSTANCE '$SWG_INSTANCE'" ;;
+	esac
+}
+
 # bot <core3client action flags…>  (foreground; log in $BOTLOG). Returns the client's exit code.
 bot() {
 	[ -r "$PASSFILE" ] || die "no credentials at $PASSFILE"
 	[ -n "$CHAR" ] || die "no Lab* character on account $BOT_USER (run: swg test bot)"
 	( cd "$BIN" && CORE3_CLIENT_PASSWORD="$(cat "$PASSFILE")" ./core3client \
-		--username "$BOT_USER" --login-host "${SWG_LOGIN_HOST:-127.0.0.1}" --login-port "${SWG_LOGIN_PORT:-44453}" \
+		--username "$BOT_USER" --login-host "${SWG_LOGIN_HOST:-127.0.0.1}" --login-port "$(login_port)" \
 		--character-firstname "$CHAR" "$@" >"$BOTLOG" 2>&1 )
 }
 
