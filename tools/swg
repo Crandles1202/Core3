@@ -97,7 +97,7 @@ if [ "$INSTANCE" = bench2 ]; then
 	export SWG_LOGIN_PORT=${SWG_LOGIN_PORT:-$((BENCH2_PORT_BASE + 453))}
 fi
 # children (tools/tre, the scenarios' lib.sh, the seat) follow the instance through these
-export SWG_BENCH="$BENCH" SWG_BIN="$BIN"
+export SWG_BENCH="$BENCH" SWG_BIN="$BIN" SWG_DBNAME="$DBNAME"   # children (scenarios, seat, tre) follow the instance
 if [ "$INSTANCE" = live ]; then
 	BIN="$LIVE_ROOT/bin"
 	LOG="$BIN/screenlog.0"
