@@ -1264,7 +1264,7 @@ cmd_live() {
 			else
 				say "live   not set up (swg live init)"
 			fi
-			say "stable newest tag $(live_newest_tag || echo none) ($(git -C "$BENCH" rev-parse --short "$(live_newest_tag 2>/dev/null || echo HEAD)" 2>/dev/null))   unstable @ $(git -C "$BENCH" rev-parse --short unstable 2>/dev/null)"
+			say "stable newest tag $(live_newest_tag || echo none) ($(git -C "$BENCH" rev-parse --short "$(live_newest_tag 2>/dev/null || echo HEAD)^{commit}" 2>/dev/null))   unstable @ $(git -C "$BENCH" rev-parse --short unstable 2>/dev/null)"
 			[ -f "$LABDIR/client-dir" ] && say "client $(grep -h '^loginServerPort0=' "$(cat "$LABDIR/client-dir")/swgemu_login.cfg" 2>/dev/null | head -n1 || echo '?')  ($(cat "$LABDIR/client-dir"))"
 			;;
 		*) die "usage: swg live init [--force] | tag [name] | deploy [<chuck-stable-tag>] [--no-restart] | sync | config | client [--bench] | status" ;;
