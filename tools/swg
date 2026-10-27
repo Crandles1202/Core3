@@ -260,6 +260,7 @@ cmd_bench() {
 			elif [ -z "$running" ] || ! git -C "$BENCH" diff --quiet "$running" "$commit" -- MMOCoreORB/bin/scripts/mobile MMOCoreORB/bin/scripts/managers MMOCoreORB/bin/scripts/object MMOCoreORB/bin/conf tre-src; then need=restart
 			fi
 			if ! is_running; then [ "$need" = build ] || need=start; fi
+			[ "$need" = build ] || bench_note_built   # no C++ change since the last build: the binary is this commit's too
 			case "$need" in
 				build) say "C++ changed since the last build: building"; cmd_build || die "build failed"; bench_note_built
 				       if is_running; then cmd_stop || die "stop failed"; fi; cmd_start || die "start failed"; bench_note_running ;;
@@ -1193,7 +1194,7 @@ cmd_live() {
 			[ "$(git -C "$BENCH" rev-parse --abbrev-ref HEAD)" = unstable ] || die "the bench is on $(git -C "$BENCH" rev-parse --abbrev-ref HEAD), not unstable: swg bench use unstable first"
 			[ -z "$(git -C "$BENCH" status --porcelain)" ] || die "the bench checkout is dirty"
 			local built; built=$(cat "$(bench_built_file)" 2>/dev/null || true)
-			[ "$built" = "$(git -C "$BENCH" rev-parse HEAD)" ] || die "the bench binary is not built from this commit (swg bench use unstable builds it)"
+			{ [ -n "$built" ] && git -C "$BENCH" diff --quiet "$built" HEAD -- MMOCoreORB/src 2>/dev/null; } || die "the bench binary is not built from this commit's C++ (swg bench use unstable builds it)"
 			say "== live deploy: unstable @ $(git -C "$BENCH" rev-parse --short HEAD) -> $LIVE_ROOT"
 			if live_running && [ "$restart" = 1 ]; then say "stopping the live core3"; SWG_INSTANCE=live "$0" stop || die "live stop failed"; fi
 			live_sync_runtime

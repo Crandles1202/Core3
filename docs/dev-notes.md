@@ -1542,3 +1542,8 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 - **Every `mysql` in `tools/swg` names `$DBNAME`.** Three calls still said `swgemu` outright; bench2's first gate pruned four
   Lab characters out of the *main* bench's database (the character oids are the same in a copied database). Lab characters
   are disposable, nothing else was touched; the ODB objects of the four stay orphaned, which the server ignores.
+- **`swg live deploy` after a Lua-only merge** (2026-10-26): the built stamp (`~/.swg-lab/bench.built`) named the loot-kits
+  commit the binary was built from, the merged tip had the same C++, `bench use` chose *reload* and left the stamp alone, and
+  the deploy's exact-hash check refused. Now `bench use` re-stamps whenever no build was needed, and the deploy compares the
+  stamp's `MMOCoreORB/src` tree with HEAD instead of the hashes. The deploy also wants the bench checkout *on* `unstable`
+  (not detached at the same commit): `bench release` first.
