@@ -1556,3 +1556,21 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   `objectsNear` at 4100,-4700 showed three scyks on the character and a lair 35 m away, with oids right after the vision
   figures': the trip home from dungeon1 is a position update and the spawn area rolled a lair there. Lab `clearWild` before
   the part-B trigger; the same can hit any scenario that teleports a character and then needs it out of combat.
+- **Two `swg cmd` at once interleave on the console** (2026-10-27): the generator's probes and a `citygen spots` run shared the
+  tmux pane and one command arrived as `…landAt:naboo:5306:-4729runLuaFunction FbLabTests:landAt:tatooine:…` → "ERROR landAt:
+  planet x y". The console is one keyboard: serialise anything that sends to it (the lock covers agents, not two processes
+  of the same agent).
+- **`findPath` rows are positional** `{ x, z, y, cell }` (DirectorManager::findPath), not named fields; `pathBetween` and the
+  convoy route sampler read `pt[1], pt[3], pt[4]`.
+- **3.13 generator lessons (2026-10-27).** The AI navmesh leaves starport pads out: `findPath` from a travel point stops after
+  30 m (Mos Espa, Narmle…), so convoy routes start 35–80 m off the pad toward town; six cities still have no route and get no
+  convoy. Rectangle city regions (Theed, Keren) read 800+ m wide: rings and staging grounds use min(R, 500). Vreni Island has
+  no land ring outside its walls (radii fall back inward). Cities without a stock walking loop (Keren, Dee'ja Peak, outposts)
+  use their stock outdoor spawn spots as the in-town loop; three outposts have neither. All three cantina shells share one floor
+  plan but two furniture files, so two seat presets cover seventeen cantinas. `getWaterHeightAt` reads 0 where there is no
+  water body, so "land" is terrain above the water height, and a Dathomir hollow at −22 m counts as water: the ring skips it.
+- **Console output bleeds between consecutive `lab` calls** (gate 2026-10-27, twice): `npc-placement` ran the full audit (380 spawns,
+  hundreds of INFO lines, the ambient seats last) and then `spawnNpcAt`; the scenario took "the first `oid=` in the next
+  capture" and got the *last seat line of the audit* (Vreni Island seat 4, then Wayfar seat 2), so it audited and destroyed a
+  cantina patron. Parse the exact INFO prefix you asked for (`INFO spawnNpcAt oid=`), never the first `oid=`; `spawnNpcAt`
+  now reads its object back and `oidInfo:<oid>` says what an id is before anything is destroyed.

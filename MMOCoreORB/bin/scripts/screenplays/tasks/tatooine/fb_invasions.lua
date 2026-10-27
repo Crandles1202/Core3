@@ -30,27 +30,19 @@ FbInvasions = ScreenPlay:new {
 	territoryShift = 10,
 }
 
-FbInvasions.cities = {
-	bestine = {
-		label = "Bestine", planet = "tatooine",
-		defender = "imperial", attacker = "rebel",
-		staging = { -850, -3690 },          -- desert east of the walls
-		plaza = { -1230, -3600 },           -- trainer row at the city centre
-		muster = { -1225, -3618 },          -- where the garrison forms up
-		attackers = { leader = "rebel_commando", troops = { "rebel_commando", "rebel_commando", "rebel_commando", "rebel_commando", "rebel_engineer", "rebel_medic" } },   -- commandos are level 25 like stormtroopers; troopers (15) were wiped in 30 s
-		defenders = { leader = "stormtrooper_squad_leader", troops = { "stormtrooper", "stormtrooper", "stormtrooper", "stormtrooper", "stormtrooper_medic" } },
-		warn = "Bestine: Rebel forces are massing in the desert east of the city. The Imperial garrison is on alert. Assault expected within ten minutes.",
-		assault = "Bestine: the Rebel assault has begun. Fighting in the streets near the plaza.",
-		held = "Bestine: the Imperial garrison has repelled the Rebel assault.",
-		fell = "Bestine: the garrison is overrun. Rebel forces hold the plaza.",
-		withdrew = "Bestine: the Rebel attackers have withdrawn into the desert. The city stands.",
-		news = {
-			held = "The Rebels hit Bestine and bounced off the garrison. Lot of bodies in the plaza.",
-			fell = "Bestine fell to a Rebel assault. The Empire will want it back by morning.",
-			withdrew = "A Rebel column probed Bestine and pulled back before it was decided.",
-		},
-	},
-}
+-- 3.13: the cities come from the city files (invasion = { defender, attacker, staging, plaza, muster, attackers,
+-- defenders, warn, assault, held, fell, withdrew, news }); the city key is the territory region
+FbInvasions.cities, FbInvasions.order = {}, {}
+if FbCities ~= nil then
+	for _, c in ipairs(FbCities.list) do
+		if c.invasion ~= nil then
+			local cfg = { label = c.label, planet = c.planet }
+			for k, v in pairs(c.invasion) do cfg[k] = v end
+			FbInvasions.cities[c.key] = cfg
+			FbInvasions.order[#FbInvasions.order + 1] = c.key
+		end
+	end
+end
 
 registerScreenPlay("FbInvasions", true)
 
@@ -87,8 +79,8 @@ local function count(city, k)
 end
 
 local function cityOf(name)
-	name = name or "bestine"
-	return FbInvasions.cities[name] ~= nil and name or nil
+	name = name or (FbInvasions.cities.bestine ~= nil and "bestine" or FbInvasions.order[1])
+	return name ~= nil and FbInvasions.cities[name] ~= nil and name or nil
 end
 
 -- ---- lifecycle --------------------------------------------------------------------------------
@@ -103,9 +95,22 @@ function FbInvasions:start()
 	printf("FbInvasions: next invasion in <= %d h\n", self.intervalHours)
 end
 
+-- onTick: one idle city per planet, round robin (3.13: twenty cities must not go to war on the same hour)
 function FbInvasions:onTick()
-	for city, _ in pairs(self.cities) do
-		if get(city, "phase") == "" or get(city, "phase") == "idle" then pcall(function() self:begin(city) end) end
+	local byPlanet, planets = {}, {}
+	for _, city in ipairs(self.order) do
+		if get(city, "phase") == "" or get(city, "phase") == "idle" then
+			local planet = self.cities[city].planet
+			if byPlanet[planet] == nil then byPlanet[planet] = {}; planets[#planets + 1] = planet end
+			table.insert(byPlanet[planet], city)
+		end
+	end
+	for _, planet in ipairs(planets) do
+		local cities = byPlanet[planet]
+		local n = (tonumber(getQuestStatus("FbInvasions.next." .. planet)) or 0) % #cities + 1
+		setQuestStatus("FbInvasions.next." .. planet, tostring(n))
+		local city = cities[n]
+		pcall(function() self:begin(city) end)
 	end
 	if hasServerEvent(self.eventName) then
 		rescheduleServerEvent(self.eventName, self.intervalHours * 3600 * 1000)

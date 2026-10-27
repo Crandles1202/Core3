@@ -25,7 +25,7 @@ WORD=${KEY_NEXT%%_*}   # tusken / pirates / bestine: every story's news lines na
 check "news_in_galaxy_pool" "$(lab "galaxyNews" | grep -qi "$WORD" && echo 1 || echo 0)" "a galaxy line mentions '$WORD'"
 sleep 2
 wait "$BOT_PID"
-check "broadcast_reached_client" "$(grep -aqiE 'militia|constable|Governor' "$BOTLOG" && echo 1 || echo 0)"
+check "broadcast_reached_client" "$(grep -aqiE "militia|constab|Governor|CorSec|port authority|Nym's word|Outpost:" "$BOTLOG" && echo 1 || echo 0)"   # every story's broadcast opens with its sender (eleven stories since 3.13)
 
 # --- the next story replaces this one -------------------------------------------------------------
 OLD_OIDS=$(lab "questStatus:FbStoryTicker.spawns" | sed -n 's/.*value=\(.*\)$/\1/p' | grep -o '[0-9]\{6,\}' | tr '\n' ' ')

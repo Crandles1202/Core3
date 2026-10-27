@@ -16,12 +16,23 @@ FbTerritory = {
 	rebelAt = 40,      -- % and below: Rebel-held
 }
 
-FbTerritory.regions = {
-	mos_eisley = { label = "Mos Eisley", planet = "tatooine", default = 65 },
-	bestine    = { label = "Bestine",    planet = "tatooine", default = 80 },
-	anchorhead = { label = "Anchorhead", planet = "tatooine", default = 35 },
-}
-FbTerritory.order = { "mos_eisley", "bestine", "anchorhead" }
+-- 3.13: every city (tasks/cities/*.lua) is a region; its key is the region key, `lean` the default Imperial %
+FbTerritory.regions, FbTerritory.order = {}, {}
+if FbCities ~= nil then
+	for _, c in ipairs(FbCities.list) do
+		FbTerritory.regions[c.key] = { label = c.label, planet = c.planet, default = c.lean }
+		FbTerritory.order[#FbTerritory.order + 1] = c.key
+	end
+end
+
+-- onPlanet(planet): the region keys of one planet, in order (the HoloNet sector report and the gossip stay local)
+function FbTerritory.onPlanet(planet)
+	local out = {}
+	for _, region in ipairs(FbTerritory.order) do
+		if planet == nil or FbTerritory.regions[region].planet == planet then out[#out + 1] = region end
+	end
+	return out
+end
 
 local function key(region) return "FbTerritory." .. region end
 

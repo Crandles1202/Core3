@@ -13,7 +13,7 @@ check_eq "guards_alive" "${GUARDS%/*}" "${GUARDS#*/}" "guards $GUARDS"
 check "cargo_droid_present" "$(printf '%s' "$ST" | grep -q 'cargo=[1-9]' && echo 1 || echo 0)"
 LX=$(printf '%s\n' "$ST" | sed -n 's/.*leader=[0-9]* x=\([-0-9]*\).*/\1/p')
 LY=$(printf '%s\n' "$ST" | sed -n 's/.*leader=[0-9]* x=[-0-9]* y=\([-0-9]*\).*/\1/p')
-GUARD_OIDS=$(lab "questStatus:FbConvoys.guards" | sed -n 's/.*value=\(.*\)$/\1/p' | tr ',' ' ')
+GUARD_OIDS=$(lab "questStatus:FbConvoys.mos_eisley.guards" | sed -n 's/.*value=\(.*\)$/\1/p' | tr ',' ' ')
 
 bot_bg --wait 60
 wait_online || die "$CHAR never came online"

@@ -1,0 +1,644 @@
+#!/usr/bin/env python3
+"""citygen — Phase 3.13: write the city data files (screenplays/tasks/cities/<planet>_<city>.lua) for the stock cities.
+
+Facts come from the stock data (city regions, mission cities, travel points, the stock city screenplays' walking loops,
+the world snapshot through tools/lotsurvey) and from the running server through the lab oracles (landAt: terrain,
+water, no-build; pathBetween: the navmesh). Every generated point is written into the city file as a plain number
+with a comment saying where it came from, so the shipped data is explicit and reviewable.
+
+  tools/citygen plan                       the cities this tool knows and what each gets
+  tools/citygen write [KEY…] [--dry]       write the city files (all planned cities, or the keys given)
+  tools/citygen spots PLANET X Y [R]       print land points around a centre (weather parties, story camps)
+
+Server probes go through `tools/swg cmd --shared` (read-only oracles, no bench lock) and are cached in
+~/.swg-lab/citygen/ — terrain never changes. Needs the server up with a lab that has landAt/pathBetween.
+"""
+import json, math, os, re, subprocess, sys, glob
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(HERE)
+SCRIPTS = os.path.join(REPO, "MMOCoreORB/bin/scripts")
+CITIES_DIR = os.path.join(SCRIPTS, "screenplays/tasks/cities")
+CACHE_DIR = os.path.expanduser("~/.swg-lab/citygen")
+
+# ------------------------------------------------------------------------------------------------------------- the plan
+# lean: default Imperial % (stock stronghold list: Imperial 80 / Rebel 35; else a planet feel). region: the CITY region
+# name (managers/planet/<planet>_regions.lua) that gives centre and radius. starport: the travel point the convoy and the
+# starport relay hang off (an outpost's shuttle point too). stock: the stock city screenplay whose walking loop the
+# in-town squad reuses. cantina: has one of the three cantina shells (looked up in the snapshot). invasion: contested.
+PLAN = [
+    dict(key="mos_espa", planet="tatooine", label="Mos Espa", order=4, lean=60, region="mos_espa", starport="Mos Espa Starport", stock="tatooine_mos_espa", cantina=True),
+    dict(key="mos_entha", planet="tatooine", label="Mos Entha", order=5, lean=60, region="mos_entha", starport="Mos Entha Starport", stock="tatooine_mos_entha"),
+    dict(key="wayfar", planet="tatooine", label="Wayfar", order=6, lean=45, region="wayfar", starport=None, stock="tatooine_wayfar", cantina=True),
+
+    dict(key="theed", planet="naboo", label="Theed", order=1, lean=70, region="theed", starport="Theed Spaceport", stock="naboo_theed", cantina=True),
+    dict(key="keren", planet="naboo", label="Keren", order=2, lean=55, region="keren", starport="Keren Starport", stock="naboo_keren", cantina=True, invasion=True),
+    dict(key="moenia", planet="naboo", label="Moenia", order=3, lean=35, region="moenia", starport="Moenia", stock="naboo_moenia", cantina=True),
+    dict(key="kaadara", planet="naboo", label="Kaadara", order=4, lean=60, region="kaadara", starport="Kaadara Starport", stock="naboo_kaadara", cantina=True),
+    dict(key="deeja_peak", planet="naboo", label="Dee'ja Peak", order=5, lean=80, region="deeja_peak", starport="Dee'ja Peak", stock="naboo_deeja_peak"),
+
+    dict(key="coronet", planet="corellia", label="Coronet", order=1, lean=55, region="coronet", starport="Coronet Starport", stock="corellia_coronet", cantina=True, keep_ambient=True),
+    dict(key="tyrena", planet="corellia", label="Tyrena", order=2, lean=55, region="tyrena", starport="Tyrena Starport", stock="corellia_tyrena", cantina=True, invasion=True),
+    dict(key="kor_vella", planet="corellia", label="Kor Vella", order=3, lean=55, region="kor_vella", starport="Kor Vella Starport", stock="corellia_kor_vella", cantina=True),
+    dict(key="doaba_guerfel", planet="corellia", label="Doaba Guerfel", order=4, lean=55, region="doaba_guerfel", starport="Doaba Guerfel Starport", stock="corellia_doaba_guerfel", cantina=True),
+    dict(key="vreni_island", planet="corellia", label="Vreni Island", order=5, lean=35, region="vreni_island", starport="Vreni Island Shuttle", stock="corellia_vreni_island", cantina=True),
+    dict(key="bela_vistal", planet="corellia", label="Bela Vistal", order=6, lean=80, region="bela_vistal", starport="Bela Vistal Shuttle", stock="corellia_bela_vistal", cantina=True),
+
+    dict(key="dearic", planet="talus", label="Dearic", order=1, lean=55, region="dearic", starport="Dearic Starport", stock="talus_dearic", cantina=True, invasion=True),
+    dict(key="nashal", planet="talus", label="Nashal", order=2, lean=55, region="nashal", starport="Nashal Starport", stock="talus_nashal", cantina=True),
+    dict(key="talus_imperial_outpost", planet="talus", label="Talus Imperial Outpost", order=3, lean=80, region="talus_imperial_outpost", starport="Talus Imperial Outpost", stock="talus_imperial_outpost", outpost=True),
+
+    dict(key="narmle", planet="rori", label="Narmle", order=1, lean=50, region="narmle", starport="Narmle Starport", stock="rori_narmle"),
+    dict(key="restuss", planet="rori", label="Restuss", order=2, lean=45, region="restuss", starport="Restuss Starport", stock="rori_restuss", invasion=True),
+    dict(key="rori_rebel_outpost", planet="rori", label="Rebel Outpost", order=3, lean=20, region="sdungeon_rebel_outpost", starport="Rebel Outpost", stock="rori_rebel_outpost", outpost=True),
+
+    dict(key="nyms_stronghold", planet="lok", label="Nym's Stronghold", order=1, lean=40, region="lok_nyms_stronghold", starport="Nym's Stronghold", stock="lok_nym_stronghold", cantina=True),
+
+    dict(key="dantooine_agro_outpost", planet="dantooine", label="Agro Outpost", order=1, lean=50, region="dantooine_pirate_outpost", starport="Dantooine Agro Outpost", stock="dantooine_agro_outpost", outpost=True),
+    dict(key="dantooine_imperial_outpost", planet="dantooine", label="Imperial Outpost", order=2, lean=80, region="imperial_outpost", starport="Dantooine Imperial Outpost", stock="dantooine_imperial_outpost", outpost=True),
+    dict(key="dantooine_mining_outpost", planet="dantooine", label="Mining Outpost", order=3, lean=50, region="dantooine_mining_outpost", starport="Dantooine Mining Outpost", stock="dantooine_mining_outpost", outpost=True),
+
+    dict(key="dathomir_trade_outpost", planet="dathomir", label="Trade Outpost", order=1, lean=50, region="dathomir_trade_outpost", starport="Trade Outpost", stock="dathomir_trade_outpost", outpost=True),
+    dict(key="dathomir_science_outpost", planet="dathomir", label="Science Outpost", order=2, lean=60, region="dathomir_survey_outpost", starport="Science Outpost", stock="dathomir_science_outpost", outpost=True),
+
+    dict(key="endor_smuggler_outpost", planet="endor", label="Smuggler Outpost", order=1, lean=40, region="endor_smuggler_outpost", starport="Smuggler Outpost", stock="endor_smuggler_outpost", outpost=True),
+    dict(key="endor_research_outpost", planet="endor", label="Research Outpost", order=2, lean=60, region="endor_neutral_outpost", starport="Research Outpost", stock="endor_research_outpost", outpost=True),
+
+    dict(key="yavin4_labor_outpost", planet="yavin4", label="Labor Outpost", order=1, lean=60, region="yavin4_labor_outpost", starport="Yavin IV Labor Outpost", stock="yavin4_labor_outpost", outpost=True),
+    dict(key="yavin4_mining_outpost", planet="yavin4", label="Mining Outpost", order=2, lean=60, region="yavin4_mining_outpost", starport="Yavin IV Mining Outpost", stock="yavin4_mining_outpost", outpost=True),
+]
+
+FACTIONS = {
+    "tatooine": dict(imperial=("stormtrooper_squad_leader", ["stormtrooper", "stormtrooper"]), rebel=("rebel_commando", ["rebel_trooper", "rebel_trooper"])),
+    "naboo":    dict(imperial=("stormtrooper_squad_leader", ["stormtrooper_black_hole", "stormtrooper_black_hole"]), rebel=("rebel_resistance_leader", ["rebel_gungan_bomber", "rebel_trooper"])),
+    "corellia": dict(imperial=("stormtrooper_squad_leader", ["stormtrooper", "stormtrooper"]), rebel=("rebel_commando", ["specforce_marine", "specforce_marine"])),
+}
+DEFAULT_FACTIONS = dict(imperial=("stormtrooper_squad_leader", ["stormtrooper", "stormtrooper"]), rebel=("rebel_commando", ["rebel_trooper", "rebel_trooper"]))
+
+# invasion squads follow Bestine's shape (a leader and six / a leader and five)
+INVADERS = {
+    "rebel":    ("rebel_commando", ["rebel_commando", "rebel_commando", "rebel_commando", "rebel_commando", "rebel_engineer", "rebel_medic"]),
+    "imperial": ("stormtrooper_squad_leader", ["stormtrooper", "stormtrooper", "stormtrooper", "stormtrooper", "stormtrooper_medic", "stormtrooper"]),
+}
+GARRISON = {
+    "imperial": ("stormtrooper_squad_leader", ["stormtrooper", "stormtrooper", "stormtrooper", "stormtrooper", "stormtrooper_medic"]),
+    "rebel":    ("rebel_commando", ["rebel_commando", "rebel_commando", "rebel_commando", "rebel_trooper", "rebel_medic"]),
+}
+
+# the seats: one audited set per interior layout. The three cantina shells share one floor plan; Corellia and Naboo
+# share the furniture file (shared_cantina_style_01.ilf, the Coronet seats), Tatooine and Lok have their own
+# (shared_cantina_mos_eisley_tatooine.ilf, the Mos Eisley seats). Cell-local x/y, floor z -0.9, in the main room.
+SEATS = {
+    "style_01": dict(
+        anchor=(0.0, -0.9, -2.0),
+        seats=[(-5.5, -7.5, 30), (5.0, -6.5, 220), (1.0, 8.5, 180), (-6.5, 2.0, 90)],
+        relay=(-14.0, -0.9, 0.0, 90)),
+    "mos_eisley": dict(
+        anchor=(12.0, -0.9, 1.5),
+        seats=[(12.6, -5.6, 20), (25.2, -6.9, 200), (16.0, 10.0, 180), (-4.9, -9.9, 40), (21.6, 7.5, 250)],
+        relay=(10.5, -0.9, 8.5, 3)),
+}
+SHELL_LAYOUT = {"shared_cantina_corellia": "style_01", "shared_cantina_naboo": "style_01", "shared_cantina_tatooine": "mos_eisley"}
+
+# the voices (3.8): one per planet, {city} is the city's label. Eight lines, three for a newcomer, the moods and emotes.
+VOICES = {
+    "tatooine": dict(
+        templates=["patron", "commoner_tatooine", "businessman", "patron_devaronian", "patron_nikto", "commoner_old"],
+        moods=["npc_sitting_chair", "npc_sitting_table", "npc_standing_drinking", "bored", "calm", "worried"],
+        chatter=[
+            "Water's up again. Everything's up again.",
+            "Saw a Jawa sandcrawler stop outside {city} this morning. Nothing good comes off those.",
+            "The Hutts own half of {city} and the Empire taxes the other half. Guess which half we're in.",
+            "A moisture farmer came in with Tusken arrows in his speeder. Didn't say a word, just drank.",
+            "If you're going out past the ridge, go armed. Everyone says that. Nobody listens.",
+            "The bartender waters the juri juice. Everyone knows. Nobody cares.",
+            "There's work hauling for the garrison if you can keep your mouth shut.",
+            "Stormtroopers were asking about droids again. Always droids.",
+        ],
+        newcomer=["New face. Mind the sand in your boots, the floor's cleaner than you.", "Traveller? Sit anywhere that isn't claimed.", "Didn't see you come in. That's how it starts out here."],
+        emotes=["nod_head_once", "shake_head_no", "sigh_deeply", "rub_chin_thoughtful", "wave_finger_warning"]),
+    "naboo": dict(
+        templates=["patron", "commoner_naboo", "noble", "businessman", "commoner_old", "patron_devaronian"],
+        moods=["npc_sitting_chair", "npc_sitting_table", "npc_standing_drinking", "calm", "happy", "bored"],
+        chatter=[
+            "The Queen's festival banners went up in {city} again. The Governor let it pass. This year.",
+            "A Gungan trader was turned away at the gate. Papers, they said. He had papers.",
+            "You can still hear the fountains at night if the patrols are quiet.",
+            "Theed's artists paint what they're told to paint now. Beautiful work, all of it. Empty.",
+            "The lake country floods in the rains and the Empire sends engineers. Then it sends a bill.",
+            "Somebody saw a Rebel symbol chalked under the bridge. Gone by morning.",
+            "The wine's local. The prices aren't.",
+            "A noble's son joined the Imperial academy. His mother hasn't come out of the house since.",
+        ],
+        newcomer=["Welcome to {city}. Mind your manners and your politics.", "A visitor. You'll find the food better than the company.", "Sit, sit. The Imperials only come in on the hour."],
+        emotes=["nod_head_once", "bow", "sigh_deeply", "rub_chin_thoughtful", "shake_head_no"]),
+    "corellia": dict(
+        templates=["patron", "commoner", "businessman", "commoner_fat", "commoner_old", "patron_nikto"],
+        moods=["npc_sitting_chair", "npc_sitting_table", "npc_standing_drinking", "bored", "calm", "amused"],
+        chatter=[
+            "CorSec pulled a freighter apart at the {city} port yesterday. Found nothing. Kept the freighter.",
+            "Every pilot in here has a story about the Run. Half of them have been on it.",
+            "Sabacc in the back room after the second shift. Bring credits, not promises.",
+            "The shipyards hire anyone who can weld. The Empire takes what they build.",
+            "My cousin flies for the Alliance. I don't have a cousin, if anyone asks.",
+            "Meatlumps hit a warehouse on the east side. Took the wrong crates. Idiots.",
+            "The Corellian brandy here is Corellian. Can't say that about much else.",
+            "A smuggler bought the whole bar a round last night. Gone before the Imperials finished their drinks.",
+        ],
+        newcomer=["New in {city}? Don't play cards with the Rodian.", "Another pilot. Or another someone who says so.", "Grab a stool. CorSec just left."],
+        emotes=["nod_head_once", "shake_head_no", "rub_chin_thoughtful", "laugh", "wave_finger_warning"]),
+    "talus": dict(
+        templates=["patron", "commoner", "businessman", "commoner_old", "patron_nikto", "commoner_fat"],
+        moods=["npc_sitting_chair", "npc_sitting_table", "npc_standing_drinking", "bored", "worried", "calm"],
+        chatter=[
+            "Binayre pirates hit another barge on the river. CorSec says it's handled. CorSec says a lot.",
+            "{city} was quiet until the Empire found the mines. Now it's quiet and watched.",
+            "A marauder band's been seen near the hills. The garrison won't go out after dark.",
+            "Work's steady if you don't mind the dust. The dust doesn't mind you.",
+            "Somebody's selling Rebel-stamped power cells out the back of a speeder. Good cells, too.",
+            "The ferry's late again. The ferry's always late.",
+            "Poachers took a whole herd off the plains last week. The rangers found the carcasses, not the poachers.",
+            "You want news, ask the HoloNet droid. You want the truth, ask the bartender.",
+        ],
+        newcomer=["Stranger in {city}. Keep your blaster holstered and your opinions quieter.", "Sit down before someone wonders why you're standing.", "New here? The stew's safe. The politics aren't."],
+        emotes=["nod_head_once", "shake_head_no", "sigh_deeply", "rub_chin_thoughtful", "wave_finger_warning"]),
+    "rori": dict(
+        templates=["patron", "commoner_naboo", "commoner", "businessman", "commoner_old", "patron_devaronian"],
+        moods=["npc_sitting_chair", "npc_sitting_table", "npc_standing_drinking", "bored", "calm", "worried"],
+        chatter=[
+            "Garyn's pirates run the swamp roads out of {city}. The Empire runs the paved one.",
+            "Kobola miners went on strike. The foreman went missing. Nobody's asking.",
+            "You can see Naboo from the ridge on a clear night. We don't get many clear nights.",
+            "A Rebel supply drop went into the swamp. Half the town went looking. The gundarks got there first.",
+            "The borgle bats took a kid's pet last week. Keep the small things indoors.",
+            "There's talk of a new garrison. There's always talk.",
+            "Mud, rain, and taxes. Welcome to Rori.",
+            "The Black Sun courier drinks here on sixthdays. Don't look at him. I said don't.",
+        ],
+        newcomer=["Off the shuttle? Boots off the table, that's the only rule in {city}.", "New blood. Rori eats new blood.", "Sit anywhere dry."],
+        emotes=["nod_head_once", "shake_head_no", "sigh_deeply", "rub_chin_thoughtful", "wave_finger_warning"]),
+    "lok": dict(
+        templates=["patron", "commoner", "patron_nikto", "patron_devaronian", "businessman", "commoner_old"],
+        moods=["npc_sitting_chair", "npc_sitting_table", "npc_standing_drinking", "bored", "angry", "amused"],
+        chatter=[
+            "Nym's law is the only law on Lok. Break it and you'll meet the kimogilas.",
+            "Blood Razor pirates tried the stronghold wall again. The wall won.",
+            "The Imperials keep an outpost on the other side of the planet. They don't come here. Smart.",
+            "Somebody's selling Imperial rations off a crashed shuttle. Taste like the crash.",
+            "The volcano smoke's thicker this week. Good for hiding ships. Bad for lungs.",
+            "A droid walked in yesterday asking for Nym by name. Walked out in three pieces.",
+            "You want to fly anywhere from here, you fly for Nym first.",
+            "Cheap drink, cheap bunk, expensive mistakes. That's the stronghold.",
+        ],
+        newcomer=["Nym know you're here? He will.", "New face in the stronghold. Keep your hands where the guards like them.", "Sit. Drink. Don't ask about the Feeorin."],
+        emotes=["nod_head_once", "shake_head_no", "laugh", "rub_chin_thoughtful", "wave_finger_warning"]),
+}
+
+# invasion texts; {att}/{def} are "Rebel"/"Imperial", {attp} the plural, {other} "The Empire"/"The Alliance", {where} a compass word
+INVASION_TEXT = dict(
+    warn="{label}: {att} forces are massing {where} of the city. The {def} garrison is on alert. Assault expected within ten minutes.",
+    assault="{label}: the {att} assault has begun. Fighting in the streets near the plaza.",
+    held="{label}: the {def} garrison has repelled the {att} assault.",
+    fell="{label}: the garrison is overrun. {att} forces hold the plaza.",
+    withdrew="{label}: the {att} attackers have withdrawn. The city stands.",
+    news_held="The {attp} hit {label} and bounced off the garrison. Lot of bodies in the plaza.",
+    news_fell="{label} fell to a {att} assault. {other} will want it back by morning.",
+    news_withdrew="A {att} column probed {label} and pulled back before it was decided.",
+)
+
+# the stock GCW landing plazas (screenplays/gcw/city_control_landing.lua) — open ground at the city centre
+LANDING = {"coronet": (-148, -4715), "bela_vistal": (6902, -5550), "theed": (-4897, 4124), "moenia": (4812, -4700), "bestine": (-1282, -3584), "anchorhead": (112, -5340)}
+
+# ------------------------------------------------------------------------------------------------------------- facts
+def read(p): return open(p, encoding="utf-8", errors="replace").read()
+
+def city_regions():
+    out = {}
+    for f in glob.glob(os.path.join(SCRIPTS, "managers/planet/*_regions.lua")):
+        planet = os.path.basename(f).replace("_regions.lua", "")
+        s = read(f)
+        for n, x, y, sh, a, b, fl in re.findall(r'\{\s*"([^"]+)"\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*\{\s*(CIRCLE|RECTANGLE)\s*,\s*(-?[\d.]+)(?:\s*,\s*(-?[\d.]+))?\s*\}\s*,\s*([^}]*CITY[^}]*)\}', s):
+            name = n.split(":")[-1]
+            x, y, a = float(x), float(y), float(a)
+            if sh == "CIRCLE":
+                out[(planet, name)] = dict(x=x, y=y, r=a)
+            else:
+                b = float(b); cx, cy = (x + a) / 2, (y + b) / 2
+                out[(planet, name)] = dict(x=cx, y=cy, r=max(abs(a - x), abs(b - y)) / 2)
+    return out
+
+def mission_cities():
+    s = read(os.path.join(SCRIPTS, "managers/mission/mission_cities.lua"))
+    return [dict(planet=p, name=n, x=float(x), y=float(y), r=float(r)) for p, n, x, y, r in
+            re.findall(r'\{\s*"(\w+)"\s*,\s*"([^"]+)"\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\}', s)]
+
+def travel_points():
+    s = read(os.path.join(SCRIPTS, "managers/planet/planet_manager.lua"))
+    out = {}
+    for m in re.finditer(r'\n(\w+)\s*=\s*\{\s*\n(?:.*?\n)*?\tplanetTravelPoints\s*=\s*\{(.*?)\n\t\}', s, re.S):
+        for n, x, z, y, i, l in re.findall(r'\{name = "([^"]+)", x = (-?[\d.]+), z = (-?[\d.]+), y = (-?[\d.]+), interplanetaryTravelAllowed = (\d), incomingTravelAllowed = \d, landingRange = (\d+)', m.group(2)):
+            out[(m.group(1), n)] = dict(x=float(x), z=float(z), y=float(y), inter=int(i))
+    return out
+
+def stock_loops(stock):
+    f = os.path.join(SCRIPTS, "screenplays/cities", stock + ".lua")
+    if not os.path.exists(f): return {}
+    m = re.search(r'\n\tpatrolPoints\s*=\s*\{(.*?)\n\t\}', read(f), re.S)
+    if not m: return {}
+    loops = {}
+    for line in m.group(1).split("\n"):
+        km = re.match(r'\t\t(\w+)\s*=\s*\{(.*)\}\s*,?\s*$', line)
+        if km:
+            pts = [(float(a), float(b), float(c), int(d)) for a, b, c, d in re.findall(r'\{\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(\d+)', km.group(2))]
+            if pts and all(p[3] == 0 for p in pts): loops[km.group(1)] = pts
+    return loops
+
+def stock_outdoor_spots(stock):
+    """outdoor (cell 0) spawn spots of the stock city file — faction guards (gcwMobs), stationary commoners, static NPCs
+    (mobiles) — as a source of known-open ground in a city that has no walking loop. Each block has its own row layout."""
+    f = os.path.join(SCRIPTS, "screenplays/cities", stock + ".lua")
+    if not os.path.exists(f): return []
+    s = read(f)
+    def block(name):
+        m = re.search(r'\n\t' + name + r'\s*=\s*\{(.*?)\n\t\}', s, re.S)
+        return m.group(1) if m else ""
+    num = r'(-?[\d.]+)'
+    pts = []
+    for row in re.findall(r'\{([^{}]*)\}', block("gcwMobs")):
+        parts = [x.strip() for x in row.split(",")]
+        strs = [i for i, x in enumerate(parts) if x.startswith('"')]
+        if len(strs) >= 2 and strs[1] == 1 and len(parts) >= 7:      # long: imp, reb, x, z, y, heading, cell
+            try: x, z, y, cell = float(parts[2]), float(parts[3]), float(parts[4]), int(parts[6])
+            except ValueError: continue
+        elif len(parts) >= 6:                                          # short: tpl, x, z, y, heading, cell
+            try: x, z, y, cell = float(parts[1]), float(parts[2]), float(parts[3]), int(parts[5])
+            except ValueError: continue
+        else: continue
+        if cell == 0: pts.append((x, z, y))
+    for row in re.findall(r'\{([^{}]*)\}', block("stationaryMobiles")):          # respawn, x, z, y, dir, cell
+        parts = [x.strip() for x in row.split(",")]
+        try:
+            if len(parts) >= 6 and int(parts[5]) == 0: pts.append((float(parts[1]), float(parts[2]), float(parts[3])))
+        except ValueError: pass
+    for row in re.findall(r'\{([^{}]*)\}', block("mobiles")):                    # tpl, respawn, x, z, y, heading, cell
+        parts = [x.strip() for x in row.split(",")]
+        try:
+            if len(parts) >= 7 and int(parts[6]) == 0: pts.append((float(parts[2]), float(parts[3]), float(parts[4])))
+        except ValueError: pass
+    return pts
+
+def spread(pts, n=4):
+    """n points as far apart as possible (greedy), each at least 15 m from the last"""
+    if not pts: return []
+    chosen = [pts[0]]
+    while len(chosen) < n and len(chosen) < len(pts):
+        best = max(pts, key=lambda p: min(math.hypot(p[0] - c[0], p[2] - c[2]) for c in chosen))
+        if min(math.hypot(best[0] - c[0], best[2] - c[2]) for c in chosen) < 15: break
+        chosen.append(best)
+    return chosen if len(chosen) >= 3 else []
+
+def stock_cell_npcs(stock, cell):
+    """x,y of the stock NPCs spawned into a cell (so our seats keep clear of them)"""
+    f = os.path.join(SCRIPTS, "screenplays/cities", stock + ".lua")
+    if not os.path.exists(f): return []
+    out = []
+    for m in re.finditer(r'\{\s*"[^"]+"\s*,\s*\d+\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*-?[\d.]+\s*,\s*(\d+)', read(f)):
+        if int(m.group(4)) == cell: out.append((float(m.group(1)), float(m.group(3))))
+    for m in re.finditer(r'spawnMobile\("\w+",\s*"[^"]+",\s*\d+,\s*(-?[\d.]+),\s*(-?[\d.]+),\s*(-?[\d.]+),\s*-?[\d.]+,\s*(\d+)\)', read(f)):
+        if int(m.group(4)) == cell: out.append((float(m.group(1)), float(m.group(3))))
+    return out
+
+# ------------------------------------------------------------------------------------------------------------- caches / probes
+def cache(name):
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    p = os.path.join(CACHE_DIR, name)
+    data = json.load(open(p)) if os.path.exists(p) else {}
+    def save(): json.dump(data, open(p, "w"), indent=0)
+    return data, save
+
+def lotsurvey(*args):
+    return subprocess.run([os.path.join(HERE, "lotsurvey"), *args], capture_output=True, text=True).stdout
+
+def cantina_building(planet, cx, cy, r):
+    data, save = cache("cantinas.json")
+    k = f"{planet}:{int(cx)}:{int(cy)}"
+    if k not in data:
+        rows = [l for l in lotsurvey("near", planet, str(int(cx)), str(int(cy)), str(int(min(r + 200, 900)))).splitlines() if "/shared_cantina_" in l]
+        hit = None
+        if rows:
+            m = re.search(r'x=\s*(-?[\d.]+)\s+y=\s*(-?[\d.]+)\s+z=\s*(-?[\d.]+)\s+h=\s*(\d+)\s+oid=(\d+)\s+(\S+)', rows[0])
+            if m:
+                hit = dict(x=float(m.group(1)), y=float(m.group(2)), z=float(m.group(3)), h=int(m.group(4)), oid=int(m.group(5)), template=m.group(6))
+                cells = {}
+                for cm in re.finditer(r'cell (\d+) oid=(\d+)', lotsurvey("cells", planet, str(hit["x"]), str(hit["y"]))):
+                    cells[int(cm.group(1))] = int(cm.group(2))
+                hit["cells"] = cells
+        data[k] = hit; save()
+    return data[k]
+
+def swg(*args):
+    r = subprocess.run([os.path.join(HERE, "swg"), *args], capture_output=True, text=True)
+    return r.stdout + r.stderr
+
+def land_at(planet, x, y):
+    data, save = cache("land.json")
+    k = f"{planet}:{int(round(x))}:{int(round(y))}"
+    if k not in data:
+        out = swg("cmd", "--shared", f"runLuaFunction FbLabTests:landAt:{planet}:{int(round(x))}:{int(round(y))}")
+        m = re.search(r'INFO land planet=\S+ x=\S+ y=\S+ inside=(\d)(?: z=(-?[\d.]+) water=(\S+) land=(\d) build=(\d))?', out)
+        if not m: raise SystemExit("landAt gave nothing — is the server up with the rollout lab? " + out[-300:])
+        data[k] = dict(inside=int(m.group(1)), z=float(m.group(2) or 0), water=m.group(3), land=int(m.group(4) or 0), build=int(m.group(5) or 0))
+        save()
+    return data[k]
+
+def path_between(planet, x1, y1, x2, y2):
+    data, save = cache("paths.json")
+    k = f"{planet}:{int(x1)}:{int(y1)}:{int(x2)}:{int(y2)}"
+    if k not in data:
+        out = swg("cmd", "--shared", f"runLuaFunction FbLabTests:pathBetween:{planet}:{int(x1)}:{int(y1)}:{int(x2)}:{int(y2)}")
+        m = re.search(r'INFO path planet=\S+ points=(\d+)(?: outdoor=(\d+) length=(\d+) endX=(-?\d+) endY=(-?\d+) short=(\d+))?', out)
+        if not m: raise SystemExit("pathBetween gave nothing — is the server up with the rollout lab? " + out[-300:])
+        data[k] = dict(points=int(m.group(1)), outdoor=int(m.group(2) or 0), length=int(m.group(3) or 0), short=int(m.group(6) or 9999))
+        save()
+    return data[k]
+
+# ------------------------------------------------------------------------------------------------------------- geometry
+def compass(deg):
+    names = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"]
+    return names[int(((deg % 360) + 22.5) // 45) % 8]
+
+def at(cx, cy, dist, bearing):
+    """bearing in degrees, 0 = north (+y), 90 = east (+x)"""
+    rad = math.radians(bearing)
+    return cx + dist * math.sin(rad), cy + dist * math.cos(rad)
+
+def in_other_city(regions, planet, key_region, x, y):
+    for (p, n), r in regions.items():
+        if p == planet and n != key_region and math.hypot(x - r["x"], y - r["y"]) < r["r"] + 60: return n
+    return None
+
+def good_land(planet, x, y, regions=None, key_region=None):
+    if abs(x) > 7700 or abs(y) > 7700: return False
+    l = land_at(planet, x, y)
+    if not (l["inside"] and l["land"]): return False
+    if regions is not None and in_other_city(regions, planet, key_region, x, y): return False
+    return True
+
+def arc_points(planet, cx, cy, radius, regions, key_region, n=4, step=25, prefer=None):
+    """n land points on an arc at `radius` from the centre; tries bearings from `prefer` (deg) round the clock"""
+    starts = [(prefer or 0) + k * 30 for k in range(12)]
+    for b in starts:
+        pts = [at(cx, cy, radius, b + i * step) for i in range(n)]
+        if all(good_land(planet, x, y, regions, key_region) for x, y in pts):
+            return b, pts
+    return None, None
+
+def one_point(planet, cx, cy, dist, prefer, regions=None, key_region=None):
+    for k in range(12):
+        b = prefer + k * 30
+        x, y = at(cx, cy, dist, b)
+        if good_land(planet, x, y, regions, key_region): return b, (x, y)
+    return None, None
+
+# ------------------------------------------------------------------------------------------------------------- the city file
+def lua_pts(pts, z=None):
+    return "{ " + ", ".join("{ %d, %s, %d }" % (round(x), ("nil" if z is None else z), round(y)) for x, y in pts) + " }"
+
+def lua_list(items): return "{ " + ", ".join('"%s"' % i for i in items) + " }"
+
+def build(plan, facts, existing_ambient=None, log=print):
+    key, planet, label = plan["key"], plan["planet"], plan["label"]
+    regions, tps = facts["regions"], facts["travel"]
+    reg = regions.get((planet, plan["region"]))
+    if reg is None:
+        mc = [c for c in facts["mission"] if c["planet"] == planet and c["name"].lower().replace("'", "").startswith(label.lower().replace("'", "")[:6])]
+        if not mc: raise SystemExit(f"{key}: no region {plan['region']} and no mission city")
+        reg = dict(x=mc[0]["x"], y=mc[0]["y"], r=mc[0]["r"])
+    cx, cy, R = reg["x"], reg["y"], reg["r"]
+    notes = []
+    tp = tps.get((planet, plan["starport"])) if plan.get("starport") else None
+    starport = (tp["x"], tp["y"]) if tp else None
+    fac = FACTIONS.get(planet, DEFAULT_FACTIONS)
+    rebel_held = plan["lean"] <= 40
+    # the plaza: the stock GCW landing spot, else the first point of a stock walking loop (open ground in town), else the centre
+    loops = stock_loops(plan["stock"])
+    loop_key = None
+    if loops:
+        loop_key = "cll8_1" if "cll8_1" in loops and len(loops["cll8_1"]) >= 3 else max(loops, key=lambda k: len(loops[k]))
+        if len(loops[loop_key]) < 3: loop_key = None
+    fallback_loop = None
+    if not loop_key:
+        fallback_loop = spread(stock_outdoor_spots(plan["stock"]))
+    plaza_src = "the stock GCW landing spot"
+    if key in LANDING: plaza = LANDING[key]
+    elif loop_key: plaza = (loops[loop_key][0][0], loops[loop_key][0][2]); plaza_src = f"the first point of the stock walking loop {loop_key}"
+    elif fallback_loop: plaza = (fallback_loop[0][0], fallback_loop[0][2]); plaza_src = "a stock outdoor spawn spot in town"
+    else: plaza = (cx, cy); plaza_src = "the city centre"
+    lines = []
+    lines.append(f"-- tasks/cities/{key if key.startswith(planet + '_') else planet + '_' + key}.lua — {label}: Phase 3.13 city data, generated by tools/citygen from the stock data and the running")
+    lines.append(f"-- server (terrain, water, no-build, navmesh); every number is explicit so it can be read and moved by hand. Regenerate with")
+    lines.append(f"-- `tools/citygen write {key}`; hand edits survive only if the plan in the tool is changed to match.")
+    lines.append("FbCities:add {")
+    lines.append(f'\tkey = "{key}", planet = "{planet}", label = "{label}", order = {plan["order"]},')
+    lines.append(f'\tlean = {plan["lean"]},   -- 3.4: default Imperial %')
+    lines.append(f"\tcentre = {{ {round(cx)}, {round(cy)} }}, radius = {round(R)},   -- the stock city region {plan['region']}")
+    if starport:
+        lines.append(f'\tstarport = {{ {round(starport[0])}, {round(starport[1])} }},   -- travel point "{plan["starport"]}"')
+    lines.append(f"\tplaza = {{ {round(plaza[0])}, {round(plaza[1])} }},   -- {plaza_src}")
+    lines.append("\tfactions = {")
+    lines.append(f'\t\timperial = {{ leader = "{fac["imperial"][0]}", troops = {lua_list(fac["imperial"][1])} }},')
+    lines.append(f'\t\trebel    = {{ leader = "{fac["rebel"][0]}", troops = {lua_list(fac["rebel"][1])} }},')
+    lines.append("\t},")
+    # patrols: the holder's squad walks a stock in-town loop, the other faction an arc outside the walls
+    town, outside = ("rebel", "imperial") if rebel_held else ("imperial", "rebel")
+    Rc = min(R, 500)   # rectangle regions (Theed, Keren) read far too wide
+    arc_r = Rc + (150 if plan.get("outpost") else 200)
+    prefer = (math.degrees(math.atan2(cx - starport[0], cy - starport[1])) if starport else 0)   # the far side from the starport
+    b, arc = None, None
+    for try_r in (arc_r, Rc + 100, Rc + 50, Rc * 0.7):   # an island (Vreni) has no land ring outside its walls
+        b, arc = arc_points(planet, cx, cy, try_r, regions, plan["region"], prefer=prefer)
+        if arc: arc_r = try_r; break
+    lines.append("\tpatrols = {   -- 3.2: one squad per faction; the holder walks a stock in-town loop, the other side a loop outside the walls")
+    if loop_key:
+        pts = loops[loop_key]
+        lines.append(f"\t\t{town} = {{ points = {{ " + ", ".join("{ %d, nil, %d }" % (round(x), round(y)) for x, z, y, c in pts) + f" }} }},   -- the stock walking loop {loop_key} of cities/{plan['stock']}.lua (height from the terrain)")
+    elif fallback_loop:
+        lines.append(f"\t\t{town} = {{ points = {{ " + ", ".join("{ %d, nil, %d }" % (round(x), round(y)) for x, z, y in fallback_loop) + f" }} }},   -- stock outdoor spawn spots of cities/{plan['stock']}.lua (no walking loop there; height from the terrain)")
+    else:
+        notes.append("no stock walking loop and no outdoor spawn spots: the in-town squad is missing")
+    if arc:
+        lines.append(f"\t\t{outside} = {{ points = {lua_pts(arc)} }},   -- open ground {round(arc_r)} m out, bearing {round(b) % 360}° ({compass(b)}), land-checked")
+    else:
+        notes.append("no land arc found outside the walls")
+    lines.append("\t},")
+    # convoy
+    if starport and tp["inter"] == 1 and not plan.get("outpost"):
+        targets = [("plaza", plaza)]
+        if loop_key:
+            for pt in loops[loop_key][:3]: targets.append((f"stock loop {loop_key} point", (pt[0], pt[2])))
+        elif fallback_loop:
+            for pt in fallback_loop[:3]: targets.append(("stock outdoor spot", (pt[0], pt[2])))
+        bear = math.degrees(math.atan2(cx - starport[0], cy - starport[1]))
+        done = False
+        for off in (0, 35, 55, 80):   # the navmesh leaves the landing pad out: start the route just off it
+            frm = at(starport[0], starport[1], off, bear) if off else starport
+            for what, to in targets:
+                pb = path_between(planet, frm[0], frm[1], to[0], to[1])
+                if pb["points"] >= 2 and pb["short"] <= 90 and pb["length"] >= 120:
+                    lines.append(f"\tconvoy = {{ from = {{ {round(frm[0])}, {round(frm[1])} }}, to = {{ {round(to[0])}, {round(to[1])} }} }},   -- 3.11: navmesh route from {off} m off the pad -> {what} ({pb['length']} m, {pb['points']} path points, ends {pb['short']} m short)")
+                    done = True; break
+            if done: break
+        if not done:
+            notes.append("no navmesh route from the starport into town: no convoy")
+    # relays
+    relays = []
+    if starport:
+        bear = math.degrees(math.atan2(cx - starport[0], cy - starport[1]))
+        for d in (22, 30, 40):
+            rx, ry = at(starport[0], starport[1], d, bear)
+            if good_land(planet, rx, ry):
+                relays.append(f'\t\t{{ key = "starport", label = "{label} {"Shuttle" if tp["inter"] == 0 else "Starport"}", x = {round(rx)}, y = {round(ry)}, dir = {round(((bear + 180) % 360) / 60) % 6}, cell = 0 }},   -- {d} m from the pad toward town')
+                break
+        else:
+            notes.append("no land spot for the starport relay")
+    cantina = None
+    layout = None
+    if plan.get("cantina"):
+        cantina = cantina_building(planet, cx, cy, R)
+        if cantina:
+            shell = cantina["template"].split("/")[-1].replace(".iff", "")
+            layout = SHELL_LAYOUT.get(shell)
+            cell = cantina["cells"].get(3, cantina["oid"] + 3)
+            if layout:
+                rx, rz, ry, rdir = SEATS[layout]["relay"]
+                relays.append(f'\t\t{{ key = "cantina", label = "{label} Cantina", x = {rx}, z = {rz}, y = {ry}, dir = {rdir}, cell = {cell} }},   -- main room of {shell} (building {cantina["oid"]})')
+            else:
+                notes.append(f"cantina shell {shell} has no seat preset")
+        else:
+            notes.append("no cantina shell found in the snapshot")
+    if relays:
+        lines.append("\trelays = {   -- 3.10: HoloNet relay droids")
+        lines.extend(relays)
+        lines.append("\t},")
+    # ambient
+    if existing_ambient:
+        lines.append(existing_ambient.rstrip(",") + ",")
+    elif cantina and layout and planet in VOICES:
+        v = VOICES[planet]
+        cell = cantina["cells"].get(3, cantina["oid"] + 3)
+        stock_npcs = stock_cell_npcs(plan["stock"], cell)
+        seats = []
+        for sx, sy, sdir in SEATS[layout]["seats"]:
+            clash = [n for n in stock_npcs if math.hypot(n[0] - sx, n[1] - sy) < 1.3]
+            if clash:
+                notes.append(f"seat {sx},{sy} is within 1.3 m of a stock NPC in cell {cell}: dropped")
+                continue
+            seats.append((sx, sy, sdir))
+        ax, az, ay = SEATS[layout]["anchor"]
+        lines.append(f"\tambient = {{   -- 3.7/3.8: the living layer in the cantina (seat preset {layout}, voice {planet})")
+        lines.append("\t\t{")
+        lines.append(f'\t\t\tkey = "cantina", label = "{label} Cantina",')
+        lines.append(f"\t\t\tanchor = {{ x = {ax}, z = {az}, y = {ay}, cell = {cell} }},")
+        lines.append("\t\t\tseats = {")
+        for sx, sy, sdir in seats:
+            lines.append(f"\t\t\t\t{{ x = {sx}, z = -0.9, y = {sy}, dir = {sdir}, cell = {cell} }},")
+        lines.append("\t\t\t},")
+        lines.append(f"\t\t\ttemplates = {lua_list(v['templates'])},")
+        lines.append(f"\t\t\tmoods = {lua_list(v['moods'])},")
+        lines.append("\t\t\tchatter = {")
+        for l in v["chatter"]: lines.append('\t\t\t\t"%s",' % l.replace("{city}", label).replace('"', "'"))
+        lines.append("\t\t\t},")
+        lines.append("\t\t\tnewcomer = {")
+        for l in v["newcomer"]: lines.append('\t\t\t\t"%s",' % l.replace("{city}", label).replace('"', "'"))
+        lines.append("\t\t\t},")
+        lines.append(f"\t\t\temotes = {lua_list(v['emotes'])},")
+        lines.append("\t\t},")
+        lines.append("\t},")
+    # invasion
+    if plan.get("invasion"):
+        defender = "imperial" if plan["lean"] >= 50 else "rebel"
+        attacker = "rebel" if defender == "imperial" else "imperial"
+        sb, staging = one_point(planet, cx, cy, Rc + 400, prefer, regions, plan["region"])
+        if staging:
+            att, deff = INVADERS[attacker], GARRISON[defender]
+            w = dict(label=label, att="Rebel" if attacker == "rebel" else "Imperial", attp="Rebels" if attacker == "rebel" else "Imperials",
+                     **{"def": "Imperial" if defender == "imperial" else "Rebel"}, other="The Empire" if defender == "imperial" else "The Alliance", where=compass(sb))
+            lines.append("\tinvasion = {   -- 3.1: the GCW invasion (a contested city; the city key is its territory region)")
+            lines.append(f'\t\tdefender = "{defender}", attacker = "{attacker}",')
+            lines.append(f"\t\tstaging = {{ {round(staging[0])}, {round(staging[1])} }},   -- {round(Rc + 400)} m {compass(sb)} of the centre, land-checked")
+            lines.append(f"\t\tplaza = {{ {round(plaza[0])}, {round(plaza[1])} }},")
+            lines.append(f"\t\tmuster = {{ {round(plaza[0] + 5)}, {round(plaza[1] - 18)} }},")
+            lines.append(f'\t\tattackers = {{ leader = "{att[0]}", troops = {lua_list(att[1])} }},')
+            lines.append(f'\t\tdefenders = {{ leader = "{deff[0]}", troops = {lua_list(deff[1])} }},')
+            for k in ("warn", "assault", "held", "fell", "withdrew"):
+                lines.append(f'\t\t{k} = "{INVASION_TEXT[k].format(**w)}",')
+            lines.append("\t\tnews = {")
+            for k in ("held", "fell", "withdrew"):
+                lines.append(f'\t\t\t{k} = "{INVASION_TEXT["news_" + k].format(**w)}",')
+            lines.append("\t\t},")
+            lines.append("\t},")
+        else:
+            notes.append("no land staging ground: no invasion")
+    lines.append("}")
+    if notes:
+        lines.append("-- citygen notes: " + "; ".join(notes))
+    return "\n".join(lines) + "\n", notes
+
+def existing_ambient_block(path):
+    if not os.path.exists(path): return None
+    s = read(path)
+    i = s.find("\tambient = {")
+    if i < 0: return None
+    depth, j, in_str = 0, i, None
+    while j < len(s):
+        ch = s[j]
+        if in_str:
+            if ch == "\\": j += 2; continue
+            if ch == in_str: in_str = None
+        elif s.startswith("--", j):
+            j = s.find("\n", j); continue
+        elif ch in "\"'": in_str = ch
+        elif ch == "{": depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0: return s[i:j + 1]
+        j += 1
+    return None
+
+# ------------------------------------------------------------------------------------------------------------- commands
+def cmd_plan():
+    for p in PLAN:
+        print("%-28s %-10s lean=%-3d %s%s%s%s" % (p["key"], p["planet"], p["lean"], "starport " if p.get("starport") else "", "cantina " if p.get("cantina") else "",
+                                                   "invasion " if p.get("invasion") else "", "outpost" if p.get("outpost") else ""))
+
+def cmd_write(keys, dry):
+    facts = dict(regions=city_regions(), mission=mission_cities(), travel=travel_points())
+    os.makedirs(CITIES_DIR, exist_ok=True)
+    for p in PLAN:
+        if keys and p["key"] not in keys: continue
+        path = os.path.join(CITIES_DIR, (p["key"] if p["key"].startswith(p["planet"] + "_") else f"{p['planet']}_{p['key']}") + ".lua")
+        amb = existing_ambient_block(path) if p.get("keep_ambient") else None
+        text, notes = build(p, facts, existing_ambient=amb)
+        if dry:
+            print(f"==== {path}\n{text}")
+        else:
+            open(path, "w").write(text)
+            print(f"wrote {os.path.relpath(path, REPO)}" + (f"   notes: {'; '.join(notes)}" if notes else ""))
+
+def cmd_spots(planet, x, y, r):
+    for b in range(0, 360, 30):
+        px, py = at(x, y, r, b)
+        l = land_at(planet, px, py)
+        print("%3d° %-10s x=%6d y=%6d z=%7.1f water=%-6s land=%d build=%d" % (b, compass(b), round(px), round(py), l["z"], l["water"], l["land"], l["build"]))
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help"): print(__doc__); return 0
+    cmd, rest = argv[0], argv[1:]
+    if cmd == "plan": cmd_plan()
+    elif cmd == "write": cmd_write([a for a in rest if not a.startswith("--")], "--dry" in rest)
+    elif cmd == "spots": cmd_spots(rest[0], float(rest[1]), float(rest[2]), float(rest[3]) if len(rest) > 3 else 300)
+    else: print(__doc__); return 2
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

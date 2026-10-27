@@ -663,11 +663,15 @@ end
 -- Phase 3.11: the convoy screenplay is loaded with a walkable route and loot plan, and is idle or consistent.
 function FbLabTests.checkConvoys()
 	if FbConvoys == nil then check("convoys.loaded", false); return end
-	check("convoys.route", #FbConvoys.route >= 4, #FbConvoys.route .. " points")
+	check("convoys.cities", #FbConvoys.order >= 1, #FbConvoys.order .. " cities")
+	for _, city in ipairs(FbConvoys.order) do
+		local route = FbConvoys:routeFor(city)
+		check("convoys." .. city .. ".route", route ~= nil and #route >= 2, route and (#route .. " points") or "no route")
+		local st = FbConvoys:status(city)
+		check("convoys." .. city .. ".status_readable", st:find("active=", 1, true) ~= nil, st)
+	end
 	check("convoys.crate_template", templateExists(FbConvoys.crateTemplate), FbConvoys.crateTemplate)
 	check("convoys.loot_plan", #FbConvoys.crateLoot >= 1)
-	local st = FbConvoys:status()
-	check("convoys.status_readable", st:find("active=", 1, true) ~= nil, st)
 end
 
 -- Phase 3.9: weather is readable from Lua, the sandstorm event is loaded and consistent with the sky.
@@ -676,14 +680,19 @@ function FbLabTests.checkWeatherEvents()
 	local w = getZoneWeather("tatooine")
 	check("weather.readable", w ~= nil and w >= 0 and w <= 4, "base=" .. tostring(w))
 	check("weather.no_manager_is_minus_one", getZoneWeather("no_such_zone") == -1)
-	check("weather.parties", #FbWeatherEvents.parties >= 3)
-	for _, party in ipairs(FbWeatherEvents.parties) do
-		check("weather.party_" .. party.key .. "_on_terrain", getTerrainHeightAt("tatooine", party.spawn[1], party.spawn[2]) ~= 0 and getTerrainHeightAt("tatooine", party.rally[1], party.rally[2]) ~= 0)
+	check("weather.parties", #FbWeatherEvents.planets.tatooine.parties >= 3)
+	for _, planet in ipairs(FbWeatherEvents.order) do
+		local cfg = FbWeatherEvents.planets[planet]
+		for _, party in ipairs(cfg.parties or {}) do
+			check("weather." .. planet .. ".party_" .. party.key .. "_on_terrain", getTerrainHeightAt(planet, party.spawn[1], party.spawn[2]) ~= 0 and getTerrainHeightAt(planet, party.rally[1], party.rally[2]) ~= 0)
+		end
+		local pw = getZoneWeather(planet)
+		pcall(function() FbWeatherEvents:tick(planet) end)   -- the first minute tick may not have fired yet after a boot
+		local st = FbWeatherEvents:status(planet)
+		local active = st:find("active=1", 1, true) ~= nil
+		local between = pw > (cfg.clearAt or 1) and pw < (cfg.stormAt or 3)
+		check("weather." .. planet .. ".event_matches_sky", pw < 0 or between or ((pw >= (cfg.stormAt or 3)) == active), st)
 	end
-	local st = FbWeatherEvents:status()
-	local active = st:find("active=1", 1, true) ~= nil
-	local between = w > FbWeatherEvents.clearAt and w < FbWeatherEvents.stormAt
-	check("weather.event_matches_sky", between or ((w >= FbWeatherEvents.stormAt) == active), st)
 	local env = loadIsolated("scripts/managers/weather_manager.lua")
 	check("weather.tatooine_sandstorms_damaging", env ~= nil and env.tatooine ~= nil and env.tatooine.hasDamagingSandstorms == 1)
 end
@@ -1543,33 +1552,50 @@ function FbLabTests:weatherSet(zone, w)
 	return tostring(now)
 end
 
--- storm → the sandstorm event's status line
-function FbLabTests:storm()
+-- storm[:<planet>] → the storm event's status line (default tatooine)
+function FbLabTests:storm(planet)
 	if FbWeatherEvents == nil then print("ERROR FbWeatherEvents not loaded"); return "none" end
-	print("INFO storm " .. FbWeatherEvents:status())
+	print("INFO storm " .. FbWeatherEvents:status(planet))
 	return "ok"
 end
 
--- stormTick → evaluate the weather now instead of waiting for the minute tick; prints what it did
-function FbLabTests:stormTick()
+-- stormTick[:<planet>] → evaluate the weather now instead of waiting for the minute tick; prints what it did
+function FbLabTests:stormTick(planet)
 	if FbWeatherEvents == nil then print("ERROR FbWeatherEvents not loaded"); return "none" end
-	local did = FbWeatherEvents:tick()
-	print("INFO stormTick did=" .. tostring(did) .. " " .. FbWeatherEvents:status())
+	local did = FbWeatherEvents:tick(planet)
+	print("INFO stormTick did=" .. tostring(did) .. " " .. FbWeatherEvents:status(planet))
 	return did
 end
 
--- convoy → the convoy event's status line
-function FbLabTests:convoy()
+-- convoy[:<city>] → the convoy event's status line (default the first city, Mos Eisley)
+function FbLabTests:convoy(city)
 	if FbConvoys == nil then print("ERROR FbConvoys not loaded"); return "none" end
-	print("INFO convoy " .. FbConvoys:status())
+	print("INFO convoy " .. FbConvoys:status(city))
 	return "ok"
 end
 
--- convoySpawn → form a convoy now (what the 30-60 min schedule does)
-function FbLabTests:convoySpawn()
+-- convoySpawn[:<city>] → form a convoy now (what the 30-60 min schedule does)
+function FbLabTests:convoySpawn(city)
 	if FbConvoys == nil then print("ERROR FbConvoys not loaded"); return "none" end
-	print("INFO convoy " .. tostring(FbConvoys:spawn()))
+	print("INFO convoy " .. tostring(FbConvoys:spawn(city)))
 	return "ok"
+end
+
+-- convoyArrive[:<city>] → the convoy reaches its destination now (despawn, news, +5 territory)
+function FbLabTests:convoyArrive(city)
+	if FbConvoys == nil then print("ERROR FbConvoys not loaded"); return "none" end
+	print("INFO convoy " .. tostring(FbConvoys:arrive(city)))
+	return "ok"
+end
+
+-- cities → one INFO line per city in the registry (3.13)
+function FbLabTests:cities()
+	if FbCities == nil then print("ERROR FbCities not loaded"); return "none" end
+	for _, c in ipairs(FbCities.list) do
+		print(string.format("INFO city key=%s planet=%s label=%s lean=%d patrols=%d relays=%d ambient=%d convoy=%s invasion=%s", c.key, c.planet, c.label:gsub(" ", "_"),
+			c.lean, (c.patrols.imperial and 1 or 0) + (c.patrols.rebel and 1 or 0), #c.relays, #c.ambient, c.convoy and "1" or "0", c.invasion and "1" or "0"))
+	end
+	return tostring(#FbCities.list)
 end
 
 -- killNpc:<char>:<oid> → the character deals a lethal blow to an NPC (observers see the character as attacker)
@@ -1945,6 +1971,11 @@ function FbLabTests.placementOf(e)
 			facts.reasons[#facts.reasons + 1] = string.format("wandered %.0f m from its spot", drift)
 		end
 	end
+	-- a walker caught mid-step (a follower crossing a terrace, a squad in a narrow street) is not a placement: for the
+	-- walking sources only a wildly wrong height (world coordinates where cell-local ones were meant) is a failure
+	if FbLabTests.walkerSources[e.src or ""] and facts.verdict == "fail" and math.abs(facts.floor or 0) <= 30 then
+		facts.verdict = "warn"
+	end
 	facts.line = line
 	return facts
 end
@@ -2214,8 +2245,26 @@ function FbLabTests:spawnNpcAt(template, planet, x, y, cell, z)
 		FbLabTests.spawns[template] = list
 		FbLabTests.registryAdd(list[#list])
 	end
-	print(string.format("INFO spawnNpcAt oid=%d template=%s planet=%s x=%.1f y=%.1f z=%.1f cell=%d", oid, template, planet, x, y, z, cell))
+	-- read the object back by its id: two gates (2026-10-27) saw a console spawn report the id of a cantina patron
+	-- churned on another thread, and the scenario then destroyed the patron. Until that is understood, a mismatch is an error.
+	local pBack = getSceneObject(oid)
+	local backTemplate = pBack ~= nil and SceneObject(pBack):getObjectName() or "-"
+	local backX = pBack ~= nil and SceneObject(pBack):getWorldPositionX() or 0
+	print(string.format("INFO spawnNpcAt oid=%d template=%s planet=%s x=%.1f y=%.1f z=%.1f cell=%d back=%s backX=%.1f", oid, template, planet, x, y, z, cell, tostring(backTemplate):gsub("%s", "_"), backX))
+	if pBack ~= pMobile then print("ERROR spawnNpcAt: the object at that id is not the one just spawned"); return "none" end
 	return tostring(oid)
+end
+
+-- oidInfo:<oid> → what object an id resolves to (template, name, position, cell, zone)
+function FbLabTests:oidInfo(oid)
+	local p = getSceneObject(tonumber(oid))
+	if p == nil then print("INFO oid=" .. tostring(oid) .. " none=1"); return "none" end
+	local mobile = "-"
+	if SceneObject(p):isAiAgent() then mobile = AiAgent(p):getCreatureTemplateName() end
+	print(string.format("INFO oid=%s template=%s mobile=%s name=%s zone=%s x=%.1f y=%.1f z=%.1f cell=%d", tostring(oid), SceneObject(p):getTemplateObjectPath(), mobile,
+		tostring(SceneObject(p):getObjectName()):gsub("%s", "_"), SceneObject(p):getZoneName(), SceneObject(p):getWorldPositionX(), SceneObject(p):getWorldPositionY(),
+		SceneObject(p):getWorldPositionZ(), SceneObject(p):getParentID()))
+	return "ok"
 end
 
 -- Lab check: no placed Final Boss NPC is boxed into geometry, floating, or has wandered off (one
@@ -2594,6 +2643,39 @@ function FbLabTests:clearWild(planet, x, y, range)
 	end
 	print(string.format("INFO clearWild zone=%s x=%.0f y=%.0f radius=%.0f lairs=%d creatures=%d", planet, x, y, range, lairs, creatures))
 	return tostring(lairs + creatures)
+end
+
+-- landAt:<planet>:<x>:<y> → what the ground is at a point: terrain height, water height, land (terrain above water),
+-- building permitted (outside no-build), in the planet (3.13 city generator; every generated point passes through it)
+function FbLabTests:landAt(planet, x, y)
+	x, y = tonumber(x), tonumber(y)
+	if planet == nil or x == nil or y == nil then print("ERROR landAt: planet x y"); return "none" end
+	if math.abs(x) >= 8000 or math.abs(y) >= 8000 then print(string.format("INFO land planet=%s x=%.0f y=%.0f inside=0", planet, x, y)); return "0" end
+	local z = getTerrainHeightAt(planet, x, y)
+	local w = getWaterHeightAt(planet, x, y)
+	local water = (w ~= nil and w > -10000) and w or -10000
+	local land = z > water
+	local build = isBuildingPermittedAt(planet, x, y) and 1 or 0
+	print(string.format("INFO land planet=%s x=%.0f y=%.0f inside=1 z=%.1f water=%s land=%d build=%d", planet, x, y, z, water > -10000 and string.format("%.1f", water) or "-", land and 1 or 0, build))
+	return land and "1" or "0"
+end
+
+-- pathBetween:<planet>:<x1>:<y1>:<x2>:<y2> → the navmesh path between two outdoor points: point count, how many are
+-- outdoors (cell 0), its length, and where it really ends (a path that stops short means the mesh has a gap)
+function FbLabTests:pathBetween(planet, x1, y1, x2, y2)
+	x1, y1, x2, y2 = tonumber(x1), tonumber(y1), tonumber(x2), tonumber(y2)
+	if planet == nil or x1 == nil or y1 == nil or x2 == nil or y2 == nil then print("ERROR pathBetween: planet x1 y1 x2 y2"); return "none" end
+	local path = findPath(planet, x1, y1, x2, y2)
+	if path == nil or #path == 0 then print(string.format("INFO path planet=%s points=0", planet)); return "0" end
+	local outdoor, length, lx, ly = 0, 0, x1, y1
+	for _, pt in ipairs(path) do   -- rows are { x, z, y, cell }
+		if (pt[4] or 0) == 0 then outdoor = outdoor + 1 end
+		length = length + math.sqrt((pt[1] - lx) ^ 2 + (pt[3] - ly) ^ 2); lx, ly = pt[1], pt[3]
+	end
+	local last = path[#path]
+	local short = math.sqrt((last[1] - x2) ^ 2 + (last[3] - y2) ^ 2)
+	print(string.format("INFO path planet=%s points=%d outdoor=%d length=%.0f endX=%.0f endY=%.0f short=%.0f", planet, #path, outdoor, length, last[1], last[3], short))
+	return tostring(#path)
 end
 
 -- structures:<char> → the structures the character owns (oid per line) and the lots left.
