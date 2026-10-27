@@ -6,13 +6,16 @@
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 # --- the audit on the live world --------------------------------------------------------------
-SUMMARY=$(lab "placement" | grep -a 'INFO placement summary')
+# leftovers of an aborted earlier run (a relay planted 15 m under the starport plaza) would count as failures: clear them first
+for oid in $(lab "placement:fb_holonet_relay" 60 | grep -a 'x=3522.0 y=-4800.0 z=-15.0' | sed -n 's/.*INFO placement oid=\([0-9]*\).*/\1/p'); do lab "destroyObject:$oid" >/dev/null; done
+SUMMARY=$(lab "placement" 90 | grep -a 'INFO placement summary')   # ~380 spawns since 3.13: 17 s, beyond lab's 8 s default
 check "audit_ran" "$( [ -n "$SUMMARY" ] && echo 1 || echo 0 )" "$SUMMARY"
 check_ge "audit_covers_the_npcs" "$(sed -n 's/.*spawns=\([0-9]*\).*/\1/p' <<<"$SUMMARY")" 40 "$SUMMARY"
 check_eq "no_npc_boxed_in_or_underground" "$(sed -n 's/.*fail=\([0-9]*\).*/\1/p' <<<"$SUMMARY")" "0" "$SUMMARY"
 
 # --- a deliberately bad spawn is caught: a droid 20 m under the Mos Eisley plaza ----------------
 BAD=$(lab "spawnNpcAt:fb_holonet_relay:tatooine:3522:-4800:0:-15" | sed -n 's/.*INFO spawnNpcAt oid=\([0-9]*\).*/\1/p' | head -n1)   # this line only: the tail of the 380-spawn audit before it can bleed into this capture
+[ -n "$BAD" ] || die "the planted spawn produced no id (console busy?)"
 check "bad_spawn_created" "$( [ -n "$BAD" ] && echo 1 || echo 0 )" "oid=$BAD"
 INFOLINE=$(lab "oidInfo:$BAD" | grep -a '^INFO oid')
 check "bad_spawn_is_the_relay" "$(grep -aq 'mobile=fb_holonet_relay.*x=3522.0 y=-4800.0' <<<"$INFOLINE" && echo 1 || echo 0)" "$(cut -c1-160 <<<"$INFOLINE")"   # never destroy a stranger
