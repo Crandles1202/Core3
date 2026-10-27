@@ -14,8 +14,9 @@ check_eq "no_npc_boxed_in_or_underground" "$(sed -n 's/.*fail=\([0-9]*\).*/\1/p'
 # --- a deliberately bad spawn is caught: a droid 20 m under the Mos Eisley plaza ----------------
 BAD=$(lab "spawnNpcAt:fb_holonet_relay:tatooine:3522:-4800:0:-15" | sed -n 's/.*INFO spawnNpcAt oid=\([0-9]*\).*/\1/p' | head -n1)   # this line only: the tail of the 380-spawn audit before it can bleed into this capture
 check "bad_spawn_created" "$( [ -n "$BAD" ] && echo 1 || echo 0 )" "oid=$BAD"
-check "bad_spawn_is_the_relay" "$(lab "oidInfo:$BAD" | grep -aq 'fb_holonet_relay' && echo 1 || echo 0)" "$(lab "oidInfo:$BAD" | grep -a '^INFO oid' | cut -c1-160)"   # never destroy a stranger
-lab "oidInfo:$BAD" | grep -aq 'fb_holonet_relay' || die "the planted id resolves to another object; not touching it"
+INFOLINE=$(lab "oidInfo:$BAD" | grep -a '^INFO oid')
+check "bad_spawn_is_the_relay" "$(grep -aq 'mobile=fb_holonet_relay.*x=3522.0 y=-4800.0' <<<"$INFOLINE" && echo 1 || echo 0)" "$(cut -c1-160 <<<"$INFOLINE")"   # never destroy a stranger
+grep -aq 'mobile=fb_holonet_relay.*x=3522.0 y=-4800.0' <<<"$INFOLINE" || die "the planted id resolves to another object; not touching it"
 BADLINE=$(lab "placement:$BAD" | grep -a "oid=$BAD")
 check "bad_spawn_flagged" "$(grep -aq 'verdict=fail' <<<"$BADLINE" && echo 1 || echo 0)" "$BADLINE"
 check "bad_spawn_reason_is_terrain" "$(grep -aq 'off_the_terrain' <<<"$BADLINE" && echo 1 || echo 0)"

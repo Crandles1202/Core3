@@ -2259,7 +2259,9 @@ end
 function FbLabTests:oidInfo(oid)
 	local p = getSceneObject(tonumber(oid))
 	if p == nil then print("INFO oid=" .. tostring(oid) .. " none=1"); return "none" end
-	print(string.format("INFO oid=%s template=%s name=%s zone=%s x=%.1f y=%.1f z=%.1f cell=%d", tostring(oid), SceneObject(p):getTemplateObjectPath(),
+	local mobile = "-"
+	if SceneObject(p):isAiAgent() then mobile = AiAgent(p):getCreatureTemplateName() end
+	print(string.format("INFO oid=%s template=%s mobile=%s name=%s zone=%s x=%.1f y=%.1f z=%.1f cell=%d", tostring(oid), SceneObject(p):getTemplateObjectPath(), mobile,
 		tostring(SceneObject(p):getObjectName()):gsub("%s", "_"), SceneObject(p):getZoneName(), SceneObject(p):getWorldPositionX(), SceneObject(p):getWorldPositionY(),
 		SceneObject(p):getWorldPositionZ(), SceneObject(p):getParentID()))
 	return "ok"
