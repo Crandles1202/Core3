@@ -1971,6 +1971,11 @@ function FbLabTests.placementOf(e)
 			facts.reasons[#facts.reasons + 1] = string.format("wandered %.0f m from its spot", drift)
 		end
 	end
+	-- a walker caught mid-step (a follower crossing a terrace, a squad in a narrow street) is not a placement: for the
+	-- walking sources only a wildly wrong height (world coordinates where cell-local ones were meant) is a failure
+	if FbLabTests.walkerSources[e.src or ""] and facts.verdict == "fail" and math.abs(facts.floor or 0) <= 30 then
+		facts.verdict = "warn"
+	end
 	facts.line = line
 	return facts
 end
