@@ -260,6 +260,7 @@ cmd_bench() {
 			elif [ -z "$running" ] || ! git -C "$BENCH" diff --quiet "$running" "$commit" -- MMOCoreORB/bin/scripts/mobile MMOCoreORB/bin/scripts/managers MMOCoreORB/bin/scripts/object MMOCoreORB/bin/conf tre-src; then need=restart
 			fi
 			if ! is_running; then [ "$need" = build ] || need=start; fi
+			[ "$need" = build ] || bench_note_built   # no C++ change since the last build: the binary is this commit's too
 			case "$need" in
 				build) say "C++ changed since the last build: building"; cmd_build || die "build failed"; bench_note_built
 				       if is_running; then cmd_stop || die "stop failed"; fi; cmd_start || die "start failed"; bench_note_running ;;
@@ -389,15 +390,16 @@ rotate_logs() {
 
 # ---------------------------------------------------------------- start / stop
 
-# Chuck's Phase 0.3 cron job (~/bin/swg-backup-daily.sh, 03:00) only fires while WSL is up, which it
-# usually is not at 03:00. Run it on server start instead when the newest dump is older than a day.
+# Phase 0.3: tools/backup-nightly (every swgemu* database + the production ODB) is meant for a Windows Task Scheduler
+# entry, since WSL is rarely up at 03:00; run it on server start too when the newest dump is older than a day.
 nightly_backup_if_due() {
-	local script="$HOME/bin/swg-backup-daily.sh" dir="$HOME/backups/daily"
+	local script="$REPO/tools/backup-nightly" dir="$HOME/backups/daily"
+	[ -x "$script" ] || script="$HOME/bin/swg-backup-daily.sh"
 	[ -x "$script" ] || return 0
-	local newest; newest=$(ls -1t "$dir"/swgemu-*.sql.gz 2>/dev/null | head -n1)
+	local newest; newest=$(ls -1t "$dir"/swgemu*-*.sql.gz 2>/dev/null | head -n1)
 	if [ -z "$newest" ] || [ -n "$(find "$newest" -mmin +1440 2>/dev/null)" ]; then
 		say "MySQL backup is older than a day — running $script"
-		"$script" && say "backup: $(ls -1t "$dir"/swgemu-*.sql.gz | head -n1)"
+		"$script" && say "backup: $(ls -1t "$dir"/swgemu*-*.sql.gz | head -n1)"
 	fi
 }
 
@@ -1161,6 +1163,17 @@ live_sync_runtime() {
 	date '+%F %T' >> "$LIVE_ROOT/DEPLOYED"
 }
 
+live_newest_tag() { local t; t=$(git -C "$BENCH" tag -l 'chuck-stable-*' | sort -V | tail -n1); [ -n "$t" ] && echo "$t"; }
+live_bench_built() { local built; built=$(cat "$(bench_built_file)" 2>/dev/null || true); [ -n "$built" ] && git -C "$BENCH" diff --quiet "$built" HEAD -- MMOCoreORB/src 2>/dev/null; }
+live_pre_deploy_snapshot() {
+	# the live data as it was before this deploy (database + ODB, server stopped); the last three are kept
+	local name; name="pre-deploy-$(date +%Y%m%d-%H%M)"
+	say "snapshot of the live data before the deploy: $name"
+	SWG_INSTANCE=live "$0" snap save "$name" --force >/dev/null || die "pre-deploy snapshot failed (nothing deployed; swg --live snap save by hand to see why)"
+	say "   $(du -sh "$SNAPDIR/$name" | cut -f1) in $SNAPDIR/$name  (swg --live snap load $name --yes rolls back)"
+	local d; for d in $(ls -1d "$SNAPDIR"/pre-deploy-*/ 2>/dev/null | sort | head -n -3); do rm -rf "$d"; say "   pruned $(basename "$d")"; done
+}
+
 live_running() { local p want; want=$(readlink -f "$LIVE_ROOT/bin" 2>/dev/null); for p in $(pgrep -x core3); do [ "$(readlink -f "/proc/$p/cwd" 2>/dev/null)" = "$want" ] && return 0; done; return 1; }
 
 cmd_live() {
@@ -1186,18 +1199,42 @@ cmd_live() {
 			touch "$LIVE_RELOAD_MARK"
 			say "live instance ready: swg --live start   (login port $((LIVE_PORT_BASE + 453)); swg live client points the game client at it)"
 			;;
+		tag)
+			shift
+			local name=${1:-chuck-stable-$(date +%Y%m%d)}
+			[[ "$name" == chuck-stable-* ]] || die "stable tags are named chuck-stable-YYYYMMDD[-suffix]"
+			[ "$(git -C "$BENCH" rev-parse --abbrev-ref HEAD)" = unstable ] || die "the bench is on $(git -C "$BENCH" rev-parse --abbrev-ref HEAD), not unstable (swg bench release first)"
+			[ -z "$(git -C "$BENCH" status --porcelain)" ] || die "the bench checkout is dirty"
+			git -C "$BENCH" fetch -q origin 2>/dev/null || warn "fetch from origin failed; comparing with the last known origin/unstable"
+			[ "$(git -C "$BENCH" rev-parse HEAD)" = "$(git -C "$BENCH" rev-parse origin/unstable)" ] || die "unstable here is not what origin has (push or pull first): only a pushed tip becomes a stable point"
+			git -C "$BENCH" rev-parse -q --verify "refs/tags/$name" >/dev/null && die "tag $name exists (swg live tag $name-2)"
+			git -C "$BENCH" tag -a "$name" -m "stable point for the production server: unstable @ $(git -C "$BENCH" rev-parse --short HEAD) ($(date '+%F'))" || die "tag failed"
+			git -C "$BENCH" push -q origin "refs/tags/$name" || die "push of the tag failed (it exists locally: git push origin $name)"
+			say "tagged $name = $(git -C "$BENCH" rev-parse --short HEAD) and pushed; 'swg live deploy' takes it"
+			;;
 		deploy)
 			shift
-			local restart=1; [ "${1:-}" = "--no-restart" ] && restart=0
+			local restart=1 target="" yes=0
+			while [ $# -gt 0 ]; do case "$1" in --no-restart) restart=0 ;; --yes) yes=1 ;; -*) die "usage: swg live deploy [<chuck-stable-tag>] [--no-restart]   |   swg live deploy unstable --yes" ;; *) target=$1 ;; esac; shift; done
 			[ -d "$LIVE_ROOT/bin" ] || die "no live instance at $LIVE_ROOT (swg live init)"
-			[ "$(git -C "$BENCH" rev-parse --abbrev-ref HEAD)" = unstable ] || die "the bench is on $(git -C "$BENCH" rev-parse --abbrev-ref HEAD), not unstable: swg bench use unstable first"
+			if [ -z "$target" ]; then target=$(live_newest_tag) || die "no chuck-stable-* tag yet: play the content on the bench, then 'swg live tag'"; fi
+			if [ "$target" = unstable ]; then
+				[ "$yes" = 1 ] || die "production takes stable tags (newest: $(live_newest_tag || echo none)); 'swg live deploy unstable --yes' deploys the branch tip anyway — emergencies only"
+			else
+				[[ "$target" == chuck-stable-* ]] && git -C "$BENCH" rev-parse -q --verify "refs/tags/$target" >/dev/null || die "$target is not a chuck-stable-* tag here (git tag -l 'chuck-stable-*'; swg live tag makes one)"
+			fi
+			local commit; commit=$(git -C "$BENCH" rev-parse --verify "$target^{commit}") || die "cannot resolve $target"
 			[ -z "$(git -C "$BENCH" status --porcelain)" ] || die "the bench checkout is dirty"
-			local built; built=$(cat "$(bench_built_file)" 2>/dev/null || true)
-			[ "$built" = "$(git -C "$BENCH" rev-parse HEAD)" ] || die "the bench binary is not built from this commit (swg bench use unstable builds it)"
-			say "== live deploy: unstable @ $(git -C "$BENCH" rev-parse --short HEAD) -> $LIVE_ROOT"
+			# the bench provides the build: put the tag on it (lock, checkout, a build only when its C++ differs from the last one)
+			local took_bench=0
+			if [ "$(git -C "$BENCH" rev-parse HEAD)" != "$commit" ] || ! live_bench_built; then "$0" bench use "$target" || die "bench use $target failed"; took_bench=1; fi
+			live_bench_built || die "the bench binary is not built from $target's C++ (swg bench use $target builds it)"
+			say "== live deploy: $target @ $(git -C "$BENCH" rev-parse --short HEAD) -> $LIVE_ROOT"
 			if live_running && [ "$restart" = 1 ]; then say "stopping the live core3"; SWG_INSTANCE=live "$0" stop || die "live stop failed"; fi
+			if ! live_running; then live_pre_deploy_snapshot; else say "live keeps running (--no-restart): no snapshot; the deploy lands at its next restart"; fi
 			live_sync_runtime
 			if [ "$restart" = 1 ]; then SWG_INSTANCE=live "$0" start || die "live start failed"; else say "deployed; the live core3 picks it up at its next restart (swg --live restart)"; fi
+			if [ "$took_bench" = 1 ]; then "$0" bench release >/dev/null 2>&1 && say "bench released (back on unstable)" || warn "bench release failed: swg bench release by hand"; fi
 			;;
 		sync)
 			# whatever the bench has right now, no branch check (deploy is the checked path); the live server reads it at its next start
@@ -1227,9 +1264,10 @@ cmd_live() {
 			else
 				say "live   not set up (swg live init)"
 			fi
+			say "stable newest tag $(live_newest_tag || echo none) ($(git -C "$BENCH" rev-parse --short "$(live_newest_tag 2>/dev/null || echo HEAD)^{commit}" 2>/dev/null))   unstable @ $(git -C "$BENCH" rev-parse --short unstable 2>/dev/null)"
 			[ -f "$LABDIR/client-dir" ] && say "client $(grep -h '^loginServerPort0=' "$(cat "$LABDIR/client-dir")/swgemu_login.cfg" 2>/dev/null | head -n1 || echo '?')  ($(cat "$LABDIR/client-dir"))"
 			;;
-		*) die "usage: swg live init [--force] | deploy [--no-restart] | sync | config | client [--bench] | status" ;;
+		*) die "usage: swg live init [--force] | tag [name] | deploy [<chuck-stable-tag>] [--no-restart] | sync | config | client [--bench] | status" ;;
 	esac
 }
 

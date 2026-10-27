@@ -40,7 +40,7 @@ runs and tests. Host: WSL2 Debian 12.
 | Custom client/server data (strings, templates) | `tre-src/` → packed by `tools/tre` (stdlib Python; `build/list/extract/strings/verify/roundtrip/install/status/crc`). `string/en/fb_*.stf.txt` = `key = text` lines → `@fb_*:key` |
 | Wrapper scripts | `~/bin/build`, `~/bin/run` (both `source ~/.env`) |
 | **Second bench** (`bench2`) | `~/swg-bench2/Core3` — a full clone of the repo with its own build tree (remote `local` = the main repo; branches are fetched from it), ports = the bench's + 2000 (login **46453**), database `swgemu_bench2`, archive folder `~/swg-bench2/tre`, tmux `bench2`, lock `~/.swg-lab/bench2.lock`, built/running stamps `~/.swg-lab/bench2.*`. `SWG_INSTANCE=bench2` (or `swg --bench2 …`) makes every swg command act there, including `bench use`, `test all`, `build`, `release`; the gate stamp (`gate.passed`, per commit) is shared, and `bench merge` runs only from the main bench. Set up once with `swg bench2 init` (clone + config + first build) and `swg bench2 data` (database and ODB copied from the main bench, stopped) |
-| **Live instance** (second server) | `~/swg-live/` — `bin/` (binaries + scripts + `conf/config.lua` deployed from the bench's `unstable` by `swg live deploy`; its own `conf/config-local.lua`, ODB `databases/`, `log/`, `screenlog.0`), `tre/` (links to the stock archives + its own `finalboss.tre`), `DEPLOYED` (rev + time). MySQL `swgemu_live`; ports = the bench's + 1000 (login **45453**, zone 45463, ping 45462, status 45455, ORB 45419, web 45460); tmux `swg-live`; lock `~/.swg-lab/live.lock`. `swg --live start|stop|status|cmd|logs|snap|account` (or `SWG_INSTANCE=live`); `bench|test|build|agent|site|tre` are refused there. `swg live init` (once; needs the database — Chuck creates it as root), `swg live deploy [--no-restart]`, `swg live client [--bench]` (points the game client's `swgemu_login.cfg` at one or the other), `swg live status`. Seats and pilots take `SWG_INSTANCE=live` (the seat's default port follows) |
+| **Production server** (`live`) | `~/swg-live/` — `bin/` (binaries + scripts + `conf/config.lua` deployed from the bench's `unstable` by `swg live deploy`; its own `conf/config-local.lua`, ODB `databases/`, `log/`, `screenlog.0`), `tre/` (links to the stock archives + its own `finalboss.tre`), `DEPLOYED` (rev + time). MySQL `swgemu_live`; ports = the bench's + 1000 (login **45453**, zone 45463, ping 45462, status 45455, ORB 45419, web 45460); tmux `swg-live`; lock `~/.swg-lab/live.lock`. `swg --live start|stop|status|cmd|logs|snap|account` (or `SWG_INSTANCE=live`); `bench|test|build|agent|site|tre` are refused there. `swg live init` (once; needs the database — Chuck creates it as root), **`swg live tag`** (a `chuck-stable-YYYYMMDD` tag on the pushed `unstable` tip, after Chuck has played the content on the bench), **`swg live deploy [<tag>]`** (the newest stable tag by default: puts the tag on the bench, builds if its C++ changed, stops live, takes a `pre-deploy-*` snapshot (last three kept), syncs, starts, hands the bench back; `deploy unstable --yes` is the emergency path), `swg live client [--bench]` (points the game client's `swgemu_login.cfg` at one or the other), `swg live status`. Seats and pilots take `SWG_INSTANCE=live` (the seat's default port follows). Nightly data backups: `tools/backup-nightly` |
 | Unit tests (gtest) | `MMOCoreORB/src/tests/*.cpp` |
 
 ## Build
@@ -78,7 +78,7 @@ runs and tests. Host: WSL2 Debian 12.
   (`~/swg-bench2/Core3`, ports 46xxx, `swgemu_bench2`) each run gates, deploys and builds, so two agents test at the
   same time without waiting — by convention claude on the bench, alice on bench2 (`export SWG_INSTANCE=bench2` in her
   session); the **live instance** (`~/swg-live`, ports 45xxx, `swgemu_live`) is for Chuck's play and the citizens and
-  restarts only on `swg live deploy` (the bench's `unstable`, built) or by hand. All binaries are named `core3`: the
+  **is production** (2026-10-26, Chuck's call): it runs the newest `chuck-stable-*` tag and nothing else, restarts only on `swg live deploy` (snapshot first) or by hand, never runs a test, a scenario or a bot, has no lab characters, and the citizens live on it as players. New content is played on the bench (`swg live client --bench`) before it is tagged. All binaries are named `core3`: the
   tooling tells them apart by working directory. Merges into `unstable` happen on the main bench only. One game client
   folder serves all three through `swg live client` / `swg live client --bench` (one line in `swgemu_login.cfg`).
 - Console commands (`help` lists them): `shutdown`, `save`, `info`, `chars`, `reloadscreenplays`,
@@ -112,7 +112,8 @@ agent must know goes in the repo docs, not in memory.
 - `unstable` is the main branch (tracks `origin/unstable`). Upstream: `swgemu/unstable`.
 - New work goes on `feature/<name>` branched from `unstable`, then merged into `unstable` with `--no-ff`.
   Doc-only touch-ups (status, to-do ticks) may go straight onto `unstable`.
-- Stable points are tagged `chuck-stable-YYYYMMDD` (the older `stable-20260523` tag predates this convention).
+- Stable points are tagged `chuck-stable-YYYYMMDD` (`swg live tag`; the older `stable-20260523` tag predates this convention) and
+  are the only thing the production server runs (`swg live deploy`). First one: `chuck-stable-20261026` = `10f6472af2`.
 - Remotes: `origin` (crandles1202/Core3, the only push target), `swgemu` (upstream), `mtg` (ModTheGalaxy),
   `flurry`, `orkwerks` — all non-origin remotes are fetch-only.
 - **Ask Chuck before:** loading a snapshot, or touching his own accounts (`Chuckertons`, `chuck`). Since
@@ -149,7 +150,8 @@ tools/swg site save <char> <name> | site list   # write a site drafted in game (
 tools/swg test planner          # headless check of the site planner's data path (part of test all, ~20 s, no server)
 tools/swg whoami | lock [purpose] [--minutes N] | unlock [--force]   # the bench lock (docs/BOARD.md)
 tools/swg agent new <name> | list | done <name>                      # a worktree + branch per agent
-tools/swg live init [--force] | deploy [--no-restart] | client [--bench] | status   # the second server (~/swg-live), from the bench
+tools/swg live init [--force] | tag [name] | deploy [<tag>] [--no-restart] | client [--bench] | status   # production (~/swg-live), from the bench
+tools/backup-nightly            # every swgemu* database + the production ODB to ~/backups/daily (7 days); swg start runs it when a day old
 tools/swg bench2 init [--no-build] | data | status                   # the second bench (~/swg-bench2/Core3); then SWG_INSTANCE=bench2 swg …
 tools/swg --live start|stop|status|cmd|logs|snap|account …          # the same commands against the live instance
 tools/swg bench status | use <branch> | release | merge <branch>     # deploy on the bench, gate, merge
@@ -344,7 +346,10 @@ Persisted object fields (`containerVolumeLimit`, …) are only read from the tem
   lab lines. Always run the worktree's `tools/swg` (CLAUDE.md's `tools/swg …` means that one). **And which server you talk to is `SWG_INSTANCE`:** seat and pilot state is shared by the bench and the live instance, so `crew`/`seat` record the instance per seat and refuse to touch a seat of the other one (a bench-side `crew down` logged two live citizens out on 2026-10-26); every command for a live citizen needs `SWG_INSTANCE=live`. The instance names and login ports are one table in `tools/seat`, `crew`, `citizen` and `scenarios/lib.sh` (`bench` 44453, `live` 45453, `bench2` 46453; `SWG_LOGIN_PORT` wins, an unknown name is refused), so a seat scenario on the second bench runs under `SWG_INSTANCE=bench2` with no port flag.
 - **Wild creatures spawn only around a player who moves** (`SpawnArea::notifyPositionUpdate` → `tryToSpawn`, lairs near the
   player, never inside a city's no-spawn circle): an oracle count at a quiet spot says nothing about the hunting there — walk
-  a bot through it first. The **bench kills idle citizens**: every gate's `sandstorm` scenario sends Tusken raiders over Mos
+  a bot through it first. A **zone switch counts as a move**: the visions scenario came home from the vision plane into a
+  fresh scyk lair on its own spot and the trigger refused a fighting character (two gates 2026-10-26); lab
+  `clearWild:<planet>:<x>:<y>[:radius]` removes wild lairs and creatures (never players, pets or lab spawns) around a
+  scenario spot — call it before a check that needs the character out of combat. The **bench kills idle citizens**: every gate's `sandstorm` scenario sends Tusken raiders over Mos
   Eisley's east outskirts (Teyla died there 2026-10-22); a dead character gets the revive window on login and the pilot's
   `clone` tool answers it. The `story-ticker` scenario fires the weekly story in every gate too: five level-19 Tusken
   raiders camp at 3985,−4770 for a week after each bench run (`FbLabTests:story` says where) — a hunting ground is
@@ -394,9 +399,9 @@ Settings are read at session start, so restart Claude Code after creating it.
 
 ## Current status
 
-_Updated: 2026-10-25 (Phase 4 complete: 4a.0 crystals, 4a.1–4a.4, 4b.1–4b.5, 4c all on `unstable`; Phase 7 citizens live beside it. Earlier: sessions 3–5: Phase 2.12 tooling complete — Lab Remote, site builder, site planner with game loop, world edits, terrain — and Phase 4 begun with 4a.1 attunement; Phase 1 done, Phase 2 bar 2.4, Phase 3 bar 3.12 / 3.3 time-of-day / 3.11 escort)_
+_Updated: 2026-10-27 (the live instance is production on stable tags, a second bench, Phase 2.4 loot kits — Phase 0 complete. Earlier: Phase 4 complete: 4a.0 crystals, 4a.1–4a.4, 4b.1–4b.5, 4c all on `unstable`; Phase 7 citizens live beside it. Earlier: sessions 3–5: Phase 2.12 tooling complete — Lab Remote, site builder, site planner with game loop, world edits, terrain — and Phase 4 begun with 4a.1 attunement; Phase 1 done, Phase 2 bar 2.4, Phase 3 bar 3.12 / 3.3 time-of-day / 3.11 escort)_
 
-- `unstable` = `origin/unstable` (`b2a1b1f686`, 2026-10-25), no local feature branches of mine (alice's `feature/alice-bazaar` worktree is hers), stash empty. Every feature
+- `unstable` = `origin/unstable` (`6203fcc71d`, 2026-10-27), no local feature branches of mine (alice's `feature/alice` worktree is hers), stash empty. **Three servers** (Run / stop): the bench and bench2 test, the live instance is production and runs `chuck-stable-20261026` (= `10f6472af2`; the merges after it — production tooling 6203fcc71d, alice's next batch — reach it with the next `swg live tag` + `swg live deploy` once Chuck has played them on the bench). Open for Chuck: the gate's one retry (keep or strict), the Phase 1–4 play-test, the next roadmap pick (suggested 3.13 galaxy-wide rollout). Every feature
   went through its own `feature/<name>` branch, a `--no-ff` merge and a push. **Where things stand:** the
   Phase 1–3 content from 2026-10-17/18 is still unplay-tested by Chuck except what he saw while placing the
   Trade Hall (2.11 hall, vendors, HoloNet, 2.12 tooling — all good); the Phase 4 content (4a.1) is new today

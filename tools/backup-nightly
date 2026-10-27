@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Nightly backups (Phase 0.3): a dump of every swgemu* database (bench, bench2, production) and a hard-linked copy of the
+# production object store, seven days of each, under ~/backups/daily. Quiet on success, one line on stderr on failure.
+# Run by a Windows Task Scheduler entry (wsl -d Debian -- /home/chuck/workspace/Core3/tools/backup-nightly) and by
+# 'swg start' when the newest dump is older than a day. Credentials come from ~/.my.cnf, never from this file.
+set -euo pipefail
+DIR=${SWG_BACKUP_DIR:-$HOME/backups/daily}; KEEP=${SWG_BACKUP_KEEP:-7}; LIVE_ROOT=${SWG_LIVE_ROOT:-$HOME/swg-live}
+LOG="$DIR/backup.log"; mkdir -p "$DIR"
+log() { echo "$(date '+%F %T') $*" >> "$LOG"; }
+fail() { echo "backup: $*" >&2; log "ERROR $*"; exit 1; }
+today=$(date +%Y%m%d)
+log "== start"
+mysql -N -e 'SELECT 1' >/dev/null 2>&1 || fail "MariaDB is not reachable (sudo systemctl start mariadb)"
+for db in $(mysql -N -e "SHOW DATABASES LIKE 'swgemu%'"); do
+	out="$DIR/$db-$today.sql.gz"
+	mysqldump --single-transaction --quick --routines --triggers --no-tablespaces "$db" 2>>"$LOG" | gzip -1 > "$out.tmp" || { rm -f "$out.tmp"; fail "mysqldump $db failed (see $LOG)"; }
+	mv "$out.tmp" "$out"; log "dump $db $(du -h "$out" | cut -f1)"
+done
+# the production object store: ask the live server to flush, then copy; files unchanged since yesterday are hard links,
+# so a day costs only what changed. A copy taken while the server runs is a best effort — the consistent copies are the
+# pre-deploy snapshots (server stopped).
+if [ -d "$LIVE_ROOT/bin/databases" ]; then
+	swg=$(dirname "$(readlink -f "$0")")/swg
+	if [ -x "$swg" ] && SWG_INSTANCE=live "$swg" status 2>/dev/null | grep -q RUNNING; then
+		SWG_INSTANCE=live "$swg" cmd --shared save >/dev/null 2>&1 || log "live 'save' failed; copying the last flush"
+		sleep 10
+	fi
+	odb="$DIR/odb-live"; mkdir -p "$odb"
+	prev=$(ls -1d "$odb"/[0-9]*/ 2>/dev/null | grep -v '\.tmp/$' | sort | tail -n1 || true)
+	rm -rf "$odb/$today.tmp"
+	rsync -a --delete ${prev:+--link-dest="$prev"} "$LIVE_ROOT/bin/databases/" "$odb/$today.tmp/" || fail "rsync of the live ODB failed"
+	rm -rf "$odb/$today"; mv "$odb/$today.tmp" "$odb/$today"
+	log "odb-live $today $(du -sh "$odb/$today" | cut -f1) ($(du -sh "$odb" | cut -f1) in all)"
+	for d in $(ls -1d "$odb"/[0-9]*/ | grep -v '\.tmp/$' | sort | head -n -"$KEEP"); do rm -rf "$d"; log "pruned $(basename "$d")"; done
+fi
+find "$DIR" -maxdepth 1 -name 'swgemu*-*.sql.gz' -mtime +"$KEEP" -delete
+log "== done"
