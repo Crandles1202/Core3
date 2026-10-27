@@ -1580,6 +1580,13 @@ function FbLabTests:convoySpawn(city)
 	return "ok"
 end
 
+-- convoyArrive[:<city>] → the convoy reaches its destination now (despawn, news, +5 territory)
+function FbLabTests:convoyArrive(city)
+	if FbConvoys == nil then print("ERROR FbConvoys not loaded"); return "none" end
+	print("INFO convoy " .. tostring(FbConvoys:arrive(city)))
+	return "ok"
+end
+
 -- cities → one INFO line per city in the registry (3.13)
 function FbLabTests:cities()
 	if FbCities == nil then print("ERROR FbCities not loaded"); return "none" end
