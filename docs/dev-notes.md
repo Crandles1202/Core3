@@ -1491,6 +1491,10 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   instance name dies instead of defaulting (a typo in `SWG_INSTANCE` must not reach the wrong server). The seat's
   `instance` file carries the name as given, so the mismatch guard works for three servers unchanged. A new instance
   is one row in each of the four places.
+- **Lua 5.3 `%d` refuses a float**: `bazaarNear` printed `distance=%d` from `math.sqrt` and `string.format` threw
+  `bad argument #13 to 'format' (number has no integer representation)` — three ERROR lines in every gate, found by the
+  other lane in `logs --errors`, nothing failed on it (the scenario reads the return value). `%.0f` for anything computed;
+  `%d` only for oids, counts and cell numbers that are integers by construction.
 
 
 
