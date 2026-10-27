@@ -1562,3 +1562,10 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   of the same agent).
 - **`findPath` rows are positional** `{ x, z, y, cell }` (DirectorManager::findPath), not named fields; `pathBetween` and the
   convoy route sampler read `pt[1], pt[3], pt[4]`.
+- **3.13 generator lessons (2026-10-27).** The AI navmesh leaves starport pads out: `findPath` from a travel point stops after
+  30 m (Mos Espa, Narmle…), so convoy routes start 35–80 m off the pad toward town; six cities still have no route and get no
+  convoy. Rectangle city regions (Theed, Keren) read 800+ m wide: rings and staging grounds use min(R, 500). Vreni Island has
+  no land ring outside its walls (radii fall back inward). Cities without a stock walking loop (Keren, Dee'ja Peak, outposts)
+  use their stock outdoor spawn spots as the in-town loop; three outposts have neither. All three cantina shells share one floor
+  plan but two furniture files, so two seat presets cover seventeen cantinas. `getWaterHeightAt` reads 0 where there is no
+  water body, so "land" is terrain above the water height, and a Dathomir hollow at −22 m counts as water: the ring skips it.

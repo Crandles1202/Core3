@@ -1,6 +1,6 @@
 # Galaxy-wide rollout (Phase 3.13) — design for sign-off
 
-_Drafted 2026-10-27. The seven living-world systems run on Tatooine (patrols 3.2, convoys 3.11, invasions 3.1, territory 3.4,
+_Drafted 2026-10-27; built the same day on the recommended defaults (Chuck: "get back to what you were doing"); the sign-off list below is what shipped, deviations in the roadmap row._ The seven living-world systems run on Tatooine (patrols 3.2, convoys 3.11, invasions 3.1, territory 3.4,
 HoloNet 3.10, ambient cantinas 3.7/3.8, weather events 3.9). This makes each one read **city data** and fills that data for the
 stock cities of the other nine planets._
 
