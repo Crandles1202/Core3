@@ -1597,10 +1597,12 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   0x0"; `s:gsub()` returns two values, so `spatialChat(p, text:gsub(…))` hands the binding a third argument — assign first;
   a scenario must not step a scheduled beat chain by hand (`sceneBeat` is for a stopped scene).
 - **Production tweaks (2026-10-28, Chuck):** XP x3 (`globalExpMultiplier`), six missions at once (`Core3.Mission.MaxActive`,
-  `MissionManagerImplementation`), and the "(118) 281475… - name" labels: they are the *client's* admin flag (`user.cfg`
-  `[ClientGame] 0fd345d9 = true`, which also unlocks the admin slash commands), not the server — `swg live client` now turns
-  it off for production and `--bench` on again. The Launchpad still decides the login port from its own server list.
+  `MissionManagerImplementation`), and the "(118) 281475… - name" labels: they are the *client's* `user.cfg` `[ClientUserInterface] drawNetworkIds = 1`
+  (a phase-0 admin script set it; the admin flag `[ClientGame] 0fd345d9 = true` only unlocks the admin slash commands) —
+  `swg live client` turns both off for production and `--bench` on again. The Launchpad still decides the login port from its own server list.
 - **The quick gate (2026-10-28, Chuck: "not stuck behind a 2-hour gate").** The full gate is 63 scenarios in a row (median 47 s,
   the slow ones 5–8 min) because each logs a real client in and waits real timers. `swg test quick` runs unit + Lua + bot + the
   scenarios whose `# covers:` words match the branch's changed paths (`swg test pick` shows the list); a quick stamp merges a
   branch without C++; production tags still need a full gate on the tip. Scenario timings land in `~/.swg-lab/scenario-times`.
+- **One console, one writer:** `swg cmd` now runs under `flock ~/.swg-lab/<instance>.console.lock` (120 s wait), so two processes
+  of any agent cannot interleave their commands on the tmux pane (the deploy hook's `crew up` and a pilot wake did, 2026-10-28).
