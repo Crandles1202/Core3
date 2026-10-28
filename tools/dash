@@ -129,6 +129,40 @@ def citizens():
     down = [l.split()[0] for l in out.splitlines() if "seat down" in l]
     return up, down
 
+# ----------------------------------------------------------------------------------------------- the agents
+PROJECTS = os.path.expanduser("~/.claude/projects")
+
+def agent_sessions():
+    """one row per Claude session on this repo: name, last activity, what it holds, and a verdict —
+    working (a turn in the last three minutes, a lock held or a gate running), waiting on Chuck (a queue item of its
+    own), or idle (nothing of the above; how long since its last turn)"""
+    rows = []
+    worktrees = {}
+    for a in agents(): worktrees[a["name"]] = a
+    q = chuck_queue()
+    locks = {n: lock(n) for n in ("server", "bench2", "live")}
+    g = gate() or ""
+    for d in sorted(glob.glob(os.path.join(PROJECTS, "-home-chuck-workspace-Core3*"))):
+        base = os.path.basename(d).replace("-home-chuck-workspace-Core3", "")
+        name = base.lstrip("-") or "claude"
+        files = glob.glob(os.path.join(d, "*.jsonl"))
+        last = max((os.path.getmtime(f) for f in files), default=0)
+        since = time.time() - last if last else 1e9
+        # lanes of this agent: alice's worktree is hers; every other worktree belongs to the main session
+        mine = [w for w in worktrees.values() if (w["name"] == name) or (name == "claude" and w["name"] not in ("alice", "bench") and not os.path.isdir(os.path.join(PROJECTS, "-home-chuck-workspace-Core3-" + w["name"])))]
+        holds = [b for b, l in locks.items() if any(l.startswith(w["name"] + ":") for w in mine) or l.startswith(name + ":")]
+        gating = any(g.startswith(w["name"] + ":") for w in mine) or g.startswith(name + ":")
+        waiting = [it for it in q if it["agent"] in [w["name"] for w in mine] + [name]]
+        if since < 180 or holds or gating: verdict = "working"
+        elif waiting: verdict = "waiting on Chuck"
+        else: verdict = "idle"
+        detail = []
+        if holds: detail.append("holds " + ", ".join("bench" if h == "server" else h for h in holds))
+        if gating: detail.append("gate running")
+        if waiting: detail.append("waiting: " + "; ".join(it["text"][:50] for it in waiting))
+        rows.append(dict(name=name, verdict=verdict, ago=ago(last) if last else "never", detail="; ".join(detail), lanes=", ".join(w["branch"] for w in mine)))
+    return rows
+
 # ----------------------------------------------------------------------------------------------- the Chuck queue
 def chuck_queue():
     out = run([os.path.join(HERE, "swg"), "queue"])   # this checkout: the queue command may be newer than the main one
@@ -179,6 +213,10 @@ def render():
         lines.append(f"  {a['name']:11} {a['branch']:24} {a['head']}  {a['gated']:5} {a['when']:16} {a['subject']}")
         if a["status"]: lines.append(f"  {'':11} board: {a['status']}")
     lines.append("")
+    lines.append("AGENTS")
+    for a in agent_sessions():
+        lines.append(f"  {a['name']:8} {a['verdict']:17} last turn {a['ago']:>5} ago   {a['lanes']}" + (f"   [{a['detail']}]" if a['detail'] else ""))
+    lines.append("")
     lines.append("CHUCK QUEUE (what waits on you)")
     q = chuck_queue()
     if not q: lines.append("  nothing")
@@ -212,6 +250,10 @@ def html_page(interval):
         c = {"RUNNING": "#2f7d4a", "STOPPED": "#8a8f88", "HALTED": "#b26a0d"}.get(state, "#b26a0d")
         return f'<span class="pill" style="background:{c}">{H.escape(state)}</span>'
     rows = "".join(f"<tr><td><b>{H.escape(s['name'])}</b></td><td>{pill(s['state'])}</td><td>{s['pid']}</td><td>{s['up']}</td><td class=mono>{H.escape(s['rev'])}</td><td>{('errors ' + s['errs']) if s['errs'] not in ('', '0') else ''}</td></tr>" for s in servers)
+    def vpill(v):
+        c = {"working": "#2f7d4a", "waiting on Chuck": "#b26a0d", "idle": "#8a8f88"}.get(v, "#8a8f88")
+        return f'<span class="pill" style="background:{c}">{H.escape(v)}</span>'
+    sessions = "".join(f"<tr><td><b>{H.escape(a['name'])}</b></td><td>{vpill(a['verdict'])}</td><td>last turn {H.escape(a['ago'])} ago</td><td class=mono>{H.escape(a['lanes'])}</td><td class=dim>{H.escape(a['detail'])}</td></tr>" for a in agent_sessions())
     q = chuck_queue()
     queue = '<div class="box">nothing</div>' if not q else "".join(
         f'<div class="box"><b>#{H.escape(str(it["id"]))}</b> {H.escape(it["text"])}' + (f' <span class=dim>({H.escape(it["agent"])}, {it["mins"]} min ago)</span>' if it["mins"] else "")
@@ -235,6 +277,7 @@ table{{border-collapse:collapse;width:100%}} td{{padding:5px 10px 5px 0;border-t
 <tr><td><b>bench2</b></td><td>{H.escape(lock('bench2'))}</td></tr>
 <tr><td><b>live</b></td><td>{H.escape(lock('live'))}</td></tr>
 <tr><td><b>gate</b></td><td>{H.escape(g)}</td></tr></table>
+<h2>Agents</h2><table>{sessions}</table>
 <h2>Chuck queue &middot; what waits on you</h2>{queue}
 <h2>Agents and lanes</h2><table>{lanes}</table>
 <h2>Citizens on production</h2><table>
