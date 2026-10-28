@@ -241,16 +241,16 @@ from the start, more going on in cities, more GCW fighting; the AI citizens of P
   Narmle, Restuss; Nym's stronghold; the Dantooine, Endor, Yavin 4 and Dathomir outposts. A city file names its
   faction lean, gate, patrol loop, cantina cell, HoloNet spot and shuttle; planet weather gets its own event table
   (Dathomir and Endor storms, Naboo rain cosmetic). One lab scenario per planet audits every placement.
-- **3.14 \[M\] Street scenes.** A scene is a data file: cast (templates, clothes), spot, trigger (timer, player
+- **3.14 \[M\] Street scenes.** ✅ 2026-10-27 — `FbScenes` + thirteen scenes in `tasks/scenes/`, the bounty hunter asks about *you* by name. Plan: A scene is a data file: cast (templates, clothes), spot, trigger (timer, player
   within 30 m, cooldown) and a script of beats (say, emote, walk to, face, wait, despawn). `FbScenes` runs them on the
   3.7 ambient-life machinery, only while a player is near. First batch of 10–15 across the big cities: a Jawa
   haggling with a moisture farmer, a droid-repair argument, a drunk thrown out of the cantina, an arrest, an
   Imperial officer dressing down his troopers, a lost protocol droid, a bounty hunter asking NPCs about *you* by name.
-- **3.15 \[M\] Checkpoints.** At the gates of an Imperial-held city (territory ≥ 60) two stormtroopers and an officer
+- **3.15 \[M\] Checkpoints.** ✅ 2026-10-27 — `FbCheckpoints` at every held city's starport, posts follow the territory map; the Rebel is set upon through the stock faction AI (a covert one may be ignored by it). Plan: At the gates of an Imperial-held city (territory ≥ 60) two stormtroopers and an officer
   hail anyone walking through ("Identification."): a declared Rebel is attacked, an Imperial saluted, a neutral waved
   on or pulled aside for a short "random search" conversation with a small standing tilt. Rebel-held cities post a
   picket instead. Reads 3.4.
-- **3.16 \[M\] Shuttle arrivals.** On the server's shuttle landing cycle, 3–6 travellers (planet species mix) step
+- **3.16 \[M\] Shuttle arrivals.** ✅ 2026-10-27 — `FbArrivals` on the convoy routes (ten starports), only with a player near. Plan: On the server's shuttle landing cycle, 3–6 travellers (planet species mix) step
   off and walk into town along a path, vanishing at a door; a few walk out and board. Starports feel used.
 - **3.17 \[L\] GCW skirmishes.** Smaller and far more frequent than invasions: every 20–40 min per planet a Rebel
   cell and an Imperial patrol meet at a random road point near a city and fight it out with the stock faction AI;
