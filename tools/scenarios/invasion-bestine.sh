@@ -4,6 +4,7 @@
 # re-homes them there first, or they leash back to the desert, and pairs off stragglers). The character finishes the
 # attackers off (credited as fighting for the garrison), the battle resolves as "held": standing,
 # credits, news, territory shift, everything despawned.
+# covers: fb_invasions tatooine_bestine
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 CITY=bestine

@@ -2,6 +2,7 @@
 # Phase 7.1 — a seat walks: the lab puts the character on open ground east of Mos Eisley, tools/seat asks
 # the server's pathfinder for a route 60 m away and walks it with real movement packets; the oracle
 # then reads the character's server-side position. Nothing is teleported during the walk.
+# covers: src/client tools/seat WalkAction findPath
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 SEAT="$REPO/tools/seat"

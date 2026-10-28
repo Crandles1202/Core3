@@ -2,6 +2,7 @@
 # Phase 1.5: a character's inventory accepts 100 items. New inventories get it from the template
 # (fb_inventory_100.lua); older ones are raised on login (fb_player_login.lua). The reused Lab*
 # character usually predates the change, so a run here exercises the login path too.
+# covers: fb_inventory fb_player_login
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 EXPECT=100

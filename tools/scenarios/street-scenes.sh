@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Phase 3.14: a street scene plays when a player is near its spot — the cast appears, the beats are spoken and seen by the
 # client, the cast leaves afterwards; a scene reads idle again and keeps its cooldown.
+# covers: fb_scenes tasks/scenes/
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 KEY=mos_eisley_jawa_haggle
 

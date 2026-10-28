@@ -2,6 +2,7 @@
 # Phase 1.10: no-grind entertainer. A novice entertainer who dances alone and never flourishes
 # still earns dance XP every 10 s tick (stock Core3 pays nothing on a tick without a flourish,
 # and nothing extra without an audience).
+# covers: EntertainingSession
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 DANCE_SECONDS=25     # two full entertainer ticks (10 s each) plus slack

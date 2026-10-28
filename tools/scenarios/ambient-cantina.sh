@@ -2,6 +2,7 @@
 # Phase 3.7: ambient life in the Mos Eisley cantina. All extra patrons are seated in the right cell;
 # a beat with nobody near is quiet; with the character in the room a beat produces a newcomer line,
 # chatter or an emote, and spoken lines reach the client as spatial chat; a seat can change hands.
+# covers: fb_ambient_life fb_cities tasks/cities/
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 LOC=1

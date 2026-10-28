@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Phase 3.16: a landing party steps off the Mos Eisley pad and walks into town along the convoy route; a boarder or two
 # walk to the pad. The lab lands one now (no player needed), the walkers move off the pad, the sweep clears them.
+# covers: fb_arrivals fb_convoys
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 CITY=mos_eisley
 

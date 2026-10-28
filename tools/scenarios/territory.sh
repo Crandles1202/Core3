@@ -3,6 +3,7 @@
 # respawns a man short and the Rebel patrol a man stronger, the Mos Eisley HoloNet relay reads Rebel
 # propaganda and the sector report, the cantina chatter pool mentions it. A threshold crossing posts
 # news and reaches the client as a broadcast. Hand it back and everything flips.
+# covers: fb_territory fb_faction_patrols fb_holonet
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 bot_bg --wait 50

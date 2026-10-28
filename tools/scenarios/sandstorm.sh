@@ -2,6 +2,7 @@
 # Phase 3.9: a Tatooine sandstorm as a world event. Force an extreme storm; the next tick spawns three
 # Tusken raiding parties on Mos Eisley's outskirts, warns everyone and posts news; the client in the
 # zone receives the storm in its weather packet and the warning. Clear the sky; the raiders withdraw.
+# covers: fb_weather_events WeatherManager
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 # start from a clear sky with no event running
