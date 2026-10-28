@@ -765,6 +765,7 @@ includeFile("tasks/tatooine/fb_parts_dealer.lua")
 includeFile("tasks/tatooine/fb_traveling_merchant_conv_handler.lua")   -- Phase 2.9
 includeFile("tasks/tatooine/fb_traveling_merchant.lua")
 includeFile("tasks/fb_cities.lua")   -- Phase 3.13: the city registry (loads tasks/cities/*.lua; every living-world screenplay below builds its tables from it)
+includeFile("tasks/fb_scenes.lua")   -- Phase 3.14: street scenes (loads tasks/scenes/*.lua; spots from FbCities)
 includeFile("tasks/tatooine/fb_territory.lua")   -- Phase 3.4 (first: patrols, HoloNet, chatter, convoys, invasions read it)
 includeFile("tasks/tatooine/fb_galaxy_chatter.lua")   -- Phase 3.6 (before ambient life, which uses it)
 includeFile("tasks/tatooine/fb_ambient_life.lua")   -- Phase 3.7
@@ -775,6 +776,8 @@ includeFile("tasks/tatooine/fb_holonet.lua")
 includeFile("tasks/tatooine/fb_convoys.lua")   -- Phase 3.11
 includeFile("tasks/tatooine/fb_weather_events.lua")   -- Phase 3.9
 includeFile("tasks/tatooine/fb_invasions.lua")   -- Phase 3.1
+includeFile("tasks/fb_checkpoints.lua")   -- Phase 3.15: starport checkpoints (reads FbCities + FbTerritory)
+includeFile("tasks/fb_arrivals.lua")   -- Phase 3.16: shuttle arrivals (walks the convoy routes; reads FbCities + FbConvoys)
 includeFile("tasks/tatooine/fb_droid_dispenser_conv_handler.lua")
 includeFile("tasks/tatooine/fb_droid_dispenser.lua")
 includeFile("tasks/tatooine/fb_pet_dealer_conv_handler.lua")

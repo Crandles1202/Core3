@@ -1591,3 +1591,8 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   and a `say` not found; the `rm -rf` in it matched nothing). Edit in the foreground, chain only `tools/swg` calls in the background.
 - **`lab` waits 8 s by default** (`lib.sh`): the full placement audit takes 17 s for 380 spawns since 3.13, so a scenario that
   calls a long oracle passes its own timeout (`lab "placement" 90`); an empty answer means a timeout, not a clean run.
+- **3.14–3.16 (2026-10-27).** Scenes, checkpoints and arrivals all hang off the city data: a scene's spot is the city's plaza or
+  starport relay; a checkpoint stands ten metres in from the relay; arrivals walk the convoy's navmesh route. Lessons: a
+  `dressgroup` file (`commoner_tatooine_male`) is an outfit, not a creature template — `spawnMobile` says "wrong template?
+  0x0"; `s:gsub()` returns two values, so `spatialChat(p, text:gsub(…))` hands the binding a third argument — assign first;
+  a scenario must not step a scheduled beat chain by hand (`sceneBeat` is for a stopped scene).
