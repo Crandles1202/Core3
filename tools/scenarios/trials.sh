@@ -3,6 +3,7 @@
 # a trigger, stillness is counted at a shrine, restraint and strength through the kill hook, the prisoner's
 # conversation sets the alignment, the far shrine is reached, the spirit's riddle is answered (the lab reads
 # which riddle), the sacrifice is paid, the duel is won alone, and the Padawan box is awarded at the end.
+# covers: fb_trials fb_prisoner fb_trial_spirit
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 shrine_oid_of() { lab "findNpc:$1" | sed -n 's/.*oid=\([0-9]*\).*/\1/p' | sort -n | tail -n1; }

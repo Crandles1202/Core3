@@ -3,6 +3,7 @@
 # admin's item. Runs the bot as claude-admin (privileged): the remote is handed out, its radial opens the
 # console, "Where am I" reads out the position, "Find NPC" + "Teleport me to it" lands the bot inside the
 # Trade Hall in front of Tamsin Rook, and a lab action (Trade Hall status) answers in a window.
+# covers: fb_lab_remote
 export SWG_BOT_USER=claude-admin
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 

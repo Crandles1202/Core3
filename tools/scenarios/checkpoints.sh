@@ -2,6 +2,7 @@
 # Phase 3.15: the Mos Eisley starport checkpoint. The Empire holds the city: an officer and two troopers stand in from
 # the pad; a neutral walking through is hailed and waved on or searched (the client hears it). Hand the city to the
 # Rebellion and a refresh relieves the post for a picket; hand it back and the post returns.
+# covers: fb_checkpoints fb_territory fb_cities
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 CITY=mos_eisley
 

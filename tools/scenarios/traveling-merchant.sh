@@ -2,6 +2,7 @@
 # Phase 2.9: the traveling merchant. Find him, travel there, buy through the real UI (conversation
 # -> stock window), then force a move and check he is gone from the old city and present in a new
 # one with a different stock.
+# covers: fb_traveling_merchant
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 NPC=fb_traveling_merchant

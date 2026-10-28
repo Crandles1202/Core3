@@ -3,6 +3,7 @@
 # then tools/citizens/pilot.py runs one dry wake as "teyla": it must read the tell from the seat, answer
 # with the persona's voice line through the seat, write a memory note, and seed the life plan from the
 # persona file. No API key is used (--dry).
+# covers: citizens/pilot citizens/cast
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 SEAT="$REPO/tools/seat"

@@ -2,6 +2,7 @@
 # Phase 1.4: mission terminals show level and direction. The server appends "[Lvl N · 1.4km NE]"
 # to each mission's creator name when it randomizes a terminal's list. The oracle spawns a general
 # mission terminal next to the character, the bot requests its list, the oracle reads the bag.
+# covers: MissionManager LuaMissionObject
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 TERMINAL="object/tangible/terminal/terminal_mission.iff"

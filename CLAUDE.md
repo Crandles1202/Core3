@@ -139,7 +139,9 @@ tools/swg test unit             # core3 runUnitTests (258 gtests, ~12 s; server 
 tools/swg test lua [<char>]     # reloadscreenplays, then FbLabTests:runAll on the live server → PASS/FAIL lines
 tools/swg test bot [--user claude-admin]  # core3client: the account creates a char, zones in, 30 s, logs out
 tools/swg test scenario <name>  # tools/scenarios/<name>.sh: bot acts + Lua oracle observes (gameplay tests)
-tools/swg test all              # stop if running → unit → start → lua → bot → scenarios (server left running)
+tools/swg test all              # the full gate: stop if running → unit → start → lua → bot → every scenario (~80 min; server left running)
+tools/swg test quick            # the quick gate (~10 min): unit → lua → bot → only the scenarios whose "# covers:" words match the branch's changed paths (+ the core set); refused when C++ changed; its stamp lets `bench merge` through for a branch without C++
+tools/swg test pick             # which scenarios a quick gate would run for this branch (no lock, no server)
 tools/swg build                 # ~/bin/build with the client on; prints only errors/warnings and timing
 tools/swg logs --lua            # bin/log/lua.log
 tools/swg snap save|list <name> # mysqldump + copy of bin/databases (~700 MB) to ~/swg-snapshots/<name>
@@ -151,6 +153,7 @@ tools/swg site save <char> <name> | site list   # write a site drafted in game (
 tools/swg test planner          # headless check of the site planner's data path (part of test all, ~20 s, no server)
 tools/swg whoami | lock [purpose] [--minutes N] | unlock [--force]   # the bench lock (docs/BOARD.md)
 tools/swg agent new <name> | list | done <name>                      # a worktree + branch per agent
+tools/dash [--once] [--interval N]   # one screen: the three servers, who holds which bench, lanes + gates, the citizens (read-only; Chuck's launcher view)
 tools/swg live init [--force] | tag [name] | deploy [<tag>] [--no-restart] | client [--bench] | status   # production (~/swg-live), from the bench
 tools/backup-nightly            # every swgemu* database + the production ODB to ~/backups/daily (7 days); swg start runs it when a day old
 tools/swg bench2 init [--no-build] | data | status                   # the second bench (~/swg-bench2/Core3); then SWG_INSTANCE=bench2 swg …
@@ -181,6 +184,10 @@ tools/citizens/crew up [names|all] [--idle S] [--dry] | down | status | log <cit
   change; `swg test all` runs them, and gives a red scenario **one retry** (a flake passes the second time, a real bug fails
   twice; the first run's log is kept as `last-scenario-<name>.first.log`). `*.manual.sh` scenarios (long audits such as `merchant-stops`, which
   walks every merchant stop) run only by name: `swg test scenario merchant-stops`.
+- **Gates (2026-10-28):** a branch merges on a **quick** gate (`swg test quick`: unit, Lua, bot, the scenarios whose `# covers:` header
+  names a changed path, plus `npc-conversation`) unless it changes C++, which needs the full `swg test all`; a **production tag**
+  (`swg live tag`) needs a full gate recorded on the `unstable` tip. Every scenario file carries `# covers: <path words>`; a Lua file
+  no scenario covers is named in the quick gate's output. Scenario durations go to `~/.swg-lab/scenario-times`.
 - Test accounts: `claude-admin` (admin_level 15), `claude-player` (admin_level 0). Passwords are in
   `~/.swg-lab/*.pass` (mode 600), never in the repo. Account hash = `SHA256(DBSecret + password + salt)`,
   salt = 32 hex chars (`AccountManager::createAccount`). `~/bin/run` resets an `admin` account that does

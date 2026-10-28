@@ -3,6 +3,7 @@
 # Darth Vhal's student (council dark, the dark novice rank box, the first task); the patience task is done by
 # sitting in her chamber, the prey task through the kill hook (anything that lives); each report pays Jedi
 # experience; after both she has nothing more yet.
+# covers: fb_masters fb_sith_master
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 MASTER=$(lab "findNpc:fb_sith_master" | sed -n 's/.*oid=\([0-9]*\).*/\1/p' | sort -n | tail -n1)

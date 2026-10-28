@@ -3,6 +3,7 @@
 # container path) makes the finished piece with the tier's stats; the three armor tiers and a weapon tier sit where the
 # ladder says (docs/Loot-Kits-Design.md); the drop roll gives parts to a creature kill and parts plus a kit to a humanoid
 # kill, matching the source; nothing falls below the first band.
+# covers: fb_loot_kits fb_kits Lootkit lootkits_gen
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 K=$(lab "kits")

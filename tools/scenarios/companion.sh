@@ -5,6 +5,7 @@
 # beside) and the knighting (robe with his name, Master Venn's "Master"). Then the dark side: Ryka Dathe, the
 # betrayal (permanent pools, 20 darker), the turn (she hunts you), the loss (a quarter of the cash, the former
 # master) and the slaying.
+# covers: fb_companion fb_masters
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 MASTER=$(lab "findNpc:fb_jedi_master" | sed -n 's/.*oid=\([0-9]*\).*/\1/p' | sort -n | tail -n1)

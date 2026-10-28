@@ -2,6 +2,7 @@
 # Phase 3.2: faction patrols. Each route has a live squad; with the character nearby (AI only moves
 # with a player in range) a forced step sends the Imperial squad towards its next point and the
 # leader's position changes within 20 s; the followers stay with the leader.
+# covers: fb_faction_patrols fb_territory fb_cities
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 ROUTE=1

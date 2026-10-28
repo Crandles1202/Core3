@@ -3,6 +3,7 @@
 # next to it, kills every guard (oracle-dealt lethal blows credited to the character); the convoy is
 # destroyed: a loot crate with items appears, the character's Rebel standing goes up and Imperial
 # standing down, the reward credits arrive, and the galaxy news carries the story.
+# covers: fb_convoys fb_territory
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 lab "territorySet:mos_eisley:65" >/dev/null   # Phase 3.4: a destroyed convoy costs the Empire 10 points here

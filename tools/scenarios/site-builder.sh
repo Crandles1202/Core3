@@ -4,6 +4,7 @@
 # nudged, a tenant is placed from inside (room coordinates + furniture verdict), an outdoor NPC outside,
 # the draft is renamed and its site-file text matches what FbSites:add expects, then it is discarded and
 # nothing of it remains. A second preview on the starport square must report the apron as a clash.
+# covers: fb_site_builder fb_sites
 export SWG_BOT_USER=claude-admin
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 

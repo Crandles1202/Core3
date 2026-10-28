@@ -3,6 +3,7 @@
 # stimpacks leave mind alone). Regen moves every pool while the bot is logged in, so a control
 # round with no command measures regen first, and the stimpack's share is delta - regen.
 # Each round: staging session (bot online, oracle hurts the character) -> command session.
+# covers: fb_stimpack medicine
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 STIMPACK="object/tangible/medicine/stimpack_sm_s1.iff"

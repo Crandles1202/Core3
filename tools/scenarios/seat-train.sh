@@ -5,6 +5,7 @@
 # (learn → the box → yes) over real packets; the oracle reads the box back. Twice: first from the Mos Eisley square,
 # where the scout trainer stands outdoors, then from beside the trainers' hall, where the nearest one stands in a cell
 # (the walk and the conversation then go through a door). The shared lab character is reset before and after.
+# covers: src/client tools/seat train trainable
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 SEAT="$REPO/tools/seat"

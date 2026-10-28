@@ -3,6 +3,7 @@
 # scaled by level and rank, who attack on sight; all down → a cooldown; a deep alignment puts a Force user of the
 # other side in the squad; the fixer in the Mos Eisley cantina takes the price plus a markup and the hunters stay
 # away; /checkForceStatus carries the line.
+# covers: fb_bounty fb_fixer
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 FIXER=$(lab "findNpc:fb_fixer" | sed -n 's/.*oid=\([0-9]*\).*/\1/p' | sort -n | tail -n1)

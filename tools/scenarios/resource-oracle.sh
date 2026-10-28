@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Phase 7.6a — the resource oracle: the lab lists the spawns in shift on Tatooine with their attributes and best
 # concentration spots (the same noise the survey tool reads), and the density read back at a listed spot agrees.
+# covers: getResourceSpawns resource
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 LIST=$(lab "resources:tatooine" 30)

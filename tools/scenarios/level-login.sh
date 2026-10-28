@@ -5,6 +5,7 @@
 # aggro check. The login hook (FBLogin.recomputeLevel → CreatureObject:recomputeLevel) runs it again. Here: the master
 # marksman box is awarded with bare hands (level 1 stored), a CDEF rifle is given and equipped (still 1: nothing recomputes),
 # then the login hook runs and the stored level matches the rifle line.
+# covers: fb_player_login recomputeLevel
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 BOX=combat_marksman_master

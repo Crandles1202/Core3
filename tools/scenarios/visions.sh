@@ -2,6 +2,7 @@
 # Phase 4a.4: Force visions. The character is taken out of the world into the dungeon1 vision ground, two
 # figures speak their lines, and the world comes back where it was left. Then the alignment skews the cast,
 # a vision is due by the path's state and comes at the attunement trigger, and a seen vision does not return.
+# covers: fb_visions fb_vision
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 # --- A: a vision begun by the lab: away, figures, lines, back -------------------------------------------------
