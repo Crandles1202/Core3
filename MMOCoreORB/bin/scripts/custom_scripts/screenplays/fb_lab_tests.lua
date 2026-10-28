@@ -456,6 +456,24 @@ function FbLabTests.checkShuttles()
 	end
 	check("shuttle.shuttleportAwayTime_60s", env.shuttleportAwayTime == 60, "shuttleportAwayTime=" .. tostring(env.shuttleportAwayTime))
 	check("shuttle.starportAwayTime_60s", env.starportAwayTime == 60, "starportAwayTime=" .. tostring(env.starportAwayTime))
+	-- every travel point of a running planet resolves to its own shuttle (the nearest one; two points sharing a shuttle is the
+	-- Mos Espa bug); a point with no shuttle within 120 m is only a warning (Theed Spaceport boards without one)
+	for planet, cfg in pairs(env) do
+		if type(cfg) == "table" and type(cfg.planetTravelPoints) == "table" and isZoneEnabled(planet) then
+			local seen = {}
+			for _, pt in ipairs(cfg.planetTravelPoints) do
+				local label = "shuttle." .. planet .. "." .. pt.name:gsub("%s", "_")
+				local s, d = FbLabTests.shuttleFor(planet, pt)
+				if s == nil then
+					print("WARN " .. label .. " — no shuttle within 120 m of the travel point")
+				else
+					check(label .. ".own_shuttle", seen[s.oid] == nil,
+						seen[s.oid] ~= nil and string.format("shuttle %d (%.0f m) also serves %s", s.oid, d, seen[s.oid]) or string.format("shuttle %d at %.0f m", s.oid, d))
+					seen[s.oid] = pt.name
+				end
+			end
+		end
+	end
 end
 
 function FbLabTests.checkQol()
@@ -888,11 +906,16 @@ end
 
 local function hamLine(charName, pPlayer)
 	local parts = { "INFO ham", "char=" .. charName }
+	local wounds = {}
 	for _, name in ipairs({ "health", "action", "mind" }) do
 		local i = FbLabTests.pools[name]
 		parts[#parts + 1] = string.format("%s=%d/%d/%d", name,
 			CreatureObject(pPlayer):getHAM(i), CreatureObject(pPlayer):getMaxHAM(i), CreatureObject(pPlayer):getBaseHAM(i))
+		wounds[#wounds + 1] = tostring(CreatureObject(pPlayer):getWounds(i))
 	end
+	-- wounds cap regeneration at max minus wounds (healDamage); a wounded character never fills up by resting
+	parts[#parts + 1] = "wounds=" .. table.concat(wounds, "/")
+	parts[#parts + 1] = "shock=" .. tostring(CreatureObject(pPlayer):getShockWounds())
 	local line = table.concat(parts, " ")
 	print(line)
 	return line
@@ -2162,6 +2185,30 @@ function FbLabTests:trainers(planet, trainerType, x, y)
 	return tostring(#rows)
 end
 
+-- clinic:<planet>[:<x>:<y>] → the FB-21 medical droids on the planet (live spawns of fb_mos_eisley_medical_droid, one in each
+-- medcenter: cell-local coordinates for the walk), nearest to x,y first. The droid clears wounds and shock for free (2.6) — the
+-- only wound care a citizen has: regeneration stops at max minus wounds, and Teyla sat wounded for two days (2026-10-28).
+function FbLabTests:clinic(planet, x, y)
+	x, y = tonumber(x), tonumber(y)
+	local rows = {}
+	for _, e in ipairs(FbLabTests.liveSpawns(nil)) do
+		local pObj = e.pObj
+		if e.template == "fb_mos_eisley_medical_droid" and pObj ~= nil and SceneObject(pObj):getZoneName() == planet and not CreatureObject(pObj):isDead() then
+			local wx, wy, wz = SceneObject(pObj):getWorldPositionX(), SceneObject(pObj):getWorldPositionY(), SceneObject(pObj):getWorldPositionZ()
+			local d = (x ~= nil and y ~= nil) and math.sqrt((wx - x) ^ 2 + (wy - y) ^ 2) or 0
+			rows[#rows + 1] = { oid = e.oid, name = e.name, wx = wx, wy = wy, wz = wz, cell = SceneObject(pObj):getParentID(),
+				lx = SceneObject(pObj):getPositionX(), ly = SceneObject(pObj):getPositionY(), lz = SceneObject(pObj):getPositionZ(), d = d }
+		end
+	end
+	table.sort(rows, function(a, b) return a.d < b.d end)
+	for _, r in ipairs(rows) do
+		print(string.format("INFO clinic oid=%d name=%s x=%.1f y=%.1f z=%.1f cell=%d localX=%.2f localY=%.2f localZ=%.2f distance=%.0f",
+			r.oid, (r.name:gsub("%s", "_")), r.wx, r.wy, r.wz, r.cell, r.lx, r.ly, r.lz, r.d))
+	end
+	print(string.format("INFO clinics planet=%s count=%d", planet, #rows))
+	return tostring(#rows)
+end
+
 -- resourceNear:<planet>:<resource>[:<radius>] → for every travel point of the planet, the best buildable land spot of that
 -- resource within radius m (default 1500, a 250 m grid): where a harvester can stand within a walk of a shuttle.
 function FbLabTests:resourceNear(planet, resource, radius)
@@ -2943,6 +2990,20 @@ end
 -- terminal (where purchaseTicket must be sent from: within 8 m; starport terminals stand inside the starport
 -- building, cell given) and the shuttle creature (boardShuttle within 25 m). Names carry underscores for
 -- spaces, the way purchaseTicket wants them.
+-- the shuttle of a travel point: the NEAREST player_shuttle / player_transport within 120 m, never the last one seen —
+-- Mos Espa's East shuttleport stands 66 m from the starport pad, and boardShuttle matches the ticket against the travel
+-- point nearest the character, so the wrong shuttle means "no ticket" with a valid ticket in hand (Wex, nine tickets, 2026-10-28)
+function FbLabTests.shuttleFor(planet, pt, objects)
+	local shuttle, sdist = nil, 1e9
+	for _, o in ipairs(objects or getObjectsInRange(planet, pt.x, pt.y, 120) or {}) do
+		if o.template:find("player_shuttle") or o.template:find("player_transport") then
+			local d = math.sqrt((o.x - pt.x) ^ 2 + (o.y - pt.y) ^ 2)
+			if d < sdist then shuttle, sdist = o, d end
+		end
+	end
+	return shuttle, sdist
+end
+
 function FbLabTests:travelPoints(planet)
 	local env, err = loadIsolated("scripts/managers/planet/planet_manager.lua")
 	if env == nil then print("ERROR travelPoints: planet_manager.lua: " .. tostring(err)); return "none" end
@@ -2950,16 +3011,15 @@ function FbLabTests:travelPoints(planet)
 	if cfg == nil or cfg.planetTravelPoints == nil then print("ERROR travelPoints: no travel points for " .. tostring(planet)); return "none" end
 	local n = 0
 	for _, pt in ipairs(cfg.planetTravelPoints) do
-		local terminal, shuttle, tdist = nil, nil, 1e9
+		local terminal, tdist = nil, 1e9
 		local objects = getObjectsInRange(planet, pt.x, pt.y, 120) or {}
 		for _, o in ipairs(objects) do
 			if o.type == 16402 then
 				local d = math.sqrt((o.x - pt.x) ^ 2 + (o.y - pt.y) ^ 2)
 				if d < tdist then terminal, tdist = o, d end
-			elseif o.template:find("player_shuttle") or o.template:find("player_transport") then
-				shuttle = o
 			end
 		end
+		local shuttle = FbLabTests.shuttleFor(planet, pt, objects)
 		local line = string.format("INFO travelpoint planet=%s name=%s x=%.1f y=%.1f z=%.1f interplanetary=%d incoming=%d",
 			planet, pt.name:gsub("%s", "_"), pt.x, pt.y, pt.z or 0, pt.interplanetaryTravelAllowed or 0, pt.incomingTravelAllowed or 0)
 		if terminal ~= nil then
