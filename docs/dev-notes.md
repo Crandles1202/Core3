@@ -1596,3 +1596,11 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   `dressgroup` file (`commoner_tatooine_male`) is an outfit, not a creature template — `spawnMobile` says "wrong template?
   0x0"; `s:gsub()` returns two values, so `spatialChat(p, text:gsub(…))` hands the binding a third argument — assign first;
   a scenario must not step a scheduled beat chain by hand (`sceneBeat` is for a stopped scene).
+- **Production crash 2026-10-28 ~15:00 (an hour after the rollout tag went live):** `assertion "count <= UINT16_MAX && String length
+  exceeded 65k in toBinaryStream"` in `UpdateModifiedObjectsThread` while persisting a `QuestStatus` — the lab spawn registry
+  (`FbLabSpawns.<template>`, one string per template) grew without bound: shuttle arrivals (3.16) and street scenes (3.14) spawn
+  dozens an hour on every planet, every spawn was recorded, and only a lab read prunes dead records — nothing on production
+  reads it. **A quest status is one string; the engine aborts the write-back thread past 65 535 bytes.** Fix: transient
+  sources (`fb_arrivals`, `fb_scenes`) are not registered; a template's list is pruned at 200 records and capped at 400.
+  Restarted from gdb (`swg --live stop`, `start`; backtrace in `~/swg-live/bin/gdb.log`, the pane in `~/.swg-lab/live-crash-*.txt`).
+  Any growing per-player or per-world quest-status list needs a cap — check `FbGalaxyChatter` (8), `FbCheckpoints.hailed` (3 min window).
