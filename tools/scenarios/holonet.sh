@@ -2,6 +2,7 @@
 # Phase 3.10: HoloNet relays. The starport relay is up; a forced broadcast reads a full segment
 # (sting, top story, wanted, news, commerce, propaganda, outro) and the lines reach the client as
 # spatial chat from the relay. Also exercises the relay's "replay" conversation option.
+# covers: fb_holonet
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 LOC=1

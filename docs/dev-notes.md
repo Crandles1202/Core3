@@ -1596,3 +1596,7 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   `dressgroup` file (`commoner_tatooine_male`) is an outfit, not a creature template — `spawnMobile` says "wrong template?
   0x0"; `s:gsub()` returns two values, so `spatialChat(p, text:gsub(…))` hands the binding a third argument — assign first;
   a scenario must not step a scheduled beat chain by hand (`sceneBeat` is for a stopped scene).
+- **The quick gate (2026-10-28, Chuck: "not stuck behind a 2-hour gate").** The full gate is 63 scenarios in a row (median 47 s,
+  the slow ones 5–8 min) because each logs a real client in and waits real timers. `swg test quick` runs unit + Lua + bot + the
+  scenarios whose `# covers:` words match the branch's changed paths (`swg test pick` shows the list); a quick stamp merges a
+  branch without C++; production tags still need a full gate on the tip. Scenario timings land in `~/.swg-lab/scenario-times`.

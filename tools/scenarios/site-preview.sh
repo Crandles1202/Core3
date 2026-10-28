@@ -3,6 +3,7 @@
 # the running server in place of the live site of the same name (FbSites:preview), its NPCs are audited
 # by site (sitePlacement), and ending the preview puts the saved site back on its lot — no restart.
 # Here: the Trade Hall itself, moved 60 m and turned, previewed and then restored.
+# covers: fb_sites siteplanner tasks/sites/
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 SITES="$BENCH/MMOCoreORB/bin/scripts/screenplays/tasks/sites"   # the server reads the bench's scripts (lib.sh sets BENCH)

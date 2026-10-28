@@ -4,6 +4,7 @@
 # uses the datapad with the real "Learn Schematic" radial (id 50) and the oracle confirms the draft
 # schematic is known and the cash was taken. Also checks the refusal path: a schematic whose
 # requiredSkill the character lacks must not be sold.
+# covers: fb_schematic_broker
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 NPC=fb_schematic_broker

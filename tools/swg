@@ -279,7 +279,14 @@ cmd_bench() {
 			[ "$INSTANCE" = bench ] || die "swg bench merge runs from the main bench only (its checkout is the canonical unstable); the gate stamp from bench2 counts"
 			local branch=${1:-}; [ -n "$branch" ] || die "usage: swg bench merge <branch>"
 			local commit; commit=$(git -C "$BENCH" rev-parse --verify -q "$branch^{commit}") || die "unknown branch $branch"
-			grep -qx "$commit" "$LABDIR/gate.passed" 2>/dev/null || die "no green 'swg test all' recorded for $branch @ $(cut -c1-10 <<<"$commit"): swg bench use $branch && swg test all"
+			if ! grep -qx "$commit" "$LABDIR/gate.passed" 2>/dev/null; then
+				# a quick gate (unit, lua, bot, the scenarios the change touches) is enough for a branch without C++ changes
+				if grep -qx "$commit" "$LABDIR/gate.quick" 2>/dev/null && ! git -C "$BENCH" diff --name-only "$(git -C "$BENCH" merge-base unstable "$commit")" "$commit" | grep -q '^MMOCoreORB/src/'; then
+					say "quick gate green on $branch @ $(cut -c1-10 <<<"$commit") (no C++ changed)"
+				else
+					die "no green gate recorded for $branch @ $(cut -c1-10 <<<"$commit"): swg bench use $branch && swg test quick (no C++) or swg test all"
+				fi
+			fi
 			if lock_is_stale || [ "$(lock_field 1)" = "$(agent_name)" ]; then :; else die "bench $(lock_describe)"; fi
 			[ -z "$(git -C "$BENCH" status --porcelain)" ] || die "the bench checkout is dirty"
 			git -C "$BENCH" checkout -q unstable || die "checkout unstable failed"
@@ -769,13 +776,16 @@ test_scenario() {
 	local -a files
 	if [ "$name" = all ]; then
 		files=("$REPO"/tools/scenarios/*.sh)
+	elif [ "$name" = list ]; then
+		shift; files=(); local n; for n in "$@"; do files+=("$REPO/tools/scenarios/$n.sh"); done
 	elif [ -f "$REPO/tools/scenarios/$name.manual.sh" ]; then
 		files=("$REPO/tools/scenarios/$name.manual.sh")
 	else
 		files=("$REPO/tools/scenarios/$name.sh")
 	fi
-	local rc=0 ran=0
+	local rc=0 ran=0 t0
 	for f in "${files[@]}"; do
+		t0=$SECONDS
 		[ "$(basename "$f")" = lib.sh ] && continue
 		# *.manual.sh are long audits run by name only (swg test scenario <name>), never by "all"
 		case "$(basename "$f")" in *.manual.sh) [ "$name" = all ] && continue ;; esac
@@ -794,9 +804,64 @@ test_scenario() {
 		fi
 		(( src == 0 )) || rc=1
 		ran=$((ran + 1))
+		say "   ($(basename "$f" .sh): $((SECONDS - t0)) s)"
+		printf '%s %s %s\n' "$(date +%s)" "$(basename "$f" .sh)" "$((SECONDS - t0))" >> "$LABDIR/scenario-times"
 	done
 	(( ran > 0 )) || die "no scenarios found"
 	say "== scenario: $( (( rc == 0 )) && echo PASS || echo FAIL ) ($ran run)"
+	return $rc
+}
+
+# ---------------------------------------------------------------- the quick gate
+# quick_scenarios: the scenarios a change needs — those whose "# covers:" words match a changed path (the branch against
+# unstable), the scenario files changed themselves, and the core set; C++ changes get no quick gate (swg test all).
+QUICK_CORE="npc-conversation"
+quick_changed() { git -C "$REPO" diff --name-only "$(git -C "$REPO" merge-base unstable HEAD)" HEAD 2>/dev/null; }
+quick_scenarios() {
+	local changed; changed=$(quick_changed)
+	local -A pick=()
+	local f n words w path
+	for n in $QUICK_CORE; do pick[$n]=1; done
+	for f in "$REPO"/tools/scenarios/*.sh; do
+		n=$(basename "$f" .sh); [ "$n" = lib ] && continue; case "$n" in *.manual) continue ;; esac
+		words=$(sed -n 's/^# covers: *//p' "$f" | head -n1)
+		while read -r path; do
+			[ -n "$path" ] || continue
+			[ "$path" = "tools/scenarios/$n.sh" ] && pick[$n]=1
+			for w in $words; do case "$path" in *"$w"*) pick[$n]=1 ;; esac; done
+		done <<<"$changed"
+	done
+	printf '%s\n' "${!pick[@]}" | sort
+}
+test_quick() {
+	local changed; changed=$(quick_changed)
+	[ -n "$changed" ] || die "quick: nothing changed against unstable"
+	if grep -q '^MMOCoreORB/src/' <<<"$changed"; then die "quick: C++ changed — a quick gate does not cover a rebuild; run swg test all"; fi
+	local picked; picked=$(quick_scenarios)
+	local uncovered; uncovered=$(grep -E '^MMOCoreORB/bin/scripts/.*\.lua$' <<<"$changed" | grep -v 'fb_lab_tests.lua' | while read -r path; do
+		local hit=0 f words w
+		for f in "$REPO"/tools/scenarios/*.sh; do words=$(sed -n 's/^# covers: *//p' "$f" | head -n1); for w in $words; do case "$path" in *"$w"*) hit=1 ;; esac; done; done
+		(( hit )) || echo "$path"; done)
+	say "== quick: $(wc -l <<<"$changed") changed path(s); scenarios: $(tr '\n' ' ' <<<"$picked")"
+	[ -z "$uncovered" ] || say "== quick: no scenario covers: $(tr '\n' ' ' <<<"$uncovered")  (write one, or run swg test all)"
+	lock_stretch 7200
+	local rc=0
+	if is_running; then say "== quick: stopping the running server for unit tests"; cmd_stop || exit 1; fi
+	test_unit || rc=1
+	cmd_start || exit 1
+	cmd_cmd "runLuaFunction FbLabTests:weatherSet:tatooine:0" >/dev/null 2>&1 || true
+	test_lua || rc=1
+	test_bot || rc=1
+	# shellcheck disable=SC2086
+	test_scenario list $picked || rc=1
+	say "== quick: $( (( rc == 0 )) && echo PASS || echo FAIL )  (server left running)"
+	if (( rc == 0 )); then
+		git -C "$BENCH" rev-parse HEAD >>"$LABDIR/gate.quick" 2>/dev/null
+		local gb; gb=$(git -C "$REPO" rev-parse --abbrev-ref HEAD 2>/dev/null)
+		if [ -n "$gb" ] && [ "$gb" != HEAD ] && [ "$gb" != unstable ] && ! grep -q "bench merge $gb\b" "$QUEUE_FILE" 2>/dev/null; then
+			queue_add "quick gate green on $gb @ $(git -C "$BENCH" rev-parse --short HEAD): merge it" "tools/swg bench merge $gb" >/dev/null
+		fi
+	fi
 	return $rc
 }
 
@@ -817,6 +882,8 @@ cmd_test() {
 		bot)  test_bot "$@" ;;
 		scenario) test_scenario "$@" ;;
 		planner) test_planner ;;
+		quick) test_quick "$@" ;;
+		pick) quick_scenarios ;;
 		all)
 			lock_stretch 14400
 			local rc=0
@@ -839,7 +906,7 @@ cmd_test() {
 				fi
 			fi
 			return $rc ;;
-		*) die "usage: swg test unit|lua|bot|scenario <name>|planner|all" ;;
+		*) die "usage: swg test unit|lua|bot|scenario <name>|planner|quick|pick|all" ;;
 	esac
 }
 
@@ -1228,6 +1295,7 @@ cmd_live() {
 			git -C "$BENCH" fetch -q origin 2>/dev/null || warn "fetch from origin failed; comparing with the last known origin/unstable"
 			local tip; tip=$(git -C "$BENCH" rev-parse unstable)
 			[ "$tip" = "$(git -C "$BENCH" rev-parse origin/unstable)" ] || die "unstable here is not what origin has (push or pull first): only a pushed tip becomes a stable point"
+			grep -qx "$tip" "$LABDIR/gate.passed" 2>/dev/null || die "no full gate (swg test all) recorded on unstable @ $(cut -c1-10 <<<"$tip"): production takes only a fully gated tip — swg bench use unstable && swg test all"
 			git -C "$BENCH" rev-parse -q --verify "refs/tags/$name" >/dev/null && die "tag $name exists (swg live tag $name-2)"
 			git -C "$BENCH" tag -a "$name" "$tip" -m "stable point for the production server: unstable @ $(cut -c1-10 <<<"$tip") ($(date '+%F'))" || die "tag failed"
 			git -C "$BENCH" push -q origin "refs/tags/$name" || die "push of the tag failed (it exists locally: git push origin $name)"
@@ -1355,7 +1423,7 @@ case "${1:-}" in
 	status)  cmd_status ;;
 	cmd)     shift; if [ "${1:-}" = "--shared" ]; then cmd_cmd "$@"; else with_lock "console: ${1:-}" cmd_cmd "$@"; fi ;;
 	logs)    shift; cmd_logs "$@" ;;
-	test)    shift; with_lock "test ${1:-} ${2:-}" cmd_test "$@" ;;
+	test)    shift; if [ "${1:-}" = pick ]; then cmd_test "$@"; else with_lock "test ${1:-} ${2:-}" cmd_test "$@"; fi ;;
 	build)   shift; with_lock "build" cmd_build "$@" ;;
 	snap)    shift; with_lock "snap ${1:-}" cmd_snap "$@" ;;
 	account) shift; cmd_account "$@" ;;

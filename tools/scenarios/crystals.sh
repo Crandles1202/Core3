@@ -2,6 +2,7 @@
 # Phase 4a.0: crystal formations. Eight stand in the four caves; the client works one through the radial and a
 # colour crystal lands in the bag; the formation is then bare until it regrows; a forced power roll gives a power
 # crystal; red grows only on Dathomir; a crystal in the bag counts for attunement.
+# covers: fb_crystals fb_crystal
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 C=$(lab "crystals")

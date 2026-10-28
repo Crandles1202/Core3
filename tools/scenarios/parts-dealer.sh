@@ -2,6 +2,7 @@
 # Phase 2.3: component vendor. The bot talks to the dealer; the oracle buys a standard and an
 # advanced part through the screenplay's public purchase() (SUI cannot be driven by the bot) and
 # checks the cash and the generated components in the inventory.
+# covers: fb_parts_dealer
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 NPC=fb_parts_dealer

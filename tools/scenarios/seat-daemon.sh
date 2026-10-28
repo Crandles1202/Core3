@@ -2,6 +2,7 @@
 # Phase 7.0 — the seat daemon: a core3client kept logged in, driven over its unix-socket channel
 # by tools/seat. Checks the round trip, spatial chat, a /tell, an emote, the object list and a
 # clean stop; the lab oracle confirms the character is online while the seat is up and gone after.
+# covers: src/client tools/seat SeatAction
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 SEAT="$REPO/tools/seat"

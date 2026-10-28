@@ -2,6 +2,7 @@
 # Phase 3.5: the story ticker. With the character online, fire the next story: its mobs appear
 # (all alive), its news lines enter the galaxy chatter pool, and the broadcast reaches the client.
 # Then fire another story: the previous story's mobs are gone and the new ones stand.
+# covers: fb_story_ticker
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 CUR=$(lab_kv "story" story)

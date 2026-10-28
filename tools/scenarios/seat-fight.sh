@@ -3,6 +3,7 @@
 # hands it a CDEF rifle (equipped by the lab) and spawns a kreetle 15 m away; tools/seat fight closes to reach,
 # attacks it (attack, then defaultattack every 3 s, both real queue commands), reads the kill server-side and loots
 # the corpse with `loot all`. The oracle confirms the kreetle is dead and the character is not.
+# covers: src/client tools/seat fight
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 SEAT="$REPO/tools/seat"

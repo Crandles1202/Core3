@@ -2,6 +2,7 @@
 # Phase 2.12f: the terrain relief in the site planner comes from FbLabTests:terrainGrid, which writes a height
 # grid of a box to a file in one console call. A 40 m box every 10 m is 5×5 heights, the header describes it,
 # and the heights are plausible ground (Mos Eisley starport square sits near 5 m).
+# covers: terrainGrid siteplanner
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 OUT=/tmp/fb-terrain-grid-test.txt

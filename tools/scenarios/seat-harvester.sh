@@ -4,6 +4,7 @@
 # here (HarvesterResourceDataMessage), selects the densest spawn, pays maintenance and deposits power through the
 # real management windows (transfer boxes), activates it; the lab stands in for hours of extraction by filling the
 # hopper, and the seat empties the hopper into its inventory (EmptyHopper). The harvester is torn down at the end.
+# covers: src/client tools/seat harvester
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 SEAT="$REPO/tools/seat"

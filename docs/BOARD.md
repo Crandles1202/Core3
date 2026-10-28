@@ -31,8 +31,11 @@ Status words: `planning`, `coding`, `testing` (holds the bench), `gate` (running
 4. **Release the bench when you stop testing** (`swg bench release`): it goes back to `unstable` and the lock
    opens. A hold expires on its own; an abandoned lock may be broken with `swg unlock --force` after checking the
    board.
-5. **Merge only through the gate.** `swg test all` on the bench with your commit deployed records a pass for that
-   commit; `swg bench merge <branch>` refuses without it, then merges `--no-ff` into `unstable` and pushes.
+5. **Merge only through a gate.** `swg test quick` (unit, Lua, bot, the scenarios covering your changed paths; ~10 min)
+   records a pass for a branch without C++ changes; a branch that changes C++ needs `swg test all` (~80 min).
+   `swg bench merge <branch>` refuses without a pass for that exact commit, then merges `--no-ff` into `unstable` and pushes.
+   A production tag (`swg live tag`) needs a full `swg test all` on the `unstable` tip. Give every new scenario a
+   `# covers:` line naming the files it protects, or the quick gate will not run it for them.
    After that, `git -C <your worktree> rebase unstable` or retire the worktree (`swg agent done <name>`).
 6. **Shared state that is not code:** the test accounts (`claude-admin`, `claude-player`, ten-character cap),
    quest-status registries, world edits in `tre-src/world/`, sites in `tasks/sites/`, the ODB. Scenarios may
