@@ -1609,3 +1609,32 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   `dressgroup` file (`commoner_tatooine_male`) is an outfit, not a creature template — `spawnMobile` says "wrong template?
   0x0"; `s:gsub()` returns two values, so `spatialChat(p, text:gsub(…))` hands the binding a third argument — assign first;
   a scenario must not step a scheduled beat chain by hand (`sceneBeat` is for a stopped scene).
+
+### 2026-10-28 — wounds, the clinic, and the nearest shuttle (alice)
+
+- **Teyla was wounded, not stuck.** Two days at 585/1100 on production, calling for a medic in /say every wake. A pool only
+  regenerates up to max minus wounds (`CreatureObjectImplementation::healDamage`), and nothing a citizen has clears a wound:
+  no citizen is a medic, and nobody had told the persona that the FB-21 medical droid (2.6) clears wounds and shock for free
+  in every medcenter. The ham line printed current/max/base, so the pilot's `my_health` reported `wounds` as 0 and the model
+  rested in good faith. Now: Lua `getWounds(pool)` / `getShockWounds()` bindings, `INFO ham … wounds=h/a/m shock=N`, lab
+  `clinic:<planet>:<x>:<y>` (the droids nearest first, cell-local coordinates for the walk), the pilot's condition reads
+  *fine but wounded (…): resting never clears wounds … (tool clinic)* above 20 wounds, and `clinic` walks to the droid
+  and takes row 1 of its intro over real packets. Scenario `seat-clinic`. Lesson: a citizen that asks the same question for
+  two days is a missing tool, not a patient character — read the pilot logs after every deploy, not only the error log.
+- **Wex's nine tickets.** Eight refusals of *@travel:no_ticket* at the Mos Espa shuttle, 600 cr each. `travelPoints` kept the
+  LAST shuttle within 120 m of a travel point, not the nearest; Mos Espa's East shuttleport stands 66 m from the starport pad,
+  so the starport row carried the shuttleport's shuttle and the seat walked there. `boardShuttle` takes the travel point
+  nearest the *character* and looks for a ticket from that point: a starport ticket at a shuttleport is no ticket.
+  `FbLabTests.shuttleFor` picks the nearest; `checkShuttles` asserts distinct shuttles per travel point on every running
+  planet (a point with none within 120 m is a WARN: Theed Spaceport boards without one). Still open: a seat buys a new
+  ticket on every attempt — nine identical Coronet tickets in Wex's bag; the seat should reuse one it already holds.
+- **Cross-building paths fail.** `pathTo` from a cell in one building to a cell in another (Wex in a Mos Espa shop → the
+  starport's ticket foyer) answers *no path* twice in the live log; the pilot recovered the next hour because the next
+  attempt started outdoors. The seat's indoor walk should step out of its own building first when the target is in another.
+- **Heredoc inside a heredoc:** a `cat > file <<'EOF'` whose body contains a python `<<EOF` ends at the inner `EOF`; the rest
+  of the file ran as shell (a syntax error, nothing committed). Use a distinct outer delimiter (`<<'SCENARIO'`).
+- Production after the 2026-10-28 deploy: 27 `AuctionManager … missing owner` lines at boot deleting *Loaf of Bread* listings
+  of a deleted bench character (the bazaar-listings scenario's leftovers in the copied data; one-time, cosmetic) and two
+  `no player named TeylarunLuaFunction` lines (two console calls interleaved: the deploy hook's `crew up` and a pilot wake;
+  core3-b4 is serialising `swg cmd` per instance with a flock).
+
