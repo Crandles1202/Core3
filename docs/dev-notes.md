@@ -1597,3 +1597,15 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   capture" and got the *last seat line of the audit* (Vreni Island seat 4, then Wayfar seat 2), so it audited and destroyed a
   cantina patron. Parse the exact INFO prefix you asked for (`INFO spawnNpcAt oid=`), never the first `oid=`; `spawnNpcAt`
   now reads its object back and `oidInfo:<oid>` says what an id is before anything is destroyed.
+- **First tagged production deploy (2026-10-27, chuck-stable-20261027):** gate on the bench, tag, deploy, 60 s to READY. The
+  pre-deploy snapshot landed in `~/swg-snapshots/live/` (the live instance's own folder) while the deploy's report and prune
+  looked in the bench's; fixed. Deploy hooks (`tools/live-hooks/`) came in right after: players warned, citizens down and up.
+- **Never nest a python heredoc inside `bash -c '…'`:** the inner quoting unwound and the heredoc's lines ran as shell (a `du -sh /`
+  and a `say` not found; the `rm -rf` in it matched nothing). Edit in the foreground, chain only `tools/swg` calls in the background.
+- **`lab` waits 8 s by default** (`lib.sh`): the full placement audit takes 17 s for 380 spawns since 3.13, so a scenario that
+  calls a long oracle passes its own timeout (`lab "placement" 90`); an empty answer means a timeout, not a clean run.
+- **3.14–3.16 (2026-10-27).** Scenes, checkpoints and arrivals all hang off the city data: a scene's spot is the city's plaza or
+  starport relay; a checkpoint stands ten metres in from the relay; arrivals walk the convoy's navmesh route. Lessons: a
+  `dressgroup` file (`commoner_tatooine_male`) is an outfit, not a creature template — `spawnMobile` says "wrong template?
+  0x0"; `s:gsub()` returns two values, so `spatialChat(p, text:gsub(…))` hands the binding a third argument — assign first;
+  a scenario must not step a scheduled beat chain by hand (`sceneBeat` is for a stopped scene).

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Tell everyone on production that a restart is coming, then give them the grace period to find a safe spot.
+set -uo pipefail
+GRACE=${SWG_DEPLOY_GRACE:-60}
+SWG="$SWG_REPO/tools/swg"
+[ "$GRACE" -gt 0 ] || exit 0
+"$SWG" --live cmd --shared "broadcast Server restart for an update (${SWG_DEPLOY_TAG:-new build}) in $GRACE seconds. Find a safe spot; back in about three minutes." >/dev/null 2>&1 || true
+echo "   warned the players; waiting $GRACE s"
+sleep "$GRACE"

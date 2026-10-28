@@ -241,16 +241,16 @@ from the start, more going on in cities, more GCW fighting; the AI citizens of P
   Narmle, Restuss; Nym's stronghold; the Dantooine, Endor, Yavin 4 and Dathomir outposts. A city file names its
   faction lean, gate, patrol loop, cantina cell, HoloNet spot and shuttle; planet weather gets its own event table
   (Dathomir and Endor storms, Naboo rain cosmetic). One lab scenario per planet audits every placement.
-- **3.14 \[M\] Street scenes.** A scene is a data file: cast (templates, clothes), spot, trigger (timer, player
+- **3.14 \[M\] Street scenes.** ✅ 2026-10-27 — `FbScenes` + thirteen scenes in `tasks/scenes/`, the bounty hunter asks about *you* by name. Plan: A scene is a data file: cast (templates, clothes), spot, trigger (timer, player
   within 30 m, cooldown) and a script of beats (say, emote, walk to, face, wait, despawn). `FbScenes` runs them on the
   3.7 ambient-life machinery, only while a player is near. First batch of 10–15 across the big cities: a Jawa
   haggling with a moisture farmer, a droid-repair argument, a drunk thrown out of the cantina, an arrest, an
   Imperial officer dressing down his troopers, a lost protocol droid, a bounty hunter asking NPCs about *you* by name.
-- **3.15 \[M\] Checkpoints.** At the gates of an Imperial-held city (territory ≥ 60) two stormtroopers and an officer
+- **3.15 \[M\] Checkpoints.** ✅ 2026-10-27 — `FbCheckpoints` at every held city's starport, posts follow the territory map; the Rebel is set upon through the stock faction AI (a covert one may be ignored by it). Plan: At the gates of an Imperial-held city (territory ≥ 60) two stormtroopers and an officer
   hail anyone walking through ("Identification."): a declared Rebel is attacked, an Imperial saluted, a neutral waved
   on or pulled aside for a short "random search" conversation with a small standing tilt. Rebel-held cities post a
   picket instead. Reads 3.4.
-- **3.16 \[M\] Shuttle arrivals.** On the server's shuttle landing cycle, 3–6 travellers (planet species mix) step
+- **3.16 \[M\] Shuttle arrivals.** ✅ 2026-10-27 — `FbArrivals` on the convoy routes (ten starports), only with a player near. Plan: On the server's shuttle landing cycle, 3–6 travellers (planet species mix) step
   off and walk into town along a path, vanishing at a door; a few walk out and board. Starports feel used.
 - **3.17 \[L\] GCW skirmishes.** Smaller and far more frequent than invasions: every 20–40 min per planet a Rebel
   cell and an Imperial patrol meet at a random road point near a city and fight it out with the stock faction AI;
@@ -310,6 +310,16 @@ This phase has more sub-phases than the others because it's the most ambitious c
 #### 4c — NPC bounty hunters
 
 - **4c.1 \[M\] Visibility system.** ✅ 2026-10-23 — stock visibility is the score, the terminal threshold puts the price on (scenario `bounty`). Canonical SWG mechanic — actions raise your "visibility". Using saber in public, killing imperial NPCs as a Jedi, etc. High visibility → bounty placed.  
+- **4d \[L\] Holocron quests — abilities earned, not bought.** (Chuck, 2026-10-27.) The Jedi skill trees stay the place
+  to buy *stats*; every ability a tree teaches (Force powers from the powers tree, saber abilities from the lightsaber
+  tree, …) can also be **earned**: a keeper in each enclave (light and dark, in that side's voice) gives a quest that ends
+  at a holocron somewhere in the galaxy — a cave, a shrine, a ruin, the rarer ones behind a guardian — and consuming the
+  holocron grants that one ability for good, without the skill box. Both paths lead to the same ability, so a tree build
+  loses nothing and a quester wears abilities without the build. Engine: a holocron item per ability (a tangible with a
+  *Consume* radial), a Lua `grantAbility(pPlayer, name)` over the player's ability list (persisted), the keepers'
+  conversations, one quest file per holocron (spot, guardian, text), `/checkForceStatus` listing earned abilities.
+  Open (Chuck): who may take the quests (any Padawan, or Knights only); the first batch (suggested: twelve signature
+  abilities, three per tree); whether a holocron carries a small stat grant so a pure quester is not helpless.
 - **4c.2 \[M\] NPC bounty hunter spawns.** ✅ 2026-10-23 — hunters by level and rank at the trigger and a five-minute tick, cooldowns, the fixer in the Mos Eisley cantina. When a bounty is active, NPC BH(s) hunt the player. Bounty hunter difficulty scales with player level and visibility. Defeat one → cooldown before next.  
 - **4c.3 \[S\] Bounty hunter NPC tracking missions for BH profession players.** Stock already does this (a visible Jedi is listed on the bounty terminals); nothing added on a solo server. BH players can take NPC bounty contracts independently — gives the BH profession solo content too.  
 - **4c.4 \[M\] Dark Jedi spawns hunt light-aligned players** ✅ 2026-10-23 — at |alignment| ≥ 60 one hunter of the squad is a Force user of the other side. And vice versa, at high alignment. Adds risk to picking a side hard.
