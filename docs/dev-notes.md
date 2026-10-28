@@ -1596,3 +1596,7 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   `dressgroup` file (`commoner_tatooine_male`) is an outfit, not a creature template — `spawnMobile` says "wrong template?
   0x0"; `s:gsub()` returns two values, so `spatialChat(p, text:gsub(…))` hands the binding a third argument — assign first;
   a scenario must not step a scheduled beat chain by hand (`sceneBeat` is for a stopped scene).
+- **Production tweaks (2026-10-28, Chuck):** XP x3 (`globalExpMultiplier`), six missions at once (`Core3.Mission.MaxActive`,
+  `MissionManagerImplementation`), and the "(118) 281475… - name" labels: they are the *client's* admin flag (`user.cfg`
+  `[ClientGame] 0fd345d9 = true`, which also unlocks the admin slash commands), not the server — `swg live client` now turns
+  it off for production and `--bench` on again. The Launchpad still decides the login port from its own server list.

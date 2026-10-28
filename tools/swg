@@ -1273,7 +1273,14 @@ cmd_live() {
 			grep -q '^loginServerPort0=' "$cfg" || die "$cfg has no loginServerPort0 line"
 			cp -p "$cfg" "$cfg.swg.bak"
 			sed -i "s/^loginServerPort0=.*/loginServerPort0=$port/" "$cfg"
-			say "$cfg: loginServerPort0=$port ($( [ "$port" = 44453 ] && echo 'the bench' || echo 'the live instance')); restart the game client"
+			# the client's admin flag (user.cfg [ClientGame] 0fd345d9 = true: unlocks the admin slash commands and draws every
+			# name as "(level) oid - name") is for the bench; production shows plain names (Chuck, 2026-10-28)
+			local ucfg="$dir/user.cfg"
+			if [ -f "$ucfg" ]; then
+				if [ "$port" = 44453 ]; then sed -i 's/^# *\(0fd345d9 *= *true\)/\1/' "$ucfg"; else sed -i 's/^\(0fd345d9 *= *true\)/# \1/' "$ucfg"; fi
+				say "$ucfg: client admin flag $( grep -q '^0fd345d9' "$ucfg" && echo 'on (bench: admin commands, names with ids)' || echo 'off (production: plain names)')"
+			fi
+			say "$cfg: loginServerPort0=$port ($( [ "$port" = 44453 ] && echo 'the bench' || echo 'the live instance')); restart the game client (the Launchpad rewrites the port from its own server list: pick the server there too)"
 			;;
 		status|"")
 			say "bench  $( is_running && echo "RUNNING pid $(core3_pid)" || echo STOPPED )  $BENCH @ $(git -C "$BENCH" rev-parse --short HEAD) ($(git -C "$BENCH" rev-parse --abbrev-ref HEAD))  login 44453"
