@@ -8,7 +8,9 @@ LIST="${SWG_LABDIR:-$HOME/.swg-lab}/live-deploy-citizens"
 [ -x "$CREW" ] && [ -f "$LIST" ] || exit 0
 UP=$(cat "$LIST"); rm -f "$LIST"
 [ -n "${UP// /}" ] || exit 0
-sleep 8
+# READY comes before the login port listens (alice, 2026-10-28: a seat at 27 s uptime got "could not connect to login server")
+for i in $(seq 1 18); do ss -lun 2>/dev/null | grep -q ':45453 ' && break; sleep 5; done
+sleep 10
 ORPHANS=$(SWG_INSTANCE=live "$CREW" status 2>/dev/null | awk '/seat up \(pid [0-9]+, live\)/ { print $1 }' | tr '\n' ' ')
 if [ -n "${ORPHANS// /}" ]; then echo "   orphaned seats after the restart: $ORPHANS (down first)"; SWG_INSTANCE=live "$CREW" down $ORPHANS >/dev/null 2>&1 || true; fi
 echo "   seating again: $UP"
