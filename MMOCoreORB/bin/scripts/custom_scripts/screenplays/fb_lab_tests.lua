@@ -835,6 +835,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkCompanion()
 		FbLabTests.checkCrystals()
 		FbLabTests.checkKits()
+		FbLabTests.checkScenes()
 		FbLabTests.checkBounty()
 	end)
 	if not ok then
@@ -2676,6 +2677,52 @@ function FbLabTests:pathBetween(planet, x1, y1, x2, y2)
 	local short = math.sqrt((last[1] - x2) ^ 2 + (last[3] - y2) ^ 2)
 	print(string.format("INFO path planet=%s points=%d outdoor=%d length=%.0f endX=%.0f endY=%.0f short=%.0f", planet, #path, outdoor, length, last[1], last[3], short))
 	return tostring(#path)
+end
+
+-- scenes → one INFO line per street scene (3.14)
+function FbLabTests:scenes()
+	if FbScenes == nil then print("ERROR FbScenes not loaded"); return "none" end
+	for _, k in ipairs(FbScenes.order) do print("INFO scene " .. FbScenes:status(k)) end
+	return tostring(#FbScenes.order)
+end
+
+-- sceneRun:<key> → play a scene now (no trigger, no cooldown); sceneBeat:<key> → the next beat now; sceneStop:<key>
+function FbLabTests:sceneRun(k)
+	if FbScenes == nil then print("ERROR FbScenes not loaded"); return "none" end
+	print("INFO scene " .. tostring(FbScenes:run(k)))
+	return "ok"
+end
+function FbLabTests:sceneBeat(k)
+	if FbScenes == nil then print("ERROR FbScenes not loaded"); return "none" end
+	local what = FbScenes:beat(k)
+	print("INFO sceneBeat did=" .. tostring(what) .. " " .. FbScenes:status(k))
+	return tostring(what)
+end
+function FbLabTests:sceneStop(k)
+	if FbScenes == nil then print("ERROR FbScenes not loaded"); return "none" end
+	print("INFO scene " .. tostring(FbScenes:stop(k)))
+	return "ok"
+end
+
+-- Phase 3.14: every scene has a spot in a known city, a cast the beats refer to, and reads back
+function FbLabTests.checkScenes()
+	if FbScenes == nil then check("scenes.loaded", false); return end
+	check("scenes.count", #FbScenes.order >= 10, #FbScenes.order .. " scenes")
+	for _, k in ipairs(FbScenes.order) do
+		local s = FbScenes.scenes[k]
+		local planet, x, y = FbScenes:spot(s)
+		check("scenes." .. k .. ".spot", planet ~= nil and getTerrainHeightAt(planet, x, y) ~= 0, string.format("%s %s,%s", tostring(planet), tostring(x), tostring(y)))
+		local names = {}
+		for _, c in ipairs(s.cast) do names[c.name] = true end
+		local ok = true
+		for _, b in ipairs(s.beats) do
+			local who = b.say or b.emote or b.walk or b.face or b.leave
+			if who ~= nil and not names[who] then ok = false end
+			if b.face ~= nil and not names[b.to or ""] then ok = false end
+		end
+		check("scenes." .. k .. ".beats_refer_to_the_cast", ok)
+		check("scenes." .. k .. ".idle", FbScenes:status(k):find("active=0", 1, true) ~= nil or FbScenes:status(k):find("active=1", 1, true) ~= nil)
+	end
 end
 
 -- structures:<char> → the structures the character owns (oid per line) and the lots left.
