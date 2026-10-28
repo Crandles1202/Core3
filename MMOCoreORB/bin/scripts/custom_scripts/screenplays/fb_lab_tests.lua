@@ -72,12 +72,29 @@ end
 local REG_INDEX = "FbLabSpawns.templates"
 local function regKey(template) return "FbLabSpawns." .. template end
 
+-- Spawns that come and go by design (a landing party, a street scene's cast) are not placements to audit: they stay
+-- out of the registry. Everything else is bounded: a template's record list is pruned of dead objects when it passes
+-- REG_SOFT records and never exceeds REG_HARD — a quest status is one string, and the engine aborts the write-back
+-- thread past 65 535 bytes (production crashed on exactly that on 2026-10-28, an hour after shuttle arrivals went live).
+FbLabTests.registryTransient = { fb_arrivals = true, fb_scenes = true }
+local REG_SOFT, REG_HARD = 200, 400
+
 function FbLabTests.registryAdd(s)
+	if s.src ~= nil and FbLabTests.registryTransient[s.src] then return end
 	local rec = string.format("%d|%s|%d|%s|%s|%s|%s;", s.oid, s.zone or "", s.cell or 0, tostring(s.x or ""), tostring(s.y or ""), tostring(s.z or ""), s.src or "")
 	local cur = getQuestStatus(regKey(s.template)) or ""
-	if not cur:find("^" .. s.oid .. "|") and not cur:find(";" .. s.oid .. "|", 1, true) then
-		setQuestStatus(regKey(s.template), cur .. rec)
+	if cur:find("^" .. s.oid .. "|") or cur:find(";" .. s.oid .. "|", 1, true) then return end
+	local _, n = cur:gsub(";", "")
+	if n >= REG_SOFT then
+		local kept = {}
+		for r in cur:gmatch("[^;]+") do
+			local pObj = getSceneObject(tonumber(r:match("^(%d+)|")) or 0)
+			if pObj ~= nil and SceneObject(pObj):getZoneName() ~= "" then kept[#kept + 1] = r .. ";" end
+		end
+		while #kept >= REG_HARD do table.remove(kept, 1) end   -- the oldest go first
+		cur = table.concat(kept)
 	end
+	setQuestStatus(regKey(s.template), cur .. rec)
 	local idx = getQuestStatus(REG_INDEX) or ","
 	if not idx:find("," .. s.template .. ",", 1, true) then setQuestStatus(REG_INDEX, idx .. s.template .. ",") end
 end
