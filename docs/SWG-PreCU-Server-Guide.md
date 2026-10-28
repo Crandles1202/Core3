@@ -190,7 +190,9 @@ Since 2026-10-26 the server you *play* on is the **live instance** at `~/swg-liv
   tools/swg live tag            # chuck-stable-<today> on the pushed unstable tip
   tools/swg live deploy         # newest tag: bench build if needed, live stopped, pre-deploy snapshot, sync, start
   ```
-  `tools/swg live deploy chuck-stable-20261026` deploys a particular tag (a rollback is just the older tag plus, if the
+  Before the server stops, the deploy runs the hooks in `tools/live-hooks/pre/` (a broadcast to the players and a minute's grace,
+  the citizens logged out cleanly) and after it is up the ones in `tools/live-hooks/post/` (the citizens seated again); drop an
+  executable file in either folder to add a step. `tools/swg live deploy chuck-stable-20261026` deploys a particular tag (a rollback is just the older tag plus, if the
   data must go back too, `tools/swg --live snap load pre-deploy-<stamp> --yes`). Players and the citizens are off for the
   restart (about three minutes); say so first.
 - **Daily driving:** `tools/swg --live status|logs --errors|cmd "<console command>"`; `tools/swg --live stop` / `start`

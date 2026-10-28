@@ -1170,8 +1170,23 @@ live_pre_deploy_snapshot() {
 	local name; name="pre-deploy-$(date +%Y%m%d-%H%M)"
 	say "snapshot of the live data before the deploy: $name"
 	SWG_INSTANCE=live "$0" snap save "$name" --force >/dev/null || die "pre-deploy snapshot failed (nothing deployed; swg --live snap save by hand to see why)"
-	say "   $(du -sh "$SNAPDIR/$name" | cut -f1) in $SNAPDIR/$name  (swg --live snap load $name --yes rolls back)"
-	local d; for d in $(ls -1d "$SNAPDIR"/pre-deploy-*/ 2>/dev/null | sort | head -n -3); do rm -rf "$d"; say "   pruned $(basename "$d")"; done
+	local sdir=${SWG_SNAPDIR:-$HOME/swg-snapshots/live}   # the live instance keeps its snapshots apart from the bench's
+	say "   $(du -sh "$sdir/$name" | cut -f1) in $sdir/$name  (swg --live snap load $name --yes rolls back)"
+	local d; for d in $(ls -1d "$sdir"/pre-deploy-*/ 2>/dev/null | sort | head -n -3); do rm -rf "$d"; say "   pruned $(basename "$d")"; done
+}
+
+# live_run_hooks pre|post <tag> <rev>: the executable files of tools/live-hooks/<phase>/ in name order (tools/live-hooks/README.md)
+live_run_hooks() {
+	local phase=$1 tag=$2 rev=$3 dir="$REPO/tools/live-hooks/$1" h
+	[ -d "$dir" ] || return 0
+	for h in "$dir"/*; do
+		[ -x "$h" ] || continue
+		say "== $phase hook $(basename "$h")"
+		if ! SWG_INSTANCE=live SWG_DEPLOY_TAG="$tag" SWG_DEPLOY_REV="$rev" SWG_LIVE_ROOT="$LIVE_ROOT" SWG_REPO="$REPO" SWG_LABDIR="$LABDIR" "$h"; then
+			if [ "$phase" = pre ]; then die "pre-deploy hook $(basename "$h") failed: nothing deployed (fix it, or swg live deploy --skip-hooks)"; fi
+			warn "post-deploy hook $(basename "$h") failed"
+		fi
+	done
 }
 
 live_running() { local p want; want=$(readlink -f "$LIVE_ROOT/bin" 2>/dev/null); for p in $(pgrep -x core3); do [ "$(readlink -f "/proc/$p/cwd" 2>/dev/null)" = "$want" ] && return 0; done; return 1; }
@@ -1214,8 +1229,8 @@ cmd_live() {
 			;;
 		deploy)
 			shift
-			local restart=1 target="" yes=0
-			while [ $# -gt 0 ]; do case "$1" in --no-restart) restart=0 ;; --yes) yes=1 ;; -*) die "usage: swg live deploy [<chuck-stable-tag>] [--no-restart]   |   swg live deploy unstable --yes" ;; *) target=$1 ;; esac; shift; done
+			local restart=1 target="" yes=0 hooks=1
+			while [ $# -gt 0 ]; do case "$1" in --no-restart) restart=0 ;; --yes) yes=1 ;; --skip-hooks) hooks=0 ;; -*) die "usage: swg live deploy [<chuck-stable-tag>] [--no-restart] [--skip-hooks]   |   swg live deploy unstable --yes" ;; *) target=$1 ;; esac; shift; done
 			[ -d "$LIVE_ROOT/bin" ] || die "no live instance at $LIVE_ROOT (swg live init)"
 			if [ -z "$target" ]; then target=$(live_newest_tag) || die "no chuck-stable-* tag yet: play the content on the bench, then 'swg live tag'"; fi
 			if [ "$target" = unstable ]; then
@@ -1230,10 +1245,13 @@ cmd_live() {
 			if [ "$(git -C "$BENCH" rev-parse HEAD)" != "$commit" ] || ! live_bench_built; then "$0" bench use "$target" || die "bench use $target failed"; took_bench=1; fi
 			live_bench_built || die "the bench binary is not built from $target's C++ (swg bench use $target builds it)"
 			say "== live deploy: $target @ $(git -C "$BENCH" rev-parse --short HEAD) -> $LIVE_ROOT"
-			if live_running && [ "$restart" = 1 ]; then say "stopping the live core3"; SWG_INSTANCE=live "$0" stop || die "live stop failed"; fi
+			local was_running=0; live_running && was_running=1
+			if [ "$was_running" = 1 ] && [ "$restart" = 1 ] && [ "$hooks" = 1 ]; then live_run_hooks pre "$target" "$commit"; fi
+			if [ "$was_running" = 1 ] && [ "$restart" = 1 ]; then say "stopping the live core3"; SWG_INSTANCE=live "$0" stop || die "live stop failed"; fi
 			if ! live_running; then live_pre_deploy_snapshot; else say "live keeps running (--no-restart): no snapshot; the deploy lands at its next restart"; fi
 			live_sync_runtime
 			if [ "$restart" = 1 ]; then SWG_INSTANCE=live "$0" start || die "live start failed"; else say "deployed; the live core3 picks it up at its next restart (swg --live restart)"; fi
+			if [ "$restart" = 1 ] && [ "$hooks" = 1 ]; then live_run_hooks post "$target" "$commit"; fi
 			if [ "$took_bench" = 1 ]; then "$0" bench release >/dev/null 2>&1 && say "bench released (back on unstable)" || warn "bench release failed: swg bench release by hand"; fi
 			;;
 		sync)
@@ -1267,7 +1285,7 @@ cmd_live() {
 			say "stable newest tag $(live_newest_tag || echo none) ($(git -C "$BENCH" rev-parse --short "$(live_newest_tag 2>/dev/null || echo HEAD)^{commit}" 2>/dev/null))   unstable @ $(git -C "$BENCH" rev-parse --short unstable 2>/dev/null)"
 			[ -f "$LABDIR/client-dir" ] && say "client $(grep -h '^loginServerPort0=' "$(cat "$LABDIR/client-dir")/swgemu_login.cfg" 2>/dev/null | head -n1 || echo '?')  ($(cat "$LABDIR/client-dir"))"
 			;;
-		*) die "usage: swg live init [--force] | tag [name] | deploy [<chuck-stable-tag>] [--no-restart] | sync | config | client [--bench] | status" ;;
+		*) die "usage: swg live init [--force] | tag [name] | deploy [<chuck-stable-tag>] [--no-restart] [--skip-hooks] | sync | config | client [--bench] | status" ;;
 	esac
 }
 

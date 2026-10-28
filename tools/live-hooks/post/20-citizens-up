@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Seat the citizens that pre/20-citizens-down logged out — only those (a citizen that was down before the deploy stays down).
+# The server is READY when this runs; a few seconds more, then crew up (sequential, ~10-15 s a citizen, no flags: a citizen's
+# own idle/model settings survive a deploy). A seat that still reads "up" here is an orphan of a cut connection: down it first.
+set -uo pipefail
+CREW="$SWG_REPO/tools/citizens/crew"
+LIST="${SWG_LABDIR:-$HOME/.swg-lab}/live-deploy-citizens"
+[ -x "$CREW" ] && [ -f "$LIST" ] || exit 0
+UP=$(cat "$LIST"); rm -f "$LIST"
+[ -n "${UP// /}" ] || exit 0
+sleep 8
+ORPHANS=$(SWG_INSTANCE=live "$CREW" status 2>/dev/null | awk '/seat up \(pid [0-9]+, live\)/ { print $1 }' | tr '\n' ' ')
+if [ -n "${ORPHANS// /}" ]; then echo "   orphaned seats after the restart: $ORPHANS (down first)"; SWG_INSTANCE=live "$CREW" down $ORPHANS >/dev/null 2>&1 || true; fi
+echo "   seating again: $UP"
+SWG_INSTANCE=live "$CREW" up $UP 2>&1 | sed 's/^/   /' | tail -n 6
