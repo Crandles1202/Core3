@@ -181,7 +181,9 @@ def chuck_queue():
             un = run(["git", "-C", MAIN, "rev-parse", "unstable"]).strip()
             if tag_rev != un:
                 n = run(["git", "-C", MAIN, "rev-list", "--count", f"{tags[-1]}..unstable"]).strip()
-                items.append(dict(id="-", agent="auto", mins="", text=f"production is {n} commit(s) behind unstable; nothing is blocked — tag and deploy whenever you have played the new build on the bench", command="tools/swg live tag && tools/swg live deploy", kind="ready"))
+                held = lock("server")
+                bench_note = "the bench is free, so the deploy can run now" if held == "free" else f"the deploy needs the bench, which is held ({held}); wait for that to end"
+                items.append(dict(id="-", agent="auto", mins="", text=f"production is {n} commit(s) behind unstable; nothing is blocked — tag and deploy whenever you have played the new build on the bench. {bench_note}", command="tools/swg live tag && tools/swg live deploy", kind="ready"))
     except Exception:  # noqa: BLE001
         pass
     return items

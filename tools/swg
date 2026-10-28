@@ -1224,14 +1224,14 @@ cmd_live() {
 			shift
 			local name=${1:-chuck-stable-$(date +%Y%m%d)}
 			[[ "$name" == chuck-stable-* ]] || die "stable tags are named chuck-stable-YYYYMMDD[-suffix]"
-			[ "$(git -C "$BENCH" rev-parse --abbrev-ref HEAD)" = unstable ] || die "the bench is on $(git -C "$BENCH" rev-parse --abbrev-ref HEAD), not unstable (swg bench release first)"
-			[ -z "$(git -C "$BENCH" status --porcelain)" ] || die "the bench checkout is dirty"
+			# the tag goes on the pushed unstable tip; the bench checkout may sit anywhere (a gate holds it detached for an hour)
 			git -C "$BENCH" fetch -q origin 2>/dev/null || warn "fetch from origin failed; comparing with the last known origin/unstable"
-			[ "$(git -C "$BENCH" rev-parse HEAD)" = "$(git -C "$BENCH" rev-parse origin/unstable)" ] || die "unstable here is not what origin has (push or pull first): only a pushed tip becomes a stable point"
+			local tip; tip=$(git -C "$BENCH" rev-parse unstable)
+			[ "$tip" = "$(git -C "$BENCH" rev-parse origin/unstable)" ] || die "unstable here is not what origin has (push or pull first): only a pushed tip becomes a stable point"
 			git -C "$BENCH" rev-parse -q --verify "refs/tags/$name" >/dev/null && die "tag $name exists (swg live tag $name-2)"
-			git -C "$BENCH" tag -a "$name" -m "stable point for the production server: unstable @ $(git -C "$BENCH" rev-parse --short HEAD) ($(date '+%F'))" || die "tag failed"
+			git -C "$BENCH" tag -a "$name" "$tip" -m "stable point for the production server: unstable @ $(cut -c1-10 <<<"$tip") ($(date '+%F'))" || die "tag failed"
 			git -C "$BENCH" push -q origin "refs/tags/$name" || die "push of the tag failed (it exists locally: git push origin $name)"
-			say "tagged $name = $(git -C "$BENCH" rev-parse --short HEAD) and pushed; 'swg live deploy' takes it"
+			say "tagged $name = $(cut -c1-10 <<<"$tip") and pushed; 'swg live deploy' takes it"
 			;;
 		deploy)
 			shift
