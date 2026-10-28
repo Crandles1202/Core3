@@ -17,11 +17,9 @@ sleep 2
 ST=$(lab "sceneRun:$KEY" | grep '^INFO scene ' | head -n1)
 check "scene_started" "$(grep -q 'active=1' <<<"$ST" && echo 1 || echo 0)" "$ST"
 check "cast_spawned" "$(grep -q 'cast=2/2' <<<"$ST" && echo 1 || echo 0)" "$ST"
-sleep 2
-B=$(lab_kv "sceneBeat:$KEY" did)
-check "first_beat_is_the_jawa" "$( [ "$B" = "say:jawa" ] && echo 1 || echo 0 )" "did=$B"
-# let the scheduled beats run their course (8 beats, ~4 s each, then the cast leaves)
-sleep 40
+# let the scheduled beats run their course (8 beats, ~4 s each, then the cast leaves); the lab's sceneBeat is for
+# stepping a scene by hand and would race the schedule here
+sleep 42
 ST2=$(lab "scenes" | grep "^INFO scene scene=$KEY " | head -n1)
 check "scene_idle_again" "$(grep -q 'active=0' <<<"$ST2" && echo 1 || echo 0)" "$ST2"
 check "cast_gone" "$(grep -q 'cast=0/2' <<<"$ST2" && echo 1 || echo 0)" "$ST2"

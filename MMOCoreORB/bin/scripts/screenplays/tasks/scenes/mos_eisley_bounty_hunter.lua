@@ -4,7 +4,7 @@ FbScenes:add {
 	every = { 1200, 2400 }, radius = 40,
 	cast = {
 		{ name = "hunter", template = "fb_bounty_hunter", dx = 0, dy = 0, mood = "npc_angry" },
-		{ name = "local", template = "commoner_tatooine_male", dx = 2, dy = 0, mood = "npc_worried" },
+		{ name = "local", template = "commoner_tatooine", dx = 2, dy = 0, mood = "npc_worried" },
 	},
 	beats = {
 		{ say = "hunter", text = "I'm looking for someone. Goes by {player}. Seen them?" },

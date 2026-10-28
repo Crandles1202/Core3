@@ -4,7 +4,7 @@ FbScenes:add {
 	every = { 900, 1800 },
 	cast = {
 		{ name = "droid", template = "r2", dx = 0, dy = 0, walks = true },
-		{ name = "spacer", template = "commoner_tatooine_female", dx = 3, dy = 2, mood = "npc_bored" },
+		{ name = "spacer", template = "commoner_tatooine", dx = 3, dy = 2, mood = "npc_bored" },
 	},
 	beats = {
 		{ say = "droid", text = "*a worried series of beeps and whistles*" },

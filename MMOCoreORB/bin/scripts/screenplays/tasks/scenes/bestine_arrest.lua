@@ -5,7 +5,7 @@ FbScenes:add {
 	cast = {
 		{ name = "trooper1", template = "stormtrooper", dx = 0, dy = 0, walks = true },
 		{ name = "trooper2", template = "stormtrooper", dx = 2, dy = 0 },
-		{ name = "suspect", template = "commoner_tatooine_female", dx = 1, dy = 2, mood = "npc_scared", walks = true },
+		{ name = "suspect", template = "commoner_tatooine", dx = 1, dy = 2, mood = "npc_scared", walks = true },
 	},
 	beats = {
 		{ say = "trooper1", text = "Identification. Now." },

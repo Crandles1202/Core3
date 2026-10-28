@@ -4,7 +4,7 @@ FbScenes:add {
 	every = { 600, 1200 },
 	cast = {
 		{ name = "jawa", template = "jawa", dx = 0, dy = 0, mood = "npc_angry" },
-		{ name = "farmer", template = "commoner_tatooine_male", dx = 2, dy = 1, mood = "npc_consoling" },
+		{ name = "farmer", template = "commoner_tatooine", dx = 2, dy = 1, mood = "npc_consoling" },
 	},
 	beats = {
 		{ say = "jawa", text = "Utinni! Utinni!" },

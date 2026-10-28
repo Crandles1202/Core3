@@ -179,7 +179,10 @@ function FbScenes:beat(k)
 	local what = "wait"
 	if b.say ~= nil then
 		local p = self:actor(k, b.say)
-		if p ~= nil then spatialChat(p, (b.text or ""):gsub("{player}", get(k, "player"))); what = "say:" .. b.say end
+		if p ~= nil then
+			local text = (b.text or ""):gsub("{player}", get(k, "player"))   -- one value: gsub's count must not reach the binding
+			spatialChat(p, text); what = "say:" .. b.say
+		end
 	elseif b.emote ~= nil then
 		local p = self:actor(k, b.emote)
 		if p ~= nil then CreatureObject(p):doAnimation(b.anim or "nod_head_once"); what = "emote:" .. b.emote end
