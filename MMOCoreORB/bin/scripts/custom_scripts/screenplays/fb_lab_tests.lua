@@ -2604,11 +2604,18 @@ function FbLabTests:pathTo(a, b, c, d, e, f, g)
 	else
 		path = findPath(planet, x1, y1, x2, y2)
 	end
-	if path == nil and cell1 ~= 0 and cell2 == 0 then
+	if path == nil and cell1 ~= 0 then
 		-- the pathfinder leaves a building only for a target close to it (the cloning facility to a spot 190 m away
-		-- failed, 30 m away worked): step out first — a world point near the building the mesh can reach — then walk on
+		-- failed, 30 m away worked) and never crosses from one building's cells into another's (a Mos Espa shop to the
+		-- starport's ticket foyer: Wex, twice, 2026-10-28): step out first — a world point near the building the mesh can
+		-- reach — then walk on, into the target's cell when it has one
 		local pCell = getSceneObject(cell1)
 		local pBuilding = pCell ~= nil and SceneObject(pCell):getParent() or nil
+		local pCell2 = cell2 ~= 0 and getSceneObject(cell2) or nil
+		local pBuilding2 = pCell2 ~= nil and SceneObject(pCell2):getParent() or nil
+		if pBuilding ~= nil and pBuilding2 ~= nil and SceneObject(pBuilding):getObjectID() == SceneObject(pBuilding2):getObjectID() then
+			pBuilding = nil   -- same building, the mesh inside is the whole story
+		end
 		if pBuilding ~= nil then
 			local bx, by = SceneObject(pBuilding):getWorldPositionX(), SceneObject(pBuilding):getWorldPositionY()
 			for _, r in ipairs({ 30, 45, 60 }) do
@@ -2616,7 +2623,7 @@ function FbLabTests:pathTo(a, b, c, d, e, f, g)
 					local ex, ey = bx + r * math.cos(k * math.pi / 4), by + r * math.sin(k * math.pi / 4)
 					local out = findPath(planet, x1, y1, ex, ey, cell1, 0)
 					if out ~= nil and #out > 0 then
-						local on = findPath(planet, ex, ey, x2, y2)
+						local on = cell2 ~= 0 and findPath(planet, ex, ey, x2, y2, 0, cell2) or findPath(planet, ex, ey, x2, y2)
 						if on ~= nil and #on > 0 then
 							path = out
 							for i = 1, #on do path[#path + 1] = on[i] end
