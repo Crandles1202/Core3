@@ -317,7 +317,7 @@ def wounds_of(f):
     max minus wounds, so a wounded character never fills up by resting — only a medical droid clears them"""
     parts = (f.get("wounds") or "0/0/0").split("/")
     try:
-        h, a, m = (int(parts[i]) for i in range(3))
+        h, a, m = (int(float(parts[i])) for i in range(3))
     except (ValueError, IndexError):
         h, a, m = 0, 0, 0
     return {"health": h, "action": a, "mind": m}
@@ -602,7 +602,7 @@ def seat_tools(seat, files, character_name, seat_name):
         f = seat_mod.lab_fields(line)
         wounds = wounds_of(f)
         out = {"ok": bool(f), "condition": _condition(), "health": f.get("health"), "action": f.get("action"), "mind": f.get("mind"),
-               "wounds": wounds, "shock": int(f.get("shock") or 0)}
+               "wounds": wounds, "shock": int(float(f.get("shock") or 0))}
         if sum(wounds.values()) > 0:
             out["note"] = ("pools are current/max/base; regeneration stops at max minus wounds and resting never clears wounds: "
                            "the FB-21 medical droid clears them for free (tool clinic)")

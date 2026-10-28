@@ -911,11 +911,11 @@ local function hamLine(charName, pPlayer)
 		local i = FbLabTests.pools[name]
 		parts[#parts + 1] = string.format("%s=%d/%d/%d", name,
 			CreatureObject(pPlayer):getHAM(i), CreatureObject(pPlayer):getMaxHAM(i), CreatureObject(pPlayer):getBaseHAM(i))
-		wounds[#wounds + 1] = tostring(CreatureObject(pPlayer):getWounds(i))
+		wounds[#wounds + 1] = string.format("%d", CreatureObject(pPlayer):getWounds(i))   -- the binding pushes a float: 300.0
 	end
 	-- wounds cap regeneration at max minus wounds (healDamage); a wounded character never fills up by resting
 	parts[#parts + 1] = "wounds=" .. table.concat(wounds, "/")
-	parts[#parts + 1] = "shock=" .. tostring(CreatureObject(pPlayer):getShockWounds())
+	parts[#parts + 1] = string.format("shock=%d", CreatureObject(pPlayer):getShockWounds())
 	local line = table.concat(parts, " ")
 	print(line)
 	return line
