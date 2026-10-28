@@ -837,6 +837,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkKits()
 		FbLabTests.checkScenes()
 		FbLabTests.checkCheckpoints()
+		FbLabTests.checkArrivals()
 		FbLabTests.checkBounty()
 	end)
 	if not ok then
@@ -2759,6 +2760,33 @@ function FbLabTests.checkCheckpoints()
 		else
 			check("checkpoints." .. city .. ".post_standing", st:find("side=" .. holder, 1, true) ~= nil and st:find("post=3/3", 1, true) ~= nil, st)
 		end
+	end
+end
+
+-- arrivals → one INFO line per starport (3.16); arrivalsLand:<city> → a landing party now; arrivalsSweep:<city> → clear it
+function FbLabTests:arrivals()
+	if FbArrivals == nil then print("ERROR FbArrivals not loaded"); return "none" end
+	for _, city in ipairs(FbArrivals.order) do print("INFO arrivals " .. FbArrivals:status(city)) end
+	return tostring(#FbArrivals.order)
+end
+function FbLabTests:arrivalsLand(city)
+	if FbArrivals == nil then print("ERROR FbArrivals not loaded"); return "none" end
+	print("INFO arrivals " .. tostring(FbArrivals:land(city)))
+	return "ok"
+end
+function FbLabTests:arrivalsSweep(city)
+	if FbArrivals == nil then print("ERROR FbArrivals not loaded"); return "none" end
+	print("INFO arrivalsSweep city=" .. tostring(city) .. " swept=" .. tostring(FbArrivals:sweep(city)))
+	return "ok"
+end
+
+-- Phase 3.16: every starport with a convoy route takes part and reads back
+function FbLabTests.checkArrivals()
+	if FbArrivals == nil then check("arrivals.loaded", false); return end
+	check("arrivals.cities", #FbArrivals.order >= 5, #FbArrivals.order .. " starports")
+	for _, city in ipairs(FbArrivals.order) do
+		local st = FbArrivals:status(city)
+		check("arrivals." .. city .. ".readable", st:find("route=", 1, true) ~= nil, st)
 	end
 end
 
