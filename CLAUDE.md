@@ -151,6 +151,7 @@ tools/swg site save <char> <name> | site list   # write a site drafted in game (
 tools/swg test planner          # headless check of the site planner's data path (part of test all, ~20 s, no server)
 tools/swg whoami | lock [purpose] [--minutes N] | unlock [--force]   # the bench lock (docs/BOARD.md)
 tools/swg agent new <name> | list | done <name>                      # a worktree + branch per agent
+tools/dash [--once] [--interval N]   # one screen: the three servers, who holds which bench, lanes + gates, the citizens (read-only; Chuck's launcher view)
 tools/swg live init [--force] | tag [name] | deploy [<tag>] [--no-restart] | client [--bench] | status   # production (~/swg-live), from the bench
 tools/backup-nightly            # every swgemu* database + the production ODB to ~/backups/daily (7 days); swg start runs it when a day old
 tools/swg bench2 init [--no-build] | data | status                   # the second bench (~/swg-bench2/Core3); then SWG_INSTANCE=bench2 swg …
