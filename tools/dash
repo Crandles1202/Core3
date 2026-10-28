@@ -170,7 +170,7 @@ def chuck_queue():
     for l in out.splitlines():
         m = re.match(r'#(\d+)\s+\((\w+), (\d+) min ago\)\s+(.*)', l)
         if m:
-            cur = dict(id=m.group(1), agent=m.group(2), mins=m.group(3), text=m.group(4), command=""); items.append(cur)
+            cur = dict(id=m.group(1), agent=m.group(2), mins=m.group(3), text=m.group(4), command="", kind="now"); items.append(cur)
         elif cur is not None and l.startswith("      "):
             cur["command"] = l.strip()
     # standing items that need no file: a newer build than production carries
@@ -181,7 +181,7 @@ def chuck_queue():
             un = run(["git", "-C", MAIN, "rev-parse", "unstable"]).strip()
             if tag_rev != un:
                 n = run(["git", "-C", MAIN, "rev-list", "--count", f"{tags[-1]}..unstable"]).strip()
-                items.append(dict(id="-", agent="auto", mins="", text=f"unstable is {n} commit(s) past {tags[-1]}: when you have played it on the bench, tag and deploy", command="tools/swg live tag && tools/swg live deploy"))
+                items.append(dict(id="-", agent="auto", mins="", text=f"production is {n} commit(s) behind unstable; nothing is blocked — tag and deploy whenever you have played the new build on the bench", command="tools/swg live tag && tools/swg live deploy", kind="ready"))
     except Exception:  # noqa: BLE001
         pass
     return items
@@ -217,12 +217,17 @@ def render():
     for a in agent_sessions():
         lines.append(f"  {a['name']:8} {a['verdict']:17} last turn {a['ago']:>5} ago   {a['lanes']}" + (f"   [{a['detail']}]" if a['detail'] else ""))
     lines.append("")
-    lines.append("CHUCK QUEUE (what waits on you)")
+    lines.append("CHUCK QUEUE")
     q = chuck_queue()
-    if not q: lines.append("  nothing")
-    for it in q:
-        lines.append(f"  #{it['id']:<3} {it['text']}" + (f"   ({it['agent']}, {it['mins']} min ago)" if it['mins'] else ""))
-        if it["command"]: lines.append(f"       $ {it['command']}")
+    now_items = [it for it in q if it["kind"] == "now"]; ready_items = [it for it in q if it["kind"] != "now"]
+    lines.append("  needed now: " + ("nothing — nobody is blocked on you" if not now_items else ""))
+    for it in now_items:
+        lines.append(f"    #{it['id']:<3} {it['text']}" + (f"   ({it['agent']}, {it['mins']} min ago)" if it['mins'] else ""))
+        if it["command"]: lines.append(f"         $ {it['command']}")
+    lines.append("  when you are ready: " + ("nothing" if not ready_items else ""))
+    for it in ready_items:
+        lines.append(f"    {it['text']}")
+        if it["command"]: lines.append(f"         $ {it['command']}")
     lines.append("")
     up, down = citizens()
     lines.append("CITIZENS (production)")
@@ -255,9 +260,12 @@ def html_page(interval):
         return f'<span class="pill" style="background:{c}">{H.escape(v)}</span>'
     sessions = "".join(f"<tr><td><b>{H.escape(a['name'])}</b></td><td>{vpill(a['verdict'])}</td><td>last turn {H.escape(a['ago'])} ago</td><td class=mono>{H.escape(a['lanes'])}</td><td class=dim>{H.escape(a['detail'])}</td></tr>" for a in agent_sessions())
     q = chuck_queue()
-    queue = '<div class="box">nothing</div>' if not q else "".join(
-        f'<div class="box"><b>#{H.escape(str(it["id"]))}</b> {H.escape(it["text"])}' + (f' <span class=dim>({H.escape(it["agent"])}, {it["mins"]} min ago)</span>' if it["mins"] else "")
-        + (f'<div class="cmd">{H.escape(it["command"])}</div>' if it["command"] else "") + "</div>" for it in q)
+    def boxes(items, empty):
+        if not items: return f'<div class="box dim">{empty}</div>'
+        return "".join(f'<div class="box"><b>{("#" + H.escape(str(it["id"]))) if it["id"] != "-" else ""}</b> {H.escape(it["text"])}' + (f' <span class=dim>({H.escape(it["agent"])}, {it["mins"]} min ago)</span>' if it["mins"] else "")
+                       + (f'<div class="cmd">{H.escape(it["command"])}</div>' if it["command"] else "") + "</div>" for it in items)
+    queue = ('<h3>Needed now</h3>' + boxes([it for it in q if it["kind"] == "now"], "nothing — nobody is blocked on you")
+             + '<h3>When you are ready</h3>' + boxes([it for it in q if it["kind"] != "now"], "nothing"))
     lanes = "".join(f"<tr><td><b>{H.escape(a['name'])}</b></td><td class=mono>{H.escape(a['branch'])}</td><td class=mono>{a['head']}</td><td>{'<span class=ok>gated</span>' if a['gated'] else ''}</td><td>{H.escape(a['when'])}</td><td>{H.escape(a['subject'])}</td><td>{H.escape(a['status'])}</td></tr>" for a in agents())
     return f"""<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="{interval}"><title>Final Boss</title>
 <style>
@@ -267,7 +275,7 @@ h2{{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#a39f94;m
 table{{border-collapse:collapse;width:100%}} td{{padding:5px 10px 5px 0;border-top:1px solid #30343a;vertical-align:top}}
 .mono{{font-family:Consolas,ui-monospace,monospace;font-size:13px}} .pill{{color:#fff;padding:1px 8px;border-radius:9px;font-size:12px}}
 .ok{{color:#5fbf7f}} .box{{background:#1d2024;border:1px solid #30343a;padding:10px 14px;margin-top:6px}}
-.dim{{color:#a39f94}} .cmd{{font-family:Consolas,ui-monospace,monospace;font-size:14px;background:#0f1113;border:1px solid #30343a;padding:6px 10px;margin-top:6px;user-select:all;color:#d9915f}}
+.dim{{color:#a39f94}} h3{{font-size:14px;margin:10px 0 2px;color:#e8e4da;font-weight:600}} .cmd{{font-family:Consolas,ui-monospace,monospace;font-size:14px;background:#0f1113;border:1px solid #30343a;padding:6px 10px;margin-top:6px;user-select:all;color:#d9915f}}
 </style></head><body>
 <h1>Final Boss</h1><p class="sub">{now} &middot; refreshes every {interval} s &middot; written by WSL (tools/dash --html)</p>
 <h2>Servers</h2><table>{rows}</table>
@@ -278,7 +286,7 @@ table{{border-collapse:collapse;width:100%}} td{{padding:5px 10px 5px 0;border-t
 <tr><td><b>live</b></td><td>{H.escape(lock('live'))}</td></tr>
 <tr><td><b>gate</b></td><td>{H.escape(g)}</td></tr></table>
 <h2>Agents</h2><table>{sessions}</table>
-<h2>Chuck queue &middot; what waits on you</h2>{queue}
+<h2>Chuck queue</h2>{queue}
 <h2>Agents and lanes</h2><table>{lanes}</table>
 <h2>Citizens on production</h2><table>
 <tr><td><b>seated</b></td><td>{H.escape(' '.join(up) or '-')}</td></tr>
