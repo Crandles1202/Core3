@@ -3,7 +3,7 @@
 # audit (line of sight to probes 3 m around, height above terrain, drift from the spawn spot) flags
 # NPCs boxed into geometry, under the floor or wandered off; gotoNpc puts a character in conversation
 # range of any NPC by name (the play-tester's way to eyeball a new NPC); waypointTo marks it.
-# covers: placement spawnNpcAt
+# covers: placement spawnNpcAt fb_lab_tests
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 # --- the audit on the live world --------------------------------------------------------------

@@ -570,6 +570,21 @@ cmd_status() {
 # ---------------------------------------------------------------- console
 
 cmd_cmd() {
+	# the console is one keyboard: every sender of this instance waits its turn (processes of one agent included —
+	# 2026-10-28 the deploy hook's crew up and a pilot wake interleaved into "…:WexrunLuaFunction FbLabTests…")
+	if [ -z "${SWG_CONSOLE_LOCKED:-}" ]; then
+		local shared=""; [ "${1:-}" = "--shared" ] && shared="--shared"
+		SWG_CONSOLE_LOCKED=1 exec 9>"$LABDIR/$INSTANCE.console.lock" || true
+		if command -v flock >/dev/null 2>&1; then
+			flock -w 120 9 || warn "console lock of $INSTANCE busy for 120 s: sending anyway"
+		fi
+		SWG_CONSOLE_LOCKED=1 cmd_cmd_inner "$@"; local rc=$?
+		exec 9>&-
+		return $rc
+	fi
+	cmd_cmd_inner "$@"
+}
+cmd_cmd_inner() {
 	[ "${1:-}" = "--shared" ] && shift
 	[ $# -ge 1 ] || die "usage: swg cmd \"<console command>\" [--timeout N]"
 	local command="$1"; shift
@@ -1355,8 +1370,8 @@ cmd_live() {
 			# name as "(level) oid - name") is for the bench; production shows plain names (Chuck, 2026-10-28)
 			local ucfg="$dir/user.cfg"
 			if [ -f "$ucfg" ]; then
-				if [ "$port" = 44453 ]; then sed -i 's/^# *\(0fd345d9 *= *true\)/\1/' "$ucfg"; else sed -i 's/^\(0fd345d9 *= *true\)/# \1/' "$ucfg"; fi
-				say "$ucfg: client admin flag $( grep -q '^0fd345d9' "$ucfg" && echo 'on (bench: admin commands, names with ids)' || echo 'off (production: plain names)')"
+				if [ "$port" = 44453 ]; then sed -i 's/^# *\(0fd345d9 *= *true\)/\1/; s/^drawNetworkIds *= *0/drawNetworkIds = 1/' "$ucfg"; else sed -i 's/^\(0fd345d9 *= *true\)/# \1/; s/^drawNetworkIds *= *1/drawNetworkIds = 0/' "$ucfg"; fi
+				say "$ucfg: client admin flag $( grep -q '^0fd345d9' "$ucfg" && echo on || echo off ), floating ids $( grep -q '^drawNetworkIds *= *1' "$ucfg" && echo on || echo off ) ($( [ "$port" = 44453 ] && echo 'bench: admin commands and ids' || echo 'production: plain names'))"
 			fi
 			say "$cfg: loginServerPort0=$port ($( [ "$port" = 44453 ] && echo 'the bench' || echo 'the live instance')); restart the game client (the Launchpad rewrites the port from its own server list: pick the server there too)"
 			;;
