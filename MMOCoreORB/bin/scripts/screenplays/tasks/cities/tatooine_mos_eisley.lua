@@ -2,6 +2,9 @@
 FbCities:add {
 	key = "mos_eisley", planet = "tatooine", label = "Mos Eisley", order = 1,
 	lean = 65,   -- 3.4: default Imperial %
+	centre = { 3460, -4768 }, radius = 456,   -- the stock city region
+	starport = { 3600, -4780 },   -- travel point "Mos Eisley Starport"
+	plaza = { 3525, -4800 },   -- the starport square (where the vendor row stood)
 	factions = {   -- the squads the patrols (3.2) draw on
 		imperial = { leader = "stormtrooper_squad_leader", troops = { "stormtrooper", "stormtrooper" } },
 		rebel    = { leader = "rebel_commando", troops = { "rebel_trooper", "rebel_trooper" } },

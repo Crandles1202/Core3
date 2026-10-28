@@ -2,6 +2,9 @@
 FbCities:add {
 	key = "bestine", planet = "tatooine", label = "Bestine", order = 2,
 	lean = 80,   -- 3.4: the Imperial capital of the planet
+	centre = { -1218, -3688 }, radius = 336,
+	starport = { -1361, -3600 },   -- travel point "Bestine Starport"
+	plaza = { -1230, -3600 },   -- trainer row at the city centre (the invasion plaza)
 	relays = {   -- 3.10
 		{ key = "cantina", label = "Bestine Cantina", x = 9.0, z = 0.4, y = -8.5, dir = 3, cell = 1528397 },
 	},

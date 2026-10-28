@@ -836,6 +836,7 @@ function FbLabTests:runAll(charName)
 		FbLabTests.checkCrystals()
 		FbLabTests.checkKits()
 		FbLabTests.checkScenes()
+		FbLabTests.checkCheckpoints()
 		FbLabTests.checkBounty()
 	end)
 	if not ok then
@@ -2722,6 +2723,42 @@ function FbLabTests.checkScenes()
 		end
 		check("scenes." .. k .. ".beats_refer_to_the_cast", ok)
 		check("scenes." .. k .. ".idle", FbScenes:status(k):find("active=0", 1, true) ~= nil or FbScenes:status(k):find("active=1", 1, true) ~= nil)
+	end
+end
+
+-- checkpoints → one INFO line per watched starport (3.15); checkpointRefresh → re-read every holder now;
+-- checkpointHail:<city>:<char> → the post deals with the character now (enemy / friend / waved / searched)
+function FbLabTests:checkpoints()
+	if FbCheckpoints == nil then print("ERROR FbCheckpoints not loaded"); return "none" end
+	for _, city in ipairs(FbCheckpoints.order) do print("INFO checkpoint " .. FbCheckpoints:status(city)) end
+	return tostring(#FbCheckpoints.order)
+end
+function FbLabTests:checkpointRefresh()
+	if FbCheckpoints == nil then print("ERROR FbCheckpoints not loaded"); return "none" end
+	print("INFO checkpointRefresh " .. FbCheckpoints:refresh())
+	return "ok"
+end
+function FbLabTests:checkpointHail(city, charName)
+	if FbCheckpoints == nil then print("ERROR FbCheckpoints not loaded"); return "none" end
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local what = FbCheckpoints:hail(city, pPlayer)
+	print("INFO checkpointHail city=" .. tostring(city) .. " result=" .. tostring(what))
+	return tostring(what)
+end
+
+-- Phase 3.15: every held city's starport has its post standing, and no post stands in a contested city
+function FbLabTests.checkCheckpoints()
+	if FbCheckpoints == nil then check("checkpoints.loaded", false); return end
+	check("checkpoints.cities", #FbCheckpoints.order >= 20, #FbCheckpoints.order .. " starports")
+	for _, city in ipairs(FbCheckpoints.order) do
+		local st = FbCheckpoints:status(city)
+		local holder = st:match("holder=(%a+)")
+		if holder == "none" then
+			check("checkpoints." .. city .. ".no_post_when_contested", st:find("side=none", 1, true) ~= nil, st)
+		else
+			check("checkpoints." .. city .. ".post_standing", st:find("side=" .. holder, 1, true) ~= nil and st:find("post=3/3", 1, true) ~= nil, st)
+		end
 	end
 end
 
