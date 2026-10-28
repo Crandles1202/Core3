@@ -310,6 +310,16 @@ This phase has more sub-phases than the others because it's the most ambitious c
 #### 4c — NPC bounty hunters
 
 - **4c.1 \[M\] Visibility system.** ✅ 2026-10-23 — stock visibility is the score, the terminal threshold puts the price on (scenario `bounty`). Canonical SWG mechanic — actions raise your "visibility". Using saber in public, killing imperial NPCs as a Jedi, etc. High visibility → bounty placed.  
+- **4d \[L\] Holocron quests — abilities earned, not bought.** (Chuck, 2026-10-27.) The Jedi skill trees stay the place
+  to buy *stats*; every ability a tree teaches (Force powers from the powers tree, saber abilities from the lightsaber
+  tree, …) can also be **earned**: a keeper in each enclave (light and dark, in that side's voice) gives a quest that ends
+  at a holocron somewhere in the galaxy — a cave, a shrine, a ruin, the rarer ones behind a guardian — and consuming the
+  holocron grants that one ability for good, without the skill box. Both paths lead to the same ability, so a tree build
+  loses nothing and a quester wears abilities without the build. Engine: a holocron item per ability (a tangible with a
+  *Consume* radial), a Lua `grantAbility(pPlayer, name)` over the player's ability list (persisted), the keepers'
+  conversations, one quest file per holocron (spot, guardian, text), `/checkForceStatus` listing earned abilities.
+  Open (Chuck): who may take the quests (any Padawan, or Knights only); the first batch (suggested: twelve signature
+  abilities, three per tree); whether a holocron carries a small stat grant so a pure quester is not helpless.
 - **4c.2 \[M\] NPC bounty hunter spawns.** ✅ 2026-10-23 — hunters by level and rank at the trigger and a five-minute tick, cooldowns, the fixer in the Mos Eisley cantina. When a bounty is active, NPC BH(s) hunt the player. Bounty hunter difficulty scales with player level and visibility. Defeat one → cooldown before next.  
 - **4c.3 \[S\] Bounty hunter NPC tracking missions for BH profession players.** Stock already does this (a visible Jedi is listed on the bounty terminals); nothing added on a solo server. BH players can take NPC bounty contracts independently — gives the BH profession solo content too.  
 - **4c.4 \[M\] Dark Jedi spawns hunt light-aligned players** ✅ 2026-10-23 — at |alignment| ≥ 60 one hunter of the squad is a Force user of the other side. And vice versa, at high alignment. Adds risk to picking a side hard.
