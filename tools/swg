@@ -831,7 +831,13 @@ cmd_test() {
 			test_bot || rc=1
 			test_scenario all || rc=1
 			say "== all: $( (( rc == 0 )) && echo PASS || echo FAIL )  (server left running)"
-			if (( rc == 0 )); then git -C "$BENCH" rev-parse HEAD >>"$LABDIR/gate.passed" 2>/dev/null; fi
+			if (( rc == 0 )); then
+				git -C "$BENCH" rev-parse HEAD >>"$LABDIR/gate.passed" 2>/dev/null
+				local gb; gb=$(git -C "$REPO" rev-parse --abbrev-ref HEAD 2>/dev/null)
+				if [ -n "$gb" ] && [ "$gb" != HEAD ] && [ "$gb" != unstable ] && ! grep -q "bench merge $gb\b" "$QUEUE_FILE" 2>/dev/null; then
+					queue_add "gate green on $gb @ $(git -C "$BENCH" rev-parse --short HEAD): merge it" "tools/swg bench merge $gb" >/dev/null
+				fi
+			fi
 			return $rc ;;
 		*) die "usage: swg test unit|lua|bot|scenario <name>|planner|all" ;;
 	esac
@@ -1295,7 +1301,52 @@ if [ "$INSTANCE" = live ]; then
 		bench|test|build|agent|site|tre) die "swg --live $1: gates, deploys and builds run on the bench; the live instance takes 'swg live deploy'" ;;
 	esac
 fi
+# ---------------------------------------------------------------- the Chuck queue
+# What waits on Chuck, with the command to run: agents add items (swg queue add "text" [-- command]), Chuck ticks them
+# (swg queue done N). Merges are added by the gate itself and dropped once the branch is in unstable. ~/.swg-lab/chuck-queue:
+# one line per item  id|agent|epoch|text|command
+QUEUE_FILE="$LABDIR/chuck-queue"
+queue_add() {
+	local text=$1 command=${2:-} id
+	id=$(( $(cut -d'|' -f1 "$QUEUE_FILE" 2>/dev/null | sort -n | tail -n1) + 1 ))
+	printf '%s|%s|%s|%s|%s\n' "$id" "$(agent_name)" "$(date +%s)" "${text//|/-}" "${command//|/-}" >> "$QUEUE_FILE"
+	echo "$id"
+}
+queue_list() {
+	[ -s "$QUEUE_FILE" ] || { say "nothing waiting on Chuck"; return 0; }
+	local id agent epoch text command
+	while IFS='|' read -r id agent epoch text command; do
+		[ -n "$id" ] || continue
+		say "#$id  ($agent, $(( ($(date +%s) - epoch) / 60 )) min ago)  $text"
+		[ -n "$command" ] && say "      $command"
+	done < "$QUEUE_FILE"
+}
+queue_done() { [ -n "${1:-}" ] || die "usage: swg queue done <id>"; grep -v "^$1|" "$QUEUE_FILE" > "$QUEUE_FILE.tmp" 2>/dev/null; mv "$QUEUE_FILE.tmp" "$QUEUE_FILE"; say "#$1 done"; }
+# drop merge items whose branch is already in unstable (or gone)
+queue_sweep() {
+	[ -s "$QUEUE_FILE" ] || return 0
+	local id agent epoch text command keep=""
+	while IFS='|' read -r id agent epoch text command; do
+		[ -n "$id" ] || continue
+		local br; br=$(sed -n 's/.*bench merge \([^ ]*\).*/\1/p' <<<"$command")
+		if [ -n "$br" ]; then
+			if ! git -C "$REPO" rev-parse -q --verify "$br" >/dev/null 2>&1 || git -C "$REPO" merge-base --is-ancestor "$br" unstable 2>/dev/null; then continue; fi
+		fi
+		keep+="$id|$agent|$epoch|$text|$command"$'\n'
+	done < "$QUEUE_FILE"
+	printf '%s' "$keep" > "$QUEUE_FILE"
+}
+cmd_queue() {
+	case "${1:-list}" in
+		add) shift; local text=${1:-}; shift || true; [ "${1:-}" = "--" ] && shift; [ -n "$text" ] || die "usage: swg queue add \"text\" [-- command]"; queue_add "$text" "${*:-}" ;;
+		done) shift; queue_done "${1:-}" ;;
+		list|"") queue_sweep; queue_list ;;
+		*) die "usage: swg queue [list] | add \"text\" [-- command] | done <id>" ;;
+	esac
+}
+
 case "${1:-}" in
+	queue)   shift; cmd_queue "$@" ;;
 	live)    shift; cmd_live "$@" ;;
 	bench2)  shift; cmd_bench2 "$@" ;;
 	start)   shift; with_lock "start" cmd_start "$@"; bench_note_running ;;

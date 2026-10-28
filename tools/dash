@@ -129,6 +129,29 @@ def citizens():
     down = [l.split()[0] for l in out.splitlines() if "seat down" in l]
     return up, down
 
+# ----------------------------------------------------------------------------------------------- the Chuck queue
+def chuck_queue():
+    out = run([os.path.join(HERE, "swg"), "queue"])   # this checkout: the queue command may be newer than the main one
+    items, cur = [], None
+    for l in out.splitlines():
+        m = re.match(r'#(\d+)\s+\((\w+), (\d+) min ago\)\s+(.*)', l)
+        if m:
+            cur = dict(id=m.group(1), agent=m.group(2), mins=m.group(3), text=m.group(4), command=""); items.append(cur)
+        elif cur is not None and l.startswith("      "):
+            cur["command"] = l.strip()
+    # standing items that need no file: a newer build than production carries
+    try:
+        tags = sorted(run(["git", "-C", MAIN, "tag", "-l", "chuck-stable-*"]).split())
+        if tags:
+            tag_rev = run(["git", "-C", MAIN, "rev-parse", f"{tags[-1]}^{{commit}}"]).strip()
+            un = run(["git", "-C", MAIN, "rev-parse", "unstable"]).strip()
+            if tag_rev != un:
+                n = run(["git", "-C", MAIN, "rev-list", "--count", f"{tags[-1]}..unstable"]).strip()
+                items.append(dict(id="-", agent="auto", mins="", text=f"unstable is {n} commit(s) past {tags[-1]}: when you have played it on the bench, tag and deploy", command="tools/swg live tag && tools/swg live deploy"))
+    except Exception:  # noqa: BLE001
+        pass
+    return items
+
 # ----------------------------------------------------------------------------------------------- screen
 def render():
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -156,6 +179,13 @@ def render():
         lines.append(f"  {a['name']:11} {a['branch']:24} {a['head']}  {a['gated']:5} {a['when']:16} {a['subject']}")
         if a["status"]: lines.append(f"  {'':11} board: {a['status']}")
     lines.append("")
+    lines.append("CHUCK QUEUE (what waits on you)")
+    q = chuck_queue()
+    if not q: lines.append("  nothing")
+    for it in q:
+        lines.append(f"  #{it['id']:<3} {it['text']}" + (f"   ({it['agent']}, {it['mins']} min ago)" if it['mins'] else ""))
+        if it["command"]: lines.append(f"       $ {it['command']}")
+    lines.append("")
     up, down = citizens()
     lines.append("CITIZENS (production)")
     lines.append(f"  seated: {' '.join(up) if up else '-'}")
@@ -182,6 +212,10 @@ def html_page(interval):
         c = {"RUNNING": "#2f7d4a", "STOPPED": "#8a8f88", "HALTED": "#b26a0d"}.get(state, "#b26a0d")
         return f'<span class="pill" style="background:{c}">{H.escape(state)}</span>'
     rows = "".join(f"<tr><td><b>{H.escape(s['name'])}</b></td><td>{pill(s['state'])}</td><td>{s['pid']}</td><td>{s['up']}</td><td class=mono>{H.escape(s['rev'])}</td><td>{('errors ' + s['errs']) if s['errs'] not in ('', '0') else ''}</td></tr>" for s in servers)
+    q = chuck_queue()
+    queue = '<div class="box">nothing</div>' if not q else "".join(
+        f'<div class="box"><b>#{H.escape(str(it["id"]))}</b> {H.escape(it["text"])}' + (f' <span class=dim>({H.escape(it["agent"])}, {it["mins"]} min ago)</span>' if it["mins"] else "")
+        + (f'<div class="cmd">{H.escape(it["command"])}</div>' if it["command"] else "") + "</div>" for it in q)
     lanes = "".join(f"<tr><td><b>{H.escape(a['name'])}</b></td><td class=mono>{H.escape(a['branch'])}</td><td class=mono>{a['head']}</td><td>{'<span class=ok>gated</span>' if a['gated'] else ''}</td><td>{H.escape(a['when'])}</td><td>{H.escape(a['subject'])}</td><td>{H.escape(a['status'])}</td></tr>" for a in agents())
     return f"""<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="{interval}"><title>Final Boss</title>
 <style>
@@ -191,6 +225,7 @@ h2{{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#a39f94;m
 table{{border-collapse:collapse;width:100%}} td{{padding:5px 10px 5px 0;border-top:1px solid #30343a;vertical-align:top}}
 .mono{{font-family:Consolas,ui-monospace,monospace;font-size:13px}} .pill{{color:#fff;padding:1px 8px;border-radius:9px;font-size:12px}}
 .ok{{color:#5fbf7f}} .box{{background:#1d2024;border:1px solid #30343a;padding:10px 14px;margin-top:6px}}
+.dim{{color:#a39f94}} .cmd{{font-family:Consolas,ui-monospace,monospace;font-size:14px;background:#0f1113;border:1px solid #30343a;padding:6px 10px;margin-top:6px;user-select:all;color:#d9915f}}
 </style></head><body>
 <h1>Final Boss</h1><p class="sub">{now} &middot; refreshes every {interval} s &middot; written by WSL (tools/dash --html)</p>
 <h2>Servers</h2><table>{rows}</table>
@@ -200,6 +235,7 @@ table{{border-collapse:collapse;width:100%}} td{{padding:5px 10px 5px 0;border-t
 <tr><td><b>bench2</b></td><td>{H.escape(lock('bench2'))}</td></tr>
 <tr><td><b>live</b></td><td>{H.escape(lock('live'))}</td></tr>
 <tr><td><b>gate</b></td><td>{H.escape(g)}</td></tr></table>
+<h2>Chuck queue &middot; what waits on you</h2>{queue}
 <h2>Agents and lanes</h2><table>{lanes}</table>
 <h2>Citizens on production</h2><table>
 <tr><td><b>seated</b></td><td>{H.escape(' '.join(up) or '-')}</td></tr>
@@ -221,6 +257,7 @@ def install_desktop():
     cmd("Client to bench", f"wsl -d Debian -- {swg} live client --bench")
     cmd("Production console", "wsl -d Debian -- tmux attach -t =live", pause=False)
     cmd("Bench console", "wsl -d Debian -- tmux attach -t =swg", pause=False)
+    cmd("Chuck queue", f"wsl -d Debian -- {swg} queue")
     cmd("Backup now", "wsl -d Debian -- /home/chuck/workspace/Core3/tools/backup-nightly && echo done")
     open(os.path.join(DESKTOP, "dashboard.html"), "w").write(html_page(5))
     print(f"installed in {DESKTOP}: Dashboard.cmd, Production status, Deploy to production, Tag the current build, Client to production / bench, Production console, Bench console, Backup now")
