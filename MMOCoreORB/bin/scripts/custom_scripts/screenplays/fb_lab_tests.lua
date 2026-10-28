@@ -482,7 +482,7 @@ function FbLabTests.checkQol()
 		check("qol.player_manager_loads", false, err)
 		return
 	end
-	check("qol.globalExpMultiplier_2x", env.globalExpMultiplier == 2.0, "globalExpMultiplier=" .. tostring(env.globalExpMultiplier))
+	check("qol.globalExpMultiplier_3x", env.globalExpMultiplier == 3.0, "globalExpMultiplier=" .. tostring(env.globalExpMultiplier))
 	check("qol.groupExpMultiplier_1.25", env.groupExpMultiplier == 1.25, "groupExpMultiplier=" .. tostring(env.groupExpMultiplier))
 end
 

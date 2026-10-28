@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Walk up to a Final Boss NPC and talk to it through the real conversation packets.
 # Usage: npc-conversation.sh [creatureTemplate] [optionIndexes]   (default: FB-72 at Mos Eisley starport, option 0)
+# covers: conversations/ conv_handler
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 TEMPLATE=${1:-fb_armory_droid}

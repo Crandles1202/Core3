@@ -3,6 +3,7 @@
 # template and murder; /checkForceStatus shows the vague line; a trained student is offered rank 1 when the Jedi
 # experience is there and promoted on reporting it (FRS rank, the rank box); a student whose score leans the other
 # way is offered the turn by the other Master and comes out at that side's novice with the old boxes gone.
+# covers: fb_alignment fb_masters
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 SITH=$(lab "findNpc:fb_sith_master" | sed -n 's/.*oid=\([0-9]*\).*/\1/p' | sort -n | tail -n1)

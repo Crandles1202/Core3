@@ -4,6 +4,7 @@
 # units, the 7.5 getInventoryItems binding), finds the terminal (lab bazaarNear), walks to it and lists the stack with one
 # CreateImmediateAuction packet; the oracle sees the stack leave the inventory and the 20 cr fee leave the bank. Then the
 # seat takes the listing back (retrieve) and the stack is destroyed.
+# covers: src/client tools/seat sell
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 SEAT="$REPO/tools/seat"

@@ -3,6 +3,7 @@
 # Master Venn's student (council light, the novice rank box, the first task); the stillness task is done by
 # sitting in her training room, the shadows task through the kill hook; each report pays Jedi experience; after
 # both she has nothing more yet.
+# covers: fb_masters fb_jedi_master
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 MASTER=$(lab "findNpc:fb_jedi_master" | sed -n 's/.*oid=\([0-9]*\).*/\1/p' | sort -n | tail -n1)

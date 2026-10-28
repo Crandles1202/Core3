@@ -4,6 +4,7 @@
 # is spared in conversation (the token, the alignment shift); the report to the Master is the graduation (Knight
 # title, Jedi state 4, rank 3 and its box, the robe). Then the dark side through the lab: the elder at the Dathomir
 # stronghold, finished, graduation to the dark Knight.
+# covers: fb_knight fb_masters
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 MASTER=$(lab "findNpc:fb_jedi_master" | sed -n 's/.*oid=\([0-9]*\).*/\1/p' | sort -n | tail -n1)

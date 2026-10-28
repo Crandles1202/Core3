@@ -4,6 +4,7 @@
 # clinic tool walks there through the door, takes "Clear my battle wounds and shock damage" over real packets, and reads the
 # wounds back at 0. Teyla carried ~500 wounds in every pool for two days on production asking passers-by for a medic, because
 # nothing told her that resting cannot close a wound (2026-10-28).
+# covers: tools/citizens/pilot.py LuaCreatureObject clinic wound medical_droid
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 SEAT="$REPO/tools/seat"

@@ -2,6 +2,7 @@
 # Phase 3.6: galaxy chatter. Post a news line, stand in the Mos Eisley cantina and listen to beats
 # until the patrons repeat galaxy news (a static line, the merchant's city, or the posted item), and
 # check that the posted line is also delivered to the client as spatial chat.
+# covers: fb_galaxy_chatter fb_ambient_life
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 LOC=1

@@ -4,6 +4,7 @@
 # shuttle lands (waiting out its away time) and the oracle sees the character at Bestine. Leg 2: from outside
 # the Bestine starport, whose ticket terminals stand inside the building (cell walk through the door), a ticket
 # to Mos Eisley Starport and the shuttle back. Both are real packets: no teleport once the trip starts.
+# covers: src/client tools/seat TravelAction
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 SEAT="$REPO/tools/seat"

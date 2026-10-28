@@ -4,6 +4,7 @@
 # the archive changed), unknown ids stay empty, stock tables are untouched, and a system message built
 # from one of our ids reaches the client with the id intact (the real client renders it from its own
 # copy of the archive; Chuck's play-test item).
+# covers: tre-src tools/tre FbTreTest
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 check "server_resolves_probe_first" "$(lab "stringId:fb_lab:probe_first" | grep -qF 'text=Final Boss TRE probe: first' && echo 1 || echo 0)"

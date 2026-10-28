@@ -2,6 +2,7 @@
 # Phase 7.6a — survey and sample on a seat: the resource oracle names the richest mineral spawn on Tatooine and
 # its best spot; the lab gives the character the survey skill and a mineral survey tool and puts it there; the
 # seat uses the tool (answering the range window), surveys the resource, and samples it into its inventory.
+# covers: SurveyAction src/client
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 SEAT="$REPO/tools/seat"

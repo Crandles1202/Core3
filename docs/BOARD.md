@@ -11,8 +11,8 @@ borrowing with a lock; this file carries the intent.
 |---|---|---|---|---|---|
 | chuck | — | play-testing, design calls, merges by request | ongoing | as needed | 2026-10-20 |
 | alice | `feature/alice` | Phase 7 Citizens: batches merged 2026-10-21 (421d50e15d) and 2026-10-22 (f1c39d871f); third batch 2026-10-23 (the citizens' first day read back: condition/clone, server-named creatures, land-only and buildable resource spots, shuttle routing, the hunt and harvester loops verified live — Teyla kills worrts, Wex runs an ore harvester near Kor Vella) gating, then Chuck's `bench merge feature/alice`; next: the live-world server (Chuck's call), grouping/follow | gate | yes | 2026-10-23 + the threat scan (lab `threats`, hunt guards, escape walk; Teyla's ground moved south after the story camp killed her twice), merged 2026-10-23; 7.5 training (lab `trainable`/`trainers`, pilot `train` through the stock trainer conversation, indoor paths on the floor, the snapshot-NPC crash in `getCreatureTemplateName`) + scouts harvest corpses (seat `fight --harvest`, the hunt) gated `f4f623846f` 2026-10-23 night (two flakes on the way: the broker converse, unexplained; the server's 1-in-51 concentrated-sample window, now answered by `tools/seat sample`), merged by Chuck 2026-10-24 (723eefc64e); the bazaar batch on `feature/alice-bazaar` (Lua `getInventoryItems`, lab `bazaarNear`, seat `sell`/`retrieve`, pilot `sell`, scenario `seat-sell`, the converse double-ask and the loot verdict from the loot's own messages) gated `2b3e1a7be8` 2026-10-24 (47/47, no flakes); waits for `feature/companion` to land, then merges `unstable` in, re-gates, and goes to Chuck |
-| claude | `feature/production` | the live instance as production: stable tags, `live tag`/`deploy <tag>` with a pre-deploy snapshot, nightly backups of every database and the live ODB (0.3 + 0.8) | gate | bench | 2026-10-26 |
-| claude | `feature/scenes` | 3.14 street scenes, 3.15 checkpoints, 3.16 shuttle arrivals (one branch, three commits) | testing | bench | 2026-10-27 |
+| claude | `feature/prodtweaks` | XP x3, six missions, the client admin flag off for production | gate | bench | 2026-10-28 |
+| claude | `feature/dash` | `tools/dash`: one screen for servers, benches, lanes, gates, citizens | coding | — | 2026-10-28 |
 | _(add a row with `swg agent new <name>`)_ | | | | | |
 
 Status words: `planning`, `coding`, `testing` (holds the bench), `gate` (running `swg test all`), `ready to merge`,
@@ -31,8 +31,11 @@ Status words: `planning`, `coding`, `testing` (holds the bench), `gate` (running
 4. **Release the bench when you stop testing** (`swg bench release`): it goes back to `unstable` and the lock
    opens. A hold expires on its own; an abandoned lock may be broken with `swg unlock --force` after checking the
    board.
-5. **Merge only through the gate.** `swg test all` on the bench with your commit deployed records a pass for that
-   commit; `swg bench merge <branch>` refuses without it, then merges `--no-ff` into `unstable` and pushes.
+5. **Merge only through a gate.** `swg test quick` (unit, Lua, bot, the scenarios covering your changed paths; ~10 min)
+   records a pass for a branch without C++ changes; a branch that changes C++ needs `swg test all` (~80 min).
+   `swg bench merge <branch>` refuses without a pass for that exact commit, then merges `--no-ff` into `unstable` and pushes.
+   A production tag (`swg live tag`) needs a full `swg test all` on the `unstable` tip. Give every new scenario a
+   `# covers:` line naming the files it protects, or the quick gate will not run it for them.
    After that, `git -C <your worktree> rebase unstable` or retire the worktree (`swg agent done <name>`).
 6. **Shared state that is not code:** the test accounts (`claude-admin`, `claude-player`, ten-character cap),
    quest-status registries, world edits in `tre-src/world/`, sites in `tasks/sites/`, the ODB. Scenarios may

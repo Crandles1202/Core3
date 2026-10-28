@@ -3,6 +3,7 @@
 # The hall stands with nine cells, every tenant is in its room and placed sanely, the doorman on the
 # square marks the hall on the map, and the bot walks in (gotoNpc), talks to a tenant and buys. The bot
 # logs out inside the hall, so the next restart + bot login exercises "my cell no longer exists".
+# covers: fb_trade_hall fb_sites tasks/sites/
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 ST=$(lab "tradeHall")

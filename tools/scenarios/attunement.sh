@@ -3,6 +3,7 @@
 # there (+6), "kills" a krayt dragon after an incapacitation (deeds +10 +5), the quest and learning sources are
 # granted, the score crosses 25 and a robed spirit comes and speaks, then at 100 the Old Man comes, the bot
 # accepts his task in conversation and /checkForceStatus reads the called tier.
+# covers: fb_attunement fb_force
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 # --- phase A: a lab-driven session at a shrine: entry pays 3, the kill pays and triggers the first visit ------

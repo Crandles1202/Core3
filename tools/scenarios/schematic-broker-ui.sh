@@ -2,6 +2,7 @@
 # Phase 2.2 through the real UI: the bot converses with the schematic broker, picks "Show me the
 # catalogue", answers the two server UI windows (catalogue list, then item list) by row text, and
 # the oracle confirms the datapad and the price. Exercises the bot's --sui action end to end.
+# covers: fb_schematic_broker
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 NPC=fb_schematic_broker

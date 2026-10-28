@@ -3,6 +3,7 @@
 # The oracle spawns a bazaar terminal next to the character and hands over 26 cheap items; the bot
 # lists all 26 for instant sale through real CreateImmediateAuction packets. Stock Core3 would
 # answer the 26th with ItemSoldMessage status 13 (TOOMANYITEMS). Also checks the 20 cr sales fee.
+# covers: AuctionManager fb_lab_tests.lua:bazaar
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 TERMINAL="object/tangible/terminal/terminal_bazaar.iff"

@@ -2,6 +2,7 @@
 # Phase 2.12g: world edits. The snapshot writer re-serialises every planet byte-identically (so a patched
 # snapshot differs from stock only where an edit says), and every edit in tre-src/world/ is what the booted
 # server shows (checkWorldEdits does the same inside `swg test lua`; here the oracle's lines are inspected).
+# covers: worldedit tre-src/world fb_world_edits
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 RT=$("$REPO/tools/worldedit" check 2>&1)

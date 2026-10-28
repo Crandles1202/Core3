@@ -4,6 +4,7 @@
 # listened to the Old Man returns at the shrine, the conversation unlocks the trials (task=trials); the
 # ambush he warned about comes when due: two Sith Shadows threaten and attack, and with both down the
 # "survive a Force power" deed is paid.
+# covers: fb_attunement fb_old_man
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 # --- phase A: called, at a shrine, standing; the first world -------------------------------------------------
