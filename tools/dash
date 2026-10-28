@@ -5,6 +5,8 @@ progress, the citizens on production. Read-only: nothing here takes a lock or se
   tools/dash                 refresh every 5 s until Ctrl-C
   tools/dash --once          print once
   tools/dash --interval 10   another refresh period
+  tools/dash --html PATH     write the page to PATH every interval (the desktop dashboard; the browser reloads it itself)
+  tools/dash --install-desktop   a "Final Boss" folder on the Windows desktop: Dashboard.cmd + double-click actions through WSL
 
 Sources: tools/swg status (per instance), ~/.swg-lab/*.lock, ~/.swg-lab/gate.passed, ~/.swg-lab/last-*.log, git worktrees of
 the main repo, docs/BOARD.md, ~/swg-live/DEPLOYED, tools/citizens/crew status (live).
@@ -160,10 +162,82 @@ def render():
     lines.append(f"  down:   {' '.join(down) if down else '-'}")
     return "\n".join(lines)
 
+# ----------------------------------------------------------------------------------------------- the desktop page
+DESKTOP = "/mnt/c/Users/rac35/Desktop/Final Boss"
+
+def html_page(interval):
+    import html as H
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    servers = [server("production", {"SWG_INSTANCE": "live"}), server("bench", {}), server("bench2", {"SWG_INSTANCE": "bench2"})]
+    try:
+        dep = open(os.path.join(LIVE_ROOT, "DEPLOYED")).read().split("\n"); deployed = f"{dep[0]} since {dep[1] if len(dep) > 1 else '?'}"
+    except OSError:
+        deployed = "?"
+    tags = run(["git", "-C", MAIN, "tag", "-l", "chuck-stable-*"]).split()
+    newest = sorted(tags)[-1] if tags else "none"
+    unstable = run(["git", "-C", MAIN, "rev-parse", "--short", "unstable"]).strip()
+    g = gate() or "none running"
+    up, down = citizens()
+    def pill(state):
+        c = {"RUNNING": "#2f7d4a", "STOPPED": "#8a8f88", "HALTED": "#b26a0d"}.get(state, "#b26a0d")
+        return f'<span class="pill" style="background:{c}">{H.escape(state)}</span>'
+    rows = "".join(f"<tr><td><b>{H.escape(s['name'])}</b></td><td>{pill(s['state'])}</td><td>{s['pid']}</td><td>{s['up']}</td><td class=mono>{H.escape(s['rev'])}</td><td>{('errors ' + s['errs']) if s['errs'] not in ('', '0') else ''}</td></tr>" for s in servers)
+    lanes = "".join(f"<tr><td><b>{H.escape(a['name'])}</b></td><td class=mono>{H.escape(a['branch'])}</td><td class=mono>{a['head']}</td><td>{'<span class=ok>gated</span>' if a['gated'] else ''}</td><td>{H.escape(a['when'])}</td><td>{H.escape(a['subject'])}</td><td>{H.escape(a['status'])}</td></tr>" for a in agents())
+    return f"""<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="{interval}"><title>Final Boss</title>
+<style>
+body{{background:#15171a;color:#e8e4da;font:15px/1.45 "Segoe UI",system-ui,sans-serif;margin:0;padding:22px 28px}}
+h1{{font-size:22px;margin:0 0 2px;font-weight:600}} .sub{{color:#a39f94;margin:0 0 18px}}
+h2{{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#a39f94;margin:22px 0 6px}}
+table{{border-collapse:collapse;width:100%}} td{{padding:5px 10px 5px 0;border-top:1px solid #30343a;vertical-align:top}}
+.mono{{font-family:Consolas,ui-monospace,monospace;font-size:13px}} .pill{{color:#fff;padding:1px 8px;border-radius:9px;font-size:12px}}
+.ok{{color:#5fbf7f}} .box{{background:#1d2024;border:1px solid #30343a;padding:10px 14px;margin-top:6px}}
+</style></head><body>
+<h1>Final Boss</h1><p class="sub">{now} &middot; refreshes every {interval} s &middot; written by WSL (tools/dash --html)</p>
+<h2>Servers</h2><table>{rows}</table>
+<div class="box">production runs <b class=mono>{H.escape(deployed)}</b> &middot; newest stable tag <b class=mono>{H.escape(newest)}</b> &middot; unstable @ <span class=mono>{unstable}</span></div>
+<h2>Benches</h2><table>
+<tr><td><b>bench</b></td><td>{H.escape(lock('server'))}</td></tr>
+<tr><td><b>bench2</b></td><td>{H.escape(lock('bench2'))}</td></tr>
+<tr><td><b>live</b></td><td>{H.escape(lock('live'))}</td></tr>
+<tr><td><b>gate</b></td><td>{H.escape(g)}</td></tr></table>
+<h2>Agents and lanes</h2><table>{lanes}</table>
+<h2>Citizens on production</h2><table>
+<tr><td><b>seated</b></td><td>{H.escape(' '.join(up) or '-')}</td></tr>
+<tr><td><b>down</b></td><td>{H.escape(' '.join(down) or '-')}</td></tr></table>
+</body></html>"""
+
+def install_desktop():
+    """a folder on the Windows desktop: the dashboard page, a launcher for it, and double-click actions through WSL"""
+    os.makedirs(DESKTOP, exist_ok=True)
+    swg = "/home/chuck/workspace/Core3/tools/swg"
+    def cmd(name, body, pause=True):
+        text = "@echo off\r\ntitle Final Boss - " + name + "\r\n" + body.replace("\n", "\r\n") + ("\r\npause\r\n" if pause else "\r\n")
+        open(os.path.join(DESKTOP, name + ".cmd"), "w", newline="").write(text)
+    cmd("Dashboard", f'start "Final Boss dashboard writer" /min wsl -d Debian -- /home/chuck/workspace/Core3/tools/dash --html "{DESKTOP}/dashboard.html" --interval 5\ntimeout /t 2 >nul\nstart "" "%~dp0dashboard.html"', pause=False)
+    cmd("Production status", f"wsl -d Debian -- {swg} live status")
+    cmd("Deploy to production", f"echo This tags nothing: it deploys the NEWEST stable tag (swg live tag first if the build was never tagged).\necho The players get a minute's warning; the citizens are logged out and seated again.\nset /p go=Type DEPLOY to continue: \nif /i not \"%go%\"==\"DEPLOY\" exit /b\nwsl -d Debian -- {swg} live deploy")
+    cmd("Tag the current build", f"wsl -d Debian -- {swg} live tag")
+    cmd("Client to production", f"wsl -d Debian -- {swg} live client")
+    cmd("Client to bench", f"wsl -d Debian -- {swg} live client --bench")
+    cmd("Production console", "wsl -d Debian -- tmux attach -t =live", pause=False)
+    cmd("Bench console", "wsl -d Debian -- tmux attach -t =swg", pause=False)
+    cmd("Backup now", "wsl -d Debian -- /home/chuck/workspace/Core3/tools/backup-nightly && echo done")
+    open(os.path.join(DESKTOP, "dashboard.html"), "w").write(html_page(5))
+    print(f"installed in {DESKTOP}: Dashboard.cmd, Production status, Deploy to production, Tag the current build, Client to production / bench, Production console, Bench console, Backup now")
+
 def main(argv):
     once = "--once" in argv
     interval = 5
     if "--interval" in argv: interval = int(argv[argv.index("--interval") + 1])
+    if "--install-desktop" in argv: install_desktop(); return 0
+    if "--html" in argv:
+        path = argv[argv.index("--html") + 1]
+        while True:
+            tmp = path + ".tmp"
+            open(tmp, "w").write(html_page(interval)); os.replace(tmp, path)
+            if once: return 0
+            try: time.sleep(interval)
+            except KeyboardInterrupt: return 0
     while True:
         text = render()
         if once: print(text); return 0
