@@ -1589,3 +1589,5 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   looked in the bench's; fixed. Deploy hooks (`tools/live-hooks/`) came in right after: players warned, citizens down and up.
 - **Never nest a python heredoc inside `bash -c '…'`:** the inner quoting unwound and the heredoc's lines ran as shell (a `du -sh /`
   and a `say` not found; the `rm -rf` in it matched nothing). Edit in the foreground, chain only `tools/swg` calls in the background.
+- **`lab` waits 8 s by default** (`lib.sh`): the full placement audit takes 17 s for 380 spawns since 3.13, so a scenario that
+  calls a long oracle passes its own timeout (`lab "placement" 90`); an empty answer means a timeout, not a clean run.
