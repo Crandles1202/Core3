@@ -3,8 +3,10 @@
 # travel walks to the ticket terminal, buys a ticket to Bestine Shuttleport, walks to the pad, boards when the
 # shuttle lands (waiting out its away time) and the oracle sees the character at Bestine. Leg 2: from outside
 # the Bestine starport, whose ticket terminals stand inside the building (cell walk through the door), a ticket
-# to Mos Eisley Starport and the shuttle back. Both are real packets: no teleport once the trip starts.
-# covers: src/client tools/seat TravelAction
+# to Mos Eisley Starport and the shuttle back. Both are real packets: no teleport once the trip starts. Leg 2 starts
+# with a ticket for the route already in the bag (lab ticketGive): the seat boards with it and buys none (Wex held
+# eighteen Coronet tickets on production, one per refused attempt), and the ticket is gone after the trip.
+# covers: src/client tools/seat TravelAction tickets ticketGive
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 SEAT="$REPO/tools/seat"
@@ -52,18 +54,23 @@ SCENES=$("$SEAT" vars "$NAME" /Scene 2>&1 | sed -n 's/.*"count": \([0-9]*\).*/\1
 check_gt "client_counted_a_new_scene" "${SCENES:-0}" "${SCENES0:-0}" "Scene/count ${SCENES0:-?} -> ${SCENES:-?} (a teleport is a scene too)"
 [ "$RC" = 0 ] || { "$SEAT" log "$NAME" 40 | sed 's/^/   client: /'; die "leg 1 failed"; }
 
-# --- leg 2: starport to starport, ticket terminal inside the building -----------------------------
+# --- leg 2: starport to starport with a ticket already in the bag ---------------------------------
 lab "travel:$CHAR:tatooine:-1330:-3620" >/dev/null
 sleep 3
 "$SEAT" cmd "$NAME" stand --nowait >/dev/null 2>&1 || true
+GIVEN=$(lab "ticketGive:$CHAR:tatooine:Bestine_Starport:tatooine:Mos_Eisley_Starport" 8 | grep -a '^INFO ticket' | head -n1)
+check "leg2_ticket_given" "$( grep -q 'from=tatooine:Bestine_Starport to=tatooine:Mos_Eisley_Starport' <<<"$GIVEN" && echo 1 || echo 0 )" "$(cut -c1-120 <<<"$GIVEN")"
+HELD0=$(lab "tickets:$CHAR" 8 | grep -a '^INFO tickets' | sed -n 's/.*count=\([0-9]*\).*/\1/p')
 T0=$(date +%s)
 TRIP=$("$SEAT" travel "$NAME" tatooine Mos_Eisley_Starport --from Bestine_Starport --wait 300 2>&1); RC=$?
 T1=$(date +%s)
 check_eq "leg2_trip_ok" "$RC" "0" "$(grep -o '"error": "[^"]*"' <<<"$TRIP" | head -n1)"
-check "leg2_walked_indoors_to_the_terminal" "$( grep -q 'ends indoors' <<<"$TRIP" && echo 1 || echo 0 )" "$(grep -a '^path' <<<"$TRIP" | head -n1)"
-check "leg2_ticket_bought" "$( grep -q '^ticket [1-9]' <<<"$TRIP" && echo 1 || echo 0 )" "$(grep -a '^ticket' <<<"$TRIP" | cut -c1-100)"
+check "leg2_held_ticket_used" "$( grep -q '^ticket [1-9][0-9]* held:' <<<"$TRIP" && echo 1 || echo 0 )" "$(grep -a '^ticket' <<<"$TRIP" | cut -c1-120)"
+check "leg2_no_ticket_bought" "$( grep -q 'prose_pay_acct_success\|ticket_purchase_complete' <<<"$TRIP" && echo 0 || echo 1 )" "no purchase in the trip log"
 near 3599.9 -4780.4 60
 check "leg2_arrived_at_mos_eisley_starport" "$NEAR_OK" "server says $LAST_POS — $LAST_DIST m from the starport pad after $((T1 - T0)) s"
+HELD1=$(lab "tickets:$CHAR" 8 | grep -a '^INFO tickets' | sed -n 's/.*count=\([0-9]*\).*/\1/p')
+check_eq "leg2_ticket_consumed" "${HELD1:-x}" "$(( ${HELD0:-1} - 1 ))" "tickets held ${HELD0:-?} -> ${HELD1:-?}"
 [ "$RC" = 0 ] || "$SEAT" log "$NAME" 40 | sed 's/^/   client: /'
 
 "$SEAT" stop "$NAME" >/dev/null 2>&1

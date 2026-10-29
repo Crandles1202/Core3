@@ -665,6 +665,8 @@ def seat_tools(seat, files, character_name, seat_name):
                 row["resource"] = (f.get("resource") or "").replace("_", " ")
                 row["resource_type"] = (f.get("rtype") or "").replace("_", " ")
                 row["units"] = int(f.get("units") or 0)
+            if f.get("from") and f.get("to"):   # a travel ticket: its route (planet:point, underscores)
+                row["route"] = (f.get("from"), f.get("to"))
             rows.append(row)
         return rows
 
@@ -677,8 +679,13 @@ def seat_tools(seat, files, character_name, seat_name):
             for r in rows:
                 if "resource" in r:
                     items.append({"name": f"{r['resource']} ({r['resource_type']})", "units": r["units"], "oid": r["oid"]})
+                elif "route" in r:   # a ticket is used by travel_to to that point; a stack count means nothing for it
+                    items.append({"name": f"Travel ticket {r['route'][0]} -> {r['route'][1]} (travel_to uses it)", "oid": r["oid"]})
                 else:
-                    items.append({"name": r["name"], "count": r["count"], "oid": r["oid"]})
+                    item = {"name": r["name"], "oid": r["oid"]}
+                    if r["count"] > 1:   # the server's use count: 0 or 1 for a plain object, more for a stack or charges
+                        item["count"] = r["count"]
+                    items.append(item)
             return {"ok": True, "items": items[:60]}
         counts = {}
         for o in _objects():
@@ -1008,7 +1015,7 @@ def seat_tools(seat, files, character_name, seat_name):
          "input_schema": {"type": "object", "properties": {"name": {"type": "string"}, "target": {"type": "integer"}}, "required": ["name", "target"], "additionalProperties": False}, "strict": True},
         {"name": "walk_to", "description": "Walk to a world position on this planet (takes real time: 4.5 m/s). Refused beyond 2000 m: the wild kills a lone walker; take a shuttle (travel_to) between cities and walk from there.",
          "input_schema": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "required": ["x", "y"], "additionalProperties": False}, "strict": True},
-        {"name": "travel_to", "description": "Take the shuttle to a travel point: walk to the nearest terminal, buy a ticket (a few hundred credits), board when the shuttle lands. Points are named like Mos_Eisley_Starport, Coronet_Starport, Theed_Starport, Bestine_Shuttleport; another planet needs a starport on both ends. Takes minutes.",
+        {"name": "travel_to", "description": "Take the shuttle to a travel point: walk to the nearest terminal, buy a ticket (a few hundred credits; a ticket you already hold for the route is used instead), board when the shuttle lands. Points are named like Mos_Eisley_Starport, Coronet_Starport, Theed_Starport, Bestine_Shuttleport; another planet needs a starport on both ends. Takes minutes.",
          "input_schema": {"type": "object", "properties": {"planet": {"type": "string"}, "point": {"type": "string"}}, "required": ["planet", "point"], "additionalProperties": False}, "strict": True},
         {"name": "resources_here", "description": "What resources are currently spawning on this planet (name, class, best spot and density, stats). Class filter by the survey tool that finds it: mineral, chemical, flora, gas, water, wind, solar, geothermal, fusion; empty = everything a tool can find; 'all' adds creature resources (hides, meat: hunted, not surveyed). Each resource lists up to three land spots with the nearest shuttle point and its distance: travel_to that point, then walk. Use the exact name from here with survey.",
          "input_schema": {"type": "object", "properties": {"resource_class": {"type": "string"}}, "required": ["resource_class"], "additionalProperties": False}, "strict": True},
@@ -1038,7 +1045,7 @@ def seat_tools(seat, files, character_name, seat_name):
          "input_schema": {"type": "object", "properties": {"resource": {"type": "string"}}, "required": ["resource"], "additionalProperties": False}, "strict": True},
         {"name": "travel_points", "description": "The shuttle and starport points of a planet with positions: pick the one nearest a spot, travel_to it, then walk the rest (under 2 km).",
          "input_schema": {"type": "object", "properties": {"planet": {"type": "string"}}, "required": ["planet"], "additionalProperties": False}, "strict": True},
-        {"name": "my_inventory", "description": "What you carry, by name with counts (deeds, tools, weapons, resources).",
+        {"name": "my_inventory", "description": "What you carry, by name (deeds, tools, weapons, resources with units, travel tickets with their route); a count appears only for stacks.",
          "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},
         {"name": "clone", "description": "When you are dead: revive at the closest cloning facility. Nothing else works until you do.",
          "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},

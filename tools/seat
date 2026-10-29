@@ -22,8 +22,9 @@ control channel on a unix socket (SeatAction, Phase 7.0). A pilot (7.3) sits on 
                                                         --cell makes x,y cell-local: a spot inside a building, e.g. a starport's ticket terminal)
   seat where <name>                                    the character's server-side position (FbLabTests:where)
   seat points <planet>                                 the planet's travel points with their ticket terminal and shuttle (FbLabTests:travelPoints)
+  seat tickets <character>                             the travel tickets a character holds, with their routes (FbLabTests:tickets)
   seat travel <name> <planet> <point> [--from POINT] [--round-trip] [--wait S]
-                                                        a whole trip: walk to the nearest (or --from) travel point's terminal, buy the ticket,
+                                                        a whole trip: walk to the nearest (or --from) travel point's terminal, buy the ticket (a held ticket for the route is used instead),
                                                         walk to the shuttle, board it (waiting for it to land, up to --wait s, default 240),
                                                         and report where the character arrived. Point names take underscores for spaces.
   seat ticket <name> <fromPlanet> <fromPoint> <toPlanet> <toPoint> [--round-trip]   the purchase alone (stand by a terminal)
@@ -149,6 +150,28 @@ def travel_points(planet):
             pt.update(sx=float(f["sx"]), sy=float(f["sy"]))
         points.append(pt)
     return points
+
+
+def held_tickets(char):
+    """FbLabTests:tickets:<char> -> [{oid, fromPlanet, fromPoint, toPlanet, toPoint}] (point names with underscores)"""
+    tickets = []
+    for line in lab(f"tickets:{char}", 15).splitlines():
+        if not line.startswith("INFO ticket "):
+            continue
+        f = lab_fields(line)
+        fp, _, fpt = (f.get("from") or ":").partition(":")
+        tp, _, tpt = (f.get("to") or ":").partition(":")
+        tickets.append({"oid": int(f.get("oid") or 0), "fromPlanet": fp, "fromPoint": fpt, "toPlanet": tp, "toPoint": tpt})
+    return tickets
+
+
+def ticket_for(char, from_planet, from_point, to_planet, to_point):
+    """a held ticket for exactly that route, or None (names compared with underscores, case-insensitive)"""
+    def norm(x): return (x or "").replace(" ", "_").lower()
+    for t in held_tickets(char):
+        if (norm(t["fromPlanet"]), norm(t["fromPoint"]), norm(t["toPlanet"]), norm(t["toPoint"])) == (norm(from_planet), norm(from_point), norm(to_planet), norm(to_point)):
+            return t
+    return None
 
 
 def sell_seat(s, char, item, vendor, price, description=""):
@@ -361,20 +384,27 @@ def travel_seat(s, name, to_planet, to_point, from_point=None, round_trip=False,
     dep = min(candidates, key=lambda p: (p["x"] - here["x"]) ** 2 + (p["y"] - here["y"]) ** 2)
     print(f"departure: {dep['name']} (terminal {'in ' + dep['tcellName'] if dep['tcell'] else 'outdoors'}, shuttle at {dep['sx']:.0f},{dep['sy']:.0f})")
 
-    # 1. the ticket terminal (indoors for starports: the path enters the building; purchaseTicket wants 8 m)
-    if dep["tcell"]:
-        reply = walk_seat(s, char, round(dep["tlx"], 2), round(dep["tly"], 2), dep["tcell"])
+    # 0. a ticket already in the bag for this route boards as it is (every failed attempt used to buy another one:
+    #    Wex held eighteen Coronet tickets on production); the server matches the ticket to the point nearest the character
+    held = ticket_for(char, planet, dep["name"], to_planet, to_point)
+    if held:
+        ticket = held["oid"]
+        print(f"ticket {ticket} held: {planet}:{dep['name']} -> {to_planet}:{to_point}, not buying another")
     else:
-        reply = walk_seat(s, char, round(dep["tx"], 1), round(dep["ty"], 1), within=6, z=dep["tz"])
-    if not reply.get("ok"):
-        return {"ok": False, "error": "walk to the terminal failed: " + action_error(reply), "step": "walk_terminal", "reply": reply}
+        # 1. the ticket terminal (indoors for starports: the path enters the building; purchaseTicket wants 8 m)
+        if dep["tcell"]:
+            reply = walk_seat(s, char, round(dep["tlx"], 2), round(dep["tly"], 2), dep["tcell"])
+        else:
+            reply = walk_seat(s, char, round(dep["tx"], 1), round(dep["ty"], 1), within=6, z=dep["tz"])
+        if not reply.get("ok"):
+            return {"ok": False, "error": "walk to the terminal failed: " + action_error(reply), "step": "walk_terminal", "reply": reply}
 
-    # 2. the ticket
-    reply = s.action("ticket", fromPlanet=planet, fromPoint=dep["name"], toPlanet=to_planet, toPoint=to_point, roundTrip=round_trip)
-    if not reply.get("ok"):
-        return {"ok": False, "error": "ticket: " + action_error(reply), "step": "ticket", "reply": reply}
-    ticket = (reply.get("result") or {}).get("ticket", 0)
-    print(f"ticket {ticket}: {(reply.get('result') or {}).get('serverSaid', '')}")
+        # 2. the ticket
+        reply = s.action("ticket", fromPlanet=planet, fromPoint=dep["name"], toPlanet=to_planet, toPoint=to_point, roundTrip=round_trip)
+        if not reply.get("ok"):
+            return {"ok": False, "error": "ticket: " + action_error(reply), "step": "ticket", "reply": reply}
+        ticket = (reply.get("result") or {}).get("ticket", 0)
+        print(f"ticket {ticket}: {(reply.get('result') or {}).get('serverSaid', '')}")
 
     # 3. the shuttle (outdoors, from wherever the terminal left us; boardShuttle wants 25 m)
     reply = walk_seat(s, char, round(dep["sx"], 1), round(dep["sy"], 1), within=14, z=dep["z"])
@@ -678,6 +708,14 @@ def main(argv):
             term = f"terminal {p['terminal']} " + (f"in {p['tcellName']} (local {p['tlx']:.1f},{p['tly']:.1f})" if p.get("tcell") else f"outdoors at {p.get('tx', 0):.0f},{p.get('ty', 0):.0f}") if p["terminal"] else "NO TERMINAL"
             shut = f"shuttle {p['shuttle']} at {p['sx']:.0f},{p['sy']:.0f}" if p["shuttle"] else "NO SHUTTLE"
             print(f"{p['name']:<34} {p['x']:8.0f} {p['y']:8.0f}  {'starport' if p['interplanetary'] else 'shuttleport':<11} {term}; {shut}")
+        return 0
+    if cmd == "tickets":
+        if not args:
+            die("tickets <character>")
+        held = held_tickets(args[0])
+        for t in held:
+            print(f"{t['oid']}  {t['fromPlanet']}:{t['fromPoint']} -> {t['toPlanet']}:{t['toPoint']}")
+        print(f"{len(held)} ticket(s) held by {args[0]}")
         return 0
     if cmd == "resources":
         if not args:
