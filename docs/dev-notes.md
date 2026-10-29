@@ -1669,3 +1669,6 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   it steps (sin θ, cos θ) with θ = facing − a, so an absolute bearing θ is asked for as a = facing − θ. The two random pickers
   (`randomizeGenericDestroyMission`, the scout/recon position loop) now take `fbMissionAngle(player)`; the radial on the mission
   terminal (ids 90–99, after the city "Align" block's 72–77) writes the sector into `PlayerObject` screenplay data.
+- **Changing an IDL method signature** (a new defaulted parameter on `LootManager::createLootObject`): the first `~/bin/build` after
+  it regenerates the header but links against objects compiled with the old one (`undefined symbol: …createLootObject(…, int, bool)`);
+  a second build pass links clean. `bench use` runs one pass, so run `tools/swg build` once more and `bench use` again.
