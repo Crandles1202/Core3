@@ -36,10 +36,12 @@ check_eq "seat_started" "$RC" "0" "$(tail -n1 <<<"$OUT")"
 DEED=$(lab "give:$CHAR:object/tangible/deed/harvester_deed/harvester_ore_s1_deed.iff" | sed -n 's/.*oid=\([0-9]*\).*/\1/p' | head -n1)
 check "deed_given" "$( [ -n "$DEED" ] && echo 1 || echo 0 )" "ore harvester deed oid $DEED"
 lab "deedValues:$DEED:120:12000" >/dev/null     # a crafted deed carries these; a lab-made one has 0 and 0
-lab "giveResource:$CHAR:wind:2000" >/dev/null
 lab "travel:$CHAR:tatooine:$X0:$Y0" >/dev/null
 sleep 3
 "$SEAT" cmd "$NAME" stand --nowait >/dev/null 2>&1 || true
+# the energy after the teleport: a give before the zone insert (right after the seat comes up) does nothing, silently
+WIND=$(lab "giveResource:$CHAR:wind:2000" 8 | grep -a 'giveResource' | head -n1)
+check "wind_in_hand" "$( grep -q '^INFO giveResource' <<<"$WIND" && echo 1 || echo 0 )" "$(cut -c1-140 <<<"$WIND")"
 LOTS0=$(lab "structures:$CHAR" | sed -n 's/.*remaining=\([0-9-]*\).*/\1/p' | head -n1)
 
 # --- place -----------------------------------------------------------------------------------------------

@@ -1652,6 +1652,12 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   tickets, `tools/seat travel` boards with a held ticket for the route before walking to a terminal (`seat tickets <char>`),
   and the pilot's `my_inventory` names a ticket by its route and shows a count only above 1. Lua and tools only: the
   quick gate covers it (`seat-travel` leg 2 now starts with a given ticket and checks none is bought and the held one is gone).
+- **A lab give right after a seat comes up can do nothing** (quick gate 2026-10-29): `seat-harvester` deposited no power once
+  because `giveResource:<char>:wind:2000`, sent the moment the seat was up, ran before the server had inserted the character
+  into its zone — `DirectorManager::givePlayerResource` returns silently with no zone (and when the zone has no spawn of that
+  class in shift). The oracle now refuses without a zone and reads the resource units back (`ERROR giveResource: nothing
+  landed …`); the scenario gives the energy after its teleport and checks `wind_in_hand`. Inventory-only gives (`give`) are
+  fine before the zone insert, which is why the deed landed and the wind did not.
 - **Cross-building paths failed.** `pathTo` from a cell in one building to a cell in another (Wex in a Mos Espa shop → the
   starport's ticket foyer) answered *no path* twice in the live log; the pathfinder never crosses from one building's cells
   to another's. Fixed: `pathTo` steps out of its own building first whenever the target cell is in a different building

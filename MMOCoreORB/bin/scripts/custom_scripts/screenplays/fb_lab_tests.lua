@@ -3053,11 +3053,27 @@ end
 -- giveResource:<char>:<type>:<units> → a resource container of that survey type (mineral, chemical, flora, gas,
 -- water, wind, solar, fusion, organic, geothermal) into the inventory (givePlayerResource binding; wind/solar/fusion
 -- are the power a harvester burns).
+-- givePlayerResource returns silently when the player is not in a zone yet (right after a login, before the zone insert) or
+-- the zone has no spawn of that class in shift: the seat-harvester scenario deposited no power once because the wind given a
+-- moment after the seat came up never landed (quick gate 2026-10-29). The oracle now reads the inventory back and says so.
 function FbLabTests:giveResource(charName, rtype, units)
 	local pPlayer = onlinePlayer(charName)
 	if pPlayer == nil then print("ERROR giveResource: " .. tostring(charName) .. " is offline"); return "offline" end
+	local zone = SceneObject(pPlayer):getZoneName()
+	if zone == nil or zone == "" then print("ERROR giveResource: " .. charName .. " is not in a zone yet (just logged in?)"); return "nozone" end
+	-- resource units in the bag before and after (a give into an existing stack of the same spawn merges, so count units, not items)
+	local function unitsHeld()
+		local total = 0
+		for _, r in ipairs(type(getInventoryItems) == "function" and getInventoryItems(charName) or {}) do total = total + (r.units or 0) end
+		return total
+	end
+	local before = unitsHeld()
 	givePlayerResource(pPlayer, rtype, tonumber(units) or 100)
-	print(string.format("INFO giveResource char=%s type=%s units=%d", charName, rtype, tonumber(units) or 100))
+	if unitsHeld() <= before then
+		print(string.format("ERROR giveResource: nothing landed for %s type=%s on %s (no spawn of that class in shift there, or a full bag)", charName, rtype, zone))
+		return "nothing"
+	end
+	print(string.format("INFO giveResource char=%s type=%s units=%d zone=%s", charName, rtype, tonumber(units) or 100, zone))
 	return "ok"
 end
 
