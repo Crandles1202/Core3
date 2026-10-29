@@ -16,6 +16,18 @@
 void MissionTerminalImplementation::fillObjectMenuResponse(ObjectMenuResponse* menuResponse, CreatureObject* player) {
 	TerminalImplementation::fillObjectMenuResponse(menuResponse, player);
 
+	// Final Boss: pin this terminal's missions to a compass sector (stored on the player; read by the mission manager)
+	{
+		auto ghost = player->getPlayerObject();
+		String dir = ghost != nullptr ? ghost->getScreenPlayData("FbMissionDir", "dir") : "";
+		String label = dir.isEmpty() ? "Missions by direction (any)" : "Missions by direction (" + dir + ")";
+		menuResponse->addRadialMenuItem(90, 3, label);
+		menuResponse->addRadialMenuItemToRadialID(90, 91, 3, "Any direction");
+		static const char* names[8] = { "North", "North-east", "East", "South-east", "South", "South-west", "West", "North-west" };
+		for (int i = 0; i < 8; ++i)
+			menuResponse->addRadialMenuItemToRadialID(90, 92 + i, 3, names[i]);
+	}
+
 	ManagedReference<CityRegion*> city = player->getCityRegion().get();
 
 	if (city != nullptr && city->isMayor(player->getObjectID()) && getParent().get() == nullptr) {
@@ -72,6 +84,21 @@ int MissionTerminalImplementation::handleObjectMenuSelect(CreatureObject* player
 
 		return 0;
 
+	} else if (selectedID >= 91 && selectedID <= 99) {
+		// Final Boss: the direction choice
+		auto ghost = player->getPlayerObject();
+		if (ghost != nullptr) {
+			static const char* sectors[8] = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" };
+			static const char* names[8] = { "north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west" };
+			if (selectedID == 91) {
+				ghost->setScreenPlayData("FbMissionDir", "dir", "");
+				player->sendSystemMessage("Missions from the terminals will point in any direction again. List them again to refresh.");
+			} else {
+				ghost->setScreenPlayData("FbMissionDir", "dir", sectors[selectedID - 92]);
+				player->sendSystemMessage(String("Missions from the terminals will point ") + names[selectedID - 92] + " of you. List them again to refresh (deliveries go where their contact lives).");
+			}
+		}
+		return 0;
 	} else if (selectedID == 74 || selectedID == 75 || selectedID == 76 || selectedID == 77) {
 
 		CityManager* cityManager = getZoneServer()->getCityManager();

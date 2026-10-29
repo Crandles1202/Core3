@@ -1283,6 +1283,16 @@ function FbLabTests:missions(charName)
 	return tostring(shown)
 end
 
+-- missionDir:<char>[:<N|NE|E|SE|S|SW|W|NW|any>] → read or set the character's mission direction (what the terminal radial stores)
+function FbLabTests:missionDir(charName, dir)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "none" end
+	if dir ~= nil then writeScreenPlayData(pPlayer, "FbMissionDir", "dir", dir == "any" and "" or dir) end
+	local cur = readScreenPlayData(pPlayer, "FbMissionDir", "dir")
+	print(string.format("INFO missionDir char=%s dir=%s", charName, (cur ~= nil and cur ~= "") and cur or "any"))
+	return (cur ~= nil and cur ~= "") and cur or "any"
+end
+
 -- xp:<char>:<type> → the character's experience of one type (dance, music, combat_general, …)
 function FbLabTests:xp(charName, xpType)
 	local pPlayer = loadedPlayer(charName)

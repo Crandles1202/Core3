@@ -1659,3 +1659,7 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   `no player named TeylarunLuaFunction` lines (two console calls interleaved: the deploy hook's `crew up` and a pilot wake;
   core3-b4 is serialising `swg cmd` per instance with a flock).
 - **`swg live tag` picks the next free name** (`chuck-stable-YYYYMMDD`, then `-2`, `-3`…): three releases went out on 2026-10-28.
+- **Missions by direction (2026-10-28, Chuck).** `getWorldCoordinate(d, a)` takes an angle *relative to the player's facing*:
+  it steps (sin θ, cos θ) with θ = facing − a, so an absolute bearing θ is asked for as a = facing − θ. The two random pickers
+  (`randomizeGenericDestroyMission`, the scout/recon position loop) now take `fbMissionAngle(player)`; the radial on the mission
+  terminal (ids 90–99, after the city "Align" block's 72–77) writes the sector into `PlayerObject` screenplay data.
