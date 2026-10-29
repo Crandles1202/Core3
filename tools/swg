@@ -1304,7 +1304,11 @@ cmd_live() {
 			;;
 		tag)
 			shift
-			local name=${1:-chuck-stable-$(date +%Y%m%d)}
+			local name=${1:-}
+			if [ -z "$name" ]; then   # today's name, then -2, -3, … (several releases a day happen)
+				name="chuck-stable-$(date +%Y%m%d)"; local n=2
+				while git -C "$BENCH" rev-parse -q --verify "refs/tags/$name" >/dev/null; do name="chuck-stable-$(date +%Y%m%d)-$n"; n=$((n + 1)); done
+			fi
 			[[ "$name" == chuck-stable-* ]] || die "stable tags are named chuck-stable-YYYYMMDD[-suffix]"
 			# the tag goes on the pushed unstable tip; the bench checkout may sit anywhere (a gate holds it detached for an hour)
 			git -C "$BENCH" fetch -q origin 2>/dev/null || warn "fetch from origin failed; comparing with the last known origin/unstable"
@@ -1371,7 +1375,25 @@ cmd_live() {
 			local ucfg="$dir/user.cfg"
 			if [ -f "$ucfg" ]; then
 				if [ "$port" = 44453 ]; then sed -i 's/^# *\(0fd345d9 *= *true\)/\1/; s/^drawNetworkIds *= *0/drawNetworkIds = 1/' "$ucfg"; else sed -i 's/^\(0fd345d9 *= *true\)/# \1/; s/^drawNetworkIds *= *1/drawNetworkIds = 0/' "$ucfg"; fi
-				say "$ucfg: client admin flag $( grep -q '^0fd345d9' "$ucfg" && echo on || echo off ), floating ids $( grep -q '^drawNetworkIds *= *1' "$ucfg" && echo on || echo off ) ($( [ "$port" = 44453 ] && echo 'bench: admin commands and ids' || echo 'production: plain names'))"
+				say "$ucfg: client admin flag $( grep -q '^0fd345d9' "$ucfg" && echo on || echo off )"
+			fi
+			# the "(118) oid - name" labels: the client keeps drawNetworkIds in its SAVED machine options (an IFF it rewrites at
+			# exit and reloads over user.cfg), so the saved value is what counts — patched only while the game is closed
+			local mopt="$dir/swgemu_machineoptions.iff"
+			if [ -f "$mopt" ]; then
+				if tasklist.exe 2>/dev/null | tr -d '\r' | grep -qi 'SWGEmu.exe'; then
+					warn "$mopt: the game is running — close it and run 'swg live client$( [ "$port" = 44453 ] && echo ' --bench')' again to switch the floating ids"
+				else
+					python3 - "$mopt" "$( [ "$port" = 44453 ] && echo 1 || echo 0 )" <<'PY'
+import struct, sys
+p, want = sys.argv[1], int(sys.argv[2])
+d = bytearray(open(p, "rb").read()); key = b"ClientUserInterface\x00drawNetworkIds\x00"; i = d.find(key)
+if i < 12 or d[i-12:i-8] != b"INT ": print("   %s: no saved drawNetworkIds (nothing to switch)" % p); sys.exit(0)
+have = struct.unpack("<i", d[i-4:i])[0]
+if have != want: d[i-4:i] = struct.pack("<i", want); open(p, "wb").write(d)
+print("   %s: floating ids %s" % (p, "on" if want else "off"))
+PY
+				fi
 			fi
 			say "$cfg: loginServerPort0=$port ($( [ "$port" = 44453 ] && echo 'the bench' || echo 'the live instance')); restart the game client (the Launchpad rewrites the port from its own server list: pick the server there too)"
 			;;
