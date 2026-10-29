@@ -381,7 +381,8 @@ Persisted object fields (`containerVolumeLimit`, …) are only read from the tem
   *wounded*, its `clinic` tool walks to the droid (lab `clinic:<planet>:<x>:<y>`). **A travel point's shuttle is the nearest
   one**: `travelPoints` used to keep the last shuttle within 120 m, so Mos Espa Starport resolved to the East shuttleport's
   shuttle 66 m away and `boardShuttle` (which matches the ticket against the point nearest the character) refused nine valid
-  tickets; `checkShuttles` asserts one shuttle per travel point.
+  tickets; `checkShuttles` asserts one shuttle per travel point. **A seat boards with a ticket it already holds** for the
+  route before buying one (lab `tickets:<char>` over the stock `LuaTicketObject` binding; Wex had bought eighteen).
 - gtest's `<<` cannot print an engine3 `String`; use `.toCharArray()` in assertion messages.
 - **Threads in engine3 code must be engine3 `Thread`s** (subclass, `run()`, `start()`, `join()`), never `std::thread`:
   `Locker` skips the lock when the lock's holder equals `Thread::getCurrentThread()`, and on a foreign thread both are

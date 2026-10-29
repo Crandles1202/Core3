@@ -1644,8 +1644,14 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   so the starport row carried the shuttleport's shuttle and the seat walked there. `boardShuttle` takes the travel point
   nearest the *character* and looks for a ticket from that point: a starport ticket at a shuttleport is no ticket.
   `FbLabTests.shuttleFor` picks the nearest; `checkShuttles` asserts distinct shuttles per travel point on every running
-  planet (a point with none within 120 m is a WARN: Theed Spaceport boards without one). Still open: a seat buys a new
-  ticket on every attempt — nine identical Coronet tickets in Wex's bag; the seat should reuse one it already holds.
+  planet (a point with none within 120 m is a WARN: Theed Spaceport boards without one). **A seat now boards with a
+  held ticket** (2026-10-29): by the deploy Wex held eighteen Coronet tickets (one per refused attempt, 600 cr each) and the
+  pilot read them as `count 0` because the inventory line prints the server's *use count*. The stock `LuaTicketObject`
+  binding (the Corvette scripts use it) reads a ticket's route, so lab `tickets:<char>` lists them, `ticketGive:<char>:
+  <fromPlanet>:<fromPoint>:<toPlanet>:<toPoint>` makes one for a scenario, the inventory rows carry `from=`/`to=` for
+  tickets, `tools/seat travel` boards with a held ticket for the route before walking to a terminal (`seat tickets <char>`),
+  and the pilot's `my_inventory` names a ticket by its route and shows a count only above 1. Lua and tools only: the
+  quick gate covers it (`seat-travel` leg 2 now starts with a given ticket and checks none is bought and the held one is gone).
 - **Cross-building paths failed.** `pathTo` from a cell in one building to a cell in another (Wex in a Mos Espa shop → the
   starport's ticket foyer) answered *no path* twice in the live log; the pathfinder never crosses from one building's cells
   to another's. Fixed: `pathTo` steps out of its own building first whenever the target cell is in a different building

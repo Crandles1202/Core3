@@ -974,6 +974,7 @@ function FbLabTests:inventory(charName)
 	if rows ~= nil then
 		for _, r in ipairs(rows) do
 			local extra = r.resource ~= nil and string.format(" resource=%s rtype=%s units=%d", (r.resource ~= "" and r.resource or "-"):gsub("%s", "_"), (r.resourceType ~= "" and r.resourceType or "-"):gsub("%s", "_"), r.units or 0) or ""
+			if r.type == 0x2012 then extra = extra .. FbLabTests.ticketFields(getSceneObject(r.oid)) end
 			print(string.format("INFO item oid=%d path=%s name=%s type=0x%x count=%d%s", r.oid, r.template, (r.name ~= "" and r.name or "-"):gsub("%s", "_"), r.type, r.useCount or 1, extra))
 		end
 		print("INFO inventory char=" .. charName .. " count=" .. #rows)
@@ -987,6 +988,56 @@ function FbLabTests:inventory(charName)
 	end
 	print("INFO inventory char=" .. charName .. " count=" .. n)
 	return tostring(n)
+end
+
+-- a travel ticket's route as lab fields: " from=<planet>:<point> to=<planet>:<point>" (point names with underscores, as
+-- travelPoints prints them; the ticket itself stores the spaces the purchase command carried)
+function FbLabTests.ticketFields(pTicket)
+	if pTicket == nil then return "" end
+	local t = LuaTicketObject(pTicket)
+	local function u(x) return (tostring(x or "-"):gsub("%s", "_")) end
+	return string.format(" from=%s:%s to=%s:%s", u(t:getDeparturePlanet()), u(t:getDeparturePoint()), u(t:getArrivalPlanet()), u(t:getArrivalPoint()))
+end
+
+-- tickets:<char> → the travel tickets a character holds (game object type 0x2012), one INFO ticket line each with the
+-- route, then INFO tickets count=N. The seat boards with a held ticket for its route before it buys another: Wex bought
+-- eighteen identical Coronet tickets on production (600 cr each) because every attempt started with the terminal.
+function FbLabTests:tickets(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pInv = SceneObject(pPlayer):getSlottedObject("inventory")
+	local n, held = SceneObject(pInv):getContainerObjectsSize(), 0
+	for i = 0, n - 1 do
+		local pItem = SceneObject(pInv):getContainerObject(i)
+		if pItem ~= nil and SceneObject(pItem):getGameObjectType() == 0x2012 then
+			held = held + 1
+			print("INFO ticket oid=" .. SceneObject(pItem):getObjectID() .. FbLabTests.ticketFields(pItem))
+		end
+	end
+	print("INFO tickets char=" .. charName .. " count=" .. held)
+	return tostring(held)
+end
+
+-- ticketGive:<char>:<fromPlanet>:<fromPoint>:<toPlanet>:<toPoint> → a travel ticket for that route into the inventory
+-- (what purchaseTicket makes, without the terminal or the credits); point names take underscores for spaces
+function FbLabTests:ticketGive(charName, fromPlanet, fromPoint, toPlanet, toPoint)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	local pInv = SceneObject(pPlayer):getSlottedObject("inventory")
+	local pItem = giveItem(pInv, "object/tangible/travel/travel_ticket/base/base_travel_ticket.iff", -1)
+	if pItem == nil then
+		print("ERROR giveItem failed for the travel ticket")
+		return "failed"
+	end
+	local function sp(x) return (tostring(x or ""):gsub("_", " ")) end
+	local t = LuaTicketObject(pItem)
+	t:setDeparturePlanet(sp(fromPlanet))
+	t:setDeparturePoint(sp(fromPoint))
+	t:setArrivalPlanet(sp(toPlanet))
+	t:setArrivalPoint(sp(toPoint))
+	t:setOwnerID(SceneObject(pPlayer):getObjectID())
+	print("INFO ticket oid=" .. SceneObject(pItem):getObjectID() .. FbLabTests.ticketFields(pItem))
+	return tostring(SceneObject(pItem):getObjectID())
 end
 
 -- bazaarNear:<char>[:<radius>] → the bazaar terminals (game object type 0x4002) within radius m (default 600) of the
