@@ -1501,6 +1501,19 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   because the newest character then existed on both). `db_name()` in lib.sh now follows `SWG_DBNAME`, else `SWG_INSTANCE`
   (`swgemu`, `swgemu_live`, `swgemu_bench2`), the same shape as `login_port()`. Rule for every tool: nothing names
   `swgemu` or `44453` directly; the instance table decides.
+- **Gate of the merged `unstable` f7eb41bb79 on bench2** (rollout + alice together, never run as one before): PASS, 60/60,
+  two retries. `seat-fight.objectsNear_level` scanned 5 m around the raider's spawn point and the aggressive raider had
+  already walked off it (the threat row a second earlier had it 1.6 m away); the scan radius is 40 m now. `bounty.hunter_closes_in`
+  found the level-1 character already incapacitated by the thug when it polled (the check wants combat=true and standing):
+  a race the scenario loses when the thug lands its first shots fast; left as is, it is the retry's kind of flake. The
+  earlier `bounty` flake today was different (the fixer's first conversation in the cantina timed out) — the indoor
+  first-converse flake is now on three gates; still unexplained.
+- **The "noise" was Wex's whole day.** The `bazaarNear` `%d` error was not only three ERROR lines per gate: the oracle
+  threw on its first terminal row and printed nothing, so the pilot's `sell` read "no bazaar terminal within 800 m" —
+  Wex shuttled from Corellia to Anchorhead, then Mos Espa, walked into town twice and asked passers-by where the bazaar
+  was, carrying 143 000 units of Abeism, all day on the production build (`10f6472af2`). With `chuck-stable-20261027`
+  the same call lists four terminals 96–140 m from where he stands. Lesson: an ERROR line from a lab oracle the pilot
+  calls is a broken citizen tool, never cosmetic; `logs --errors` after a gate is part of reading the gate.
 
 
 
@@ -1614,3 +1627,33 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   sources (`fb_arrivals`, `fb_scenes`) are not registered; a template's list is pruned at 200 records and capped at 400.
   Restarted from gdb (`swg --live stop`, `start`; backtrace in `~/swg-live/bin/gdb.log`, the pane in `~/.swg-lab/live-crash-*.txt`).
   Any growing per-player or per-world quest-status list needs a cap — check `FbGalaxyChatter` (8), `FbCheckpoints.hailed` (3 min window).
+
+### 2026-10-28 — wounds, the clinic, and the nearest shuttle (alice)
+
+- **Teyla was wounded, not stuck.** Two days at 585/1100 on production, calling for a medic in /say every wake. A pool only
+  regenerates up to max minus wounds (`CreatureObjectImplementation::healDamage`), and nothing a citizen has clears a wound:
+  no citizen is a medic, and nobody had told the persona that the FB-21 medical droid (2.6) clears wounds and shock for free
+  in every medcenter. The ham line printed current/max/base, so the pilot's `my_health` reported `wounds` as 0 and the model
+  rested in good faith. Now: Lua `getWounds(pool)` / `getShockWounds()` bindings, `INFO ham … wounds=h/a/m shock=N`, lab
+  `clinic:<planet>:<x>:<y>` (the droids nearest first, cell-local coordinates for the walk), the pilot's condition reads
+  *fine but wounded (…): resting never clears wounds … (tool clinic)* above 20 wounds, and `clinic` walks to the droid
+  and takes row 1 of its intro over real packets. Scenario `seat-clinic`. Lesson: a citizen that asks the same question for
+  two days is a missing tool, not a patient character — read the pilot logs after every deploy, not only the error log.
+- **Wex's nine tickets.** Eight refusals of *@travel:no_ticket* at the Mos Espa shuttle, 600 cr each. `travelPoints` kept the
+  LAST shuttle within 120 m of a travel point, not the nearest; Mos Espa's East shuttleport stands 66 m from the starport pad,
+  so the starport row carried the shuttleport's shuttle and the seat walked there. `boardShuttle` takes the travel point
+  nearest the *character* and looks for a ticket from that point: a starport ticket at a shuttleport is no ticket.
+  `FbLabTests.shuttleFor` picks the nearest; `checkShuttles` asserts distinct shuttles per travel point on every running
+  planet (a point with none within 120 m is a WARN: Theed Spaceport boards without one). Still open: a seat buys a new
+  ticket on every attempt — nine identical Coronet tickets in Wex's bag; the seat should reuse one it already holds.
+- **Cross-building paths failed.** `pathTo` from a cell in one building to a cell in another (Wex in a Mos Espa shop → the
+  starport's ticket foyer) answered *no path* twice in the live log; the pathfinder never crosses from one building's cells
+  to another's. Fixed: `pathTo` steps out of its own building first whenever the target cell is in a different building
+  (verified on bench2: 54 points, 422 m, via the shop door).
+- **Heredoc inside a heredoc:** a `cat > file <<'EOF'` whose body contains a python `<<EOF` ends at the inner `EOF`; the rest
+  of the file ran as shell (a syntax error, nothing committed). Use a distinct outer delimiter (`<<'SCENARIO'`).
+- Production after the 2026-10-28 deploy: 27 `AuctionManager … missing owner` lines at boot deleting *Loaf of Bread* listings
+  of a deleted bench character (the bazaar-listings scenario's leftovers in the copied data; one-time, cosmetic) and two
+  `no player named TeylarunLuaFunction` lines (two console calls interleaved: the deploy hook's `crew up` and a pilot wake;
+  core3-b4 is serialising `swg cmd` per instance with a flock).
+

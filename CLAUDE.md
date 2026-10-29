@@ -375,6 +375,13 @@ Persisted object fields (`containerVolumeLimit`, …) are only read from the tem
 - **The terrain refuses ±8192** (`TerrainManager::getHeight` out of bounds) with a warning *and a stack trace per call*: a
   scan that touches the planet edge floods the console thread for minutes while `swg status` still says RUNNING. Keep every
   terrain lookup strictly inside the planet; the resource oracle's best spots are land-only (`getWaterHeightAt`).
+- **Wounds, not regeneration** (2026-10-28): a pool regenerates only up to max minus wounds (`healDamage`), and nothing a
+  citizen does clears a wound except the FB-21 medical droid (free, in every medcenter); Teyla sat two days at 585/1100 asking
+  for a medic. The ham line prints `wounds=h/a/m shock=N` (Lua `getWounds`/`getShockWounds`), the pilot's condition says
+  *wounded*, its `clinic` tool walks to the droid (lab `clinic:<planet>:<x>:<y>`). **A travel point's shuttle is the nearest
+  one**: `travelPoints` used to keep the last shuttle within 120 m, so Mos Espa Starport resolved to the East shuttleport's
+  shuttle 66 m away and `boardShuttle` (which matches the ticket against the point nearest the character) refused nine valid
+  tickets; `checkShuttles` asserts one shuttle per travel point.
 - gtest's `<<` cannot print an engine3 `String`; use `.toCharArray()` in assertion messages.
 - **Threads in engine3 code must be engine3 `Thread`s** (subclass, `run()`, `start()`, `join()`), never `std::thread`:
   `Locker` skips the lock when the lock's holder equals `Thread::getCurrentThread()`, and on a foreign thread both are

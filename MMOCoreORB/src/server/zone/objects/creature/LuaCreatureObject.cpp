@@ -50,6 +50,8 @@ Luna<LuaCreatureObject>::RegType LuaCreatureObject::Register[] = {
 		{ "getHAM", &LuaCreatureObject::getHAM },
 		{ "getBaseHAM", &LuaCreatureObject::getBaseHAM },
 		{ "getMaxHAM", &LuaCreatureObject::getMaxHAM },
+		{ "getWounds", &LuaCreatureObject::getWounds },
+		{ "getShockWounds", &LuaCreatureObject::getShockWounds },
 		{ "getTargetID", &LuaCreatureObject::getTargetID },
 		{ "clearCombatState", &LuaCreatureObject::clearCombatState },
 		{ "getParent", &LuaSceneObject::getParent },
@@ -609,6 +611,22 @@ int LuaCreatureObject::getMaxHAM(lua_State* L) {
 	int value = realObject->getMaxHAM(type);
 
 	lua_pushnumber(L, value);
+
+	return 1;
+}
+
+// getWounds(pool) / getShockWounds(): the wounds that cap regeneration (healDamage stops at max minus wounds); the lab's ham
+// line prints them so a pilot can tell "wounded, resting does nothing" from "healing" (Teyla, 2026-10-28)
+int LuaCreatureObject::getWounds(lua_State* L) {
+	int type = lua_tonumber(L, -1);
+
+	lua_pushnumber(L, realObject->getWounds(type));
+
+	return 1;
+}
+
+int LuaCreatureObject::getShockWounds(lua_State* L) {
+	lua_pushnumber(L, (int) realObject->getShockWounds());
 
 	return 1;
 }

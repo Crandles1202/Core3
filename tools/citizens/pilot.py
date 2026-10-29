@@ -270,6 +270,14 @@ class Senses:
                     near.append({"oid": o["oid"], "name": names.get(o["oid"], o["name"]), "player": o["type"] == 0x409, "distance": round(d, 1)})
             near.sort(key=lambda n: n["distance"])
         w = self.where_fields()
+        condition = self.condition_of(w)
+        if me and condition == "fine":
+            seat_mod = load_seat_module()
+            hf = seat_mod.lab_fields(next((l for l in seat_mod.lab(f"ham:{self.character_name}", 8).splitlines() if l.startswith("INFO ham")), ""))
+            wd = wounds_of(hf)
+            if sum(wd.values()) > 20:   # Teyla sat two days at max minus ~500 wounds asking passers-by for a medic (2026-10-28)
+                condition = (f"fine but wounded (health {wd['health']}, action {wd['action']}, mind {wd['mind']} wounds): resting never "
+                             "clears wounds, the FB-21 medical droid in every city's medcenter does, free (tool clinic)")
         threats, strength = [], None
         if me and isinstance(planet, str):
             t = threats_of(self.character_name, 150)
@@ -289,7 +297,7 @@ class Senses:
         return {
             "xp": self.progress(),
             "you": self.character_name,
-            "condition": self.condition_of(w),
+            "condition": condition,
             "now": self.current_milestone(),
             "character": ping.get("character"),
             "planet": planet if isinstance(planet, str) else None,
@@ -302,6 +310,17 @@ class Senses:
             "threats": threats,
             "training": training,
         }
+
+
+def wounds_of(f):
+    """the wounds per pool from a lab ham line (wounds=h/a/m; zeros on a server without the field): regeneration stops at
+    max minus wounds, so a wounded character never fills up by resting — only a medical droid clears them"""
+    parts = (f.get("wounds") or "0/0/0").split("/")
+    try:
+        h, a, m = (int(float(parts[i])) for i in range(3))
+    except (ValueError, IndexError):
+        h, a, m = 0, 0, 0
+    return {"health": h, "action": a, "mind": m}
 
 
 def threats_of(character_name, radius=150):
@@ -581,7 +600,54 @@ def seat_tools(seat, files, character_name, seat_name):
         seat_mod = load_seat_module()
         line = next((l for l in seat_mod.lab(f"ham:{character_name}", 8).splitlines() if l.startswith("INFO ham")), "")
         f = seat_mod.lab_fields(line)
-        return {"ok": bool(f), "condition": _condition(), "health": f.get("health"), "action": f.get("action"), "mind": f.get("mind")}
+        wounds = wounds_of(f)
+        out = {"ok": bool(f), "condition": _condition(), "health": f.get("health"), "action": f.get("action"), "mind": f.get("mind"),
+               "wounds": wounds, "shock": int(float(f.get("shock") or 0))}
+        if sum(wounds.values()) > 0:
+            out["note"] = ("pools are current/max/base; regeneration stops at max minus wounds and resting never clears wounds: "
+                           "the FB-21 medical droid clears them for free (tool clinic)")
+        return out
+
+    def clinic():
+        """wounds and shock cleared at the nearest FB-21 medical droid (2.6: free, inside every city's medcenter): walk there
+        (indoors through the door), take 'Clear my battle wounds and shock damage' (row 1 of its intro) over real packets, and
+        read the wounds back server-side"""
+        seat_mod = load_seat_module()
+        here = seat_mod.where(character_name)
+        if not here:
+            return {"ok": False, "error": "could not read where you are"}
+        ham = lambda: seat_mod.lab_fields(next((l for l in seat_mod.lab(f"ham:{character_name}", 8).splitlines() if l.startswith("INFO ham")), ""))
+        before = wounds_of(ham())
+        rows = [seat_mod.lab_fields(l) for l in seat_mod.lab(f"clinic:{here['zone']}:{here['x']:.0f}:{here['y']:.0f}", 30).splitlines()
+                if l.startswith("INFO clinic ")]
+        if not rows:
+            return {"ok": False, "error": f"no medical droid on {here['zone']}; the FB-21 network stands in the medcenters of the "
+                                          "Tatooine, Naboo and Corellia cities: travel_to one of their shuttle points first"}
+        dr = rows[0]
+        name = (dr.get("name") or "FB-21").replace("_", " ")
+        dist = float(dr.get("distance") or 0)
+        if dist > MAX_WALK_M:
+            return {"ok": False, "error": f"the nearest medical droid stands {dist:.0f} m away: travel_to that city's shuttle point first"}
+        cell = int(dr.get("cell") or 0)
+        if cell:
+            w = seat_mod.walk_seat(seat, character_name, float(dr["localX"]), float(dr["localY"]), cell=cell, within=3)
+        else:
+            w = seat_mod.walk_seat(seat, character_name, float(dr["x"]), float(dr["y"]), within=3)
+        if not w.get("ok"):
+            return {"ok": False, "error": f"could not reach {name}: {seat_mod.action_error(w)}"}
+        npc = int(dr["oid"])
+        c = seat.request({"op": "action", "action": {"action": "converse", "npc": npc, "options": [1], "timeout": 12}}, timeout=90)
+        if not c.get("ok"):
+            return {"ok": False, "error": f"{name} would not talk: {seat_mod.action_error(c)}"}
+        time.sleep(1)
+        f = ham()
+        after = wounds_of(f)
+        ok = sum(after.values()) == 0
+        result = {"ok": ok, "droid": name, "indoors": bool(cell), "wounds_before": before, "wounds_after": after,
+                  "health": f.get("health"), "action": f.get("action"), "mind": f.get("mind")}
+        if not ok:
+            result["error"] = f"{name} did not clear the wounds; it said: " + str(seat.request({"op": "vars", "path": "/Conversation/message"}).get("vars"))
+        return result
 
     def _inventory_rows():
         """the server's inventory rows (lab inventory: oid, path, name, type, count, resource/rtype/units for a stack);
@@ -929,6 +995,7 @@ def seat_tools(seat, files, character_name, seat_name):
         "my_health": my_health, "clone": clone, "my_inventory": my_inventory, "travel_points": travel_points, "spots_near_shuttles": spots_near_shuttles, "creatures_near": creatures_near, "hunt": hunt, "tend_harvesters": tend_harvesters,
         "threats_near": threats_near,
         "train": train,
+        "clinic": clinic,
         "sell": sell,
         "remember": remember, "complete_milestone": complete_milestone, "change_plan": change_plan, "rest": rest,
     }
@@ -957,12 +1024,14 @@ def seat_tools(seat, files, character_name, seat_name):
          "input_schema": {"type": "object", "properties": {"oid": {"type": "integer"}}, "required": ["oid"], "additionalProperties": False}, "strict": True},
         {"name": "my_structures", "description": "The structures you own (oid, planet, position, active) and the lots you have left.",
          "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},
-        {"name": "my_health", "description": "Your condition (fine, incapacitated, dead) and health/action/mind pools as current/max/wounds.",
+        {"name": "my_health", "description": "Your condition (fine, incapacitated, dead), health/action/mind pools as current/max/base, and your wounds per pool (wounds cap what resting restores; clinic clears them).",
          "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},
         {"name": "threats_near", "description": "What would attack you within 150 m (aggressive creatures and NPCs, wild creatures stronger than you) with level and distance, and your own fighting strength. Hunt only when it is empty; with anything in it, walk 300 m toward town first.",
          "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},
         {"name": "train", "description": "Buy a skill box at its trainer (the exact name from \"training\" → \"ready\" in your perception, e.g. outdoors_scout_movement_01): walks to the nearest trainer of that profession in this city and pays the credits. This is how you grow stronger; a box in \"next\" needs more experience first.",
          "input_schema": {"type": "object", "properties": {"skill": {"type": "string"}}, "required": ["skill"]}},
+        {"name": "clinic", "description": "Clear your wounds and shock at the nearest FB-21 medical droid (free, inside every city's medcenter; walks there and talks to it). Wounds are the gap between a pool's max and what resting restores; resting never closes them. Use it whenever my_health or your condition says wounded.",
+         "input_schema": {"type": "object", "properties": {}}},
         {"name": "sell", "description": "List something you carry on the nearest bazaar terminal for an instant sale: a resource by its name (the whole stack) or an item by a fragment of its name, at a price in credits for the whole listing. Walks to the terminal; the 20 cr fee comes from your bank; the listing stands a year and the buyer's credits land in your bank.",
          "input_schema": {"type": "object", "properties": {"item": {"type": "string"}, "price": {"type": "integer"}}, "required": ["item", "price"]}},
         {"name": "spots_near_shuttles", "description": "For one resource (exact name from resources_here): the best spot within 1.5 km of each shuttle point on this planet, with density and the walk from the shuttle. A harvester only needs a good spot near a town.",

@@ -5,7 +5,7 @@ tools/citizens/crew — seat and pilot the citizens as a group (Phase 7, Final B
   crew up [<citizen>…|all] [--idle S] [--model ID] [--dry]   seat each citizen (tools/seat start) and start its pilot in
                                                             the background; logs in ~/.swg-lab/citizens/<name>/pilot.log
   crew down [<citizen>…|all]                                stop the pilots (by pid) and the seats
-  crew status                                               seat up? pilot running? last wake, per citizen
+  crew status [--up]                                        seat up? pilot running? last wake, per citizen; --up = bare names seated on this instance
   crew log <citizen> [lines]                                tail of a pilot's log
 
 Citizens come from tools/citizens/directory.json (account + character). With no names, up/down act on every citizen
@@ -197,6 +197,11 @@ def cmd_down(args):
 
 def cmd_status(args):
     dirmap = directory()
+    if "--up" in args:   # bare names of the citizens seated on THIS instance, one per line (the live deploy hook's list)
+        for name in sorted(dirmap):
+            if seat_up(name) and seat_instance(name) == current_instance():
+                print(name)
+        return
     print(f"crew: {instance_line()}")
     for name in sorted(dirmap):
         c = dirmap[name]
