@@ -1659,3 +1659,9 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   `no player named TeylarunLuaFunction` lines (two console calls interleaved: the deploy hook's `crew up` and a pilot wake;
   core3-b4 is serialising `swg cmd` per instance with a flock).
 - **`swg live tag` picks the next free name** (`chuck-stable-YYYYMMDD`, then `-2`, `-3`…): three releases went out on 2026-10-28.
+- **Loot-kit flake solved (2026-10-28).** `LootManager::createLootObject` rolls, besides the rare legendary/exceptional modifiers,
+  a *yellow* bonus in `getRandomModifier` (chance ≈ `getLevelRankValue(level, 0.2, 0.9) × 100` in 1000 → 2.2 % at level 10) that
+  doubles the band of a dynamic attribute; armor caps at 80 % in `ArmorObject::getTypeValue`, so a kit piece read 80 across the
+  board (three gates). `createLootObject(trx, item, level, maxCondition, plain)` — `plain` sets the modifier to 0: the item's own
+  bands, nothing else; the kits use it. A plain roll gives dynamic attributes their minimum, which is what the common case was anyway
+  (base chance 22 %, otherwise 0).

@@ -353,7 +353,7 @@ void LootManagerImplementation::setRandomLootValues(TransactionLog& trx, Tangibl
 	}
 }
 
-TangibleObject* LootManagerImplementation::createLootObject(TransactionLog& trx, const LootItemTemplate* templateObject, int level, bool maxCondition) {
+TangibleObject* LootManagerImplementation::createLootObject(TransactionLog& trx, const LootItemTemplate* templateObject, int level, bool maxCondition, bool plain) {
 #ifdef DEBUG_LOOT_MAN
 	info(true) << " ---------- LootManagerImplementation::createLootObject -- called ----------";
 #endif
@@ -401,7 +401,11 @@ TangibleObject* LootManagerImplementation::createLootObject(TransactionLog& trx,
 	float chance = LootValues::getLevelRankValue(Math::max(level - 50, 0), 0.f, 0.35f) * levelChance;
 	float excMod = baseModifier;
 
-	if (System::random(legendaryChance) <= chance) {
+	if (plain) {
+		// Final Boss: a caller that wants the item's own value bands and nothing more (the loot kits): no legendary,
+		// exceptional or "yellow" bonus roll — a yellow roll pushed a kit piece's armor past the 80 % cap (2026-10-28)
+		excMod = 0.f;
+	} else if (System::random(legendaryChance) <= chance) {
 		excMod = legendaryModifier;
 	} else if (System::random(exceptionalChance) <= chance) {
 		excMod = exceptionalModifier;

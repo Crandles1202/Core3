@@ -135,8 +135,9 @@ void LootkitObjectImplementation::createItem() {
 
 			TransactionLog trx(TrxCode::LUALOOT, player);
 			trx.addState("lootKit", getObjectID());
-			// level 10: below the rank where the loot manager rolls exceptional or legendary modifiers; the tier is in the item
-			rewardObject = lootManager->createLootObject(trx, lootTemplate, 10, true);   // maxCondition: a kit makes a new piece, not a worn one
+			// plain: the item's own value bands, no legendary / exceptional / yellow bonus (a yellow roll once pushed a tier III
+			// piece to the 80 % armor cap); maxCondition: a kit makes a new piece, not a worn one
+			rewardObject = lootManager->createLootObject(trx, lootTemplate, 10, true, true);
 		} else if (reward.size() > 0) {
 			rewardObject = zoneServer->createObject(reward.get(System::random(reward.size()-1)), 2);
 		}
