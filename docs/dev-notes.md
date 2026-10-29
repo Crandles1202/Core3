@@ -1665,3 +1665,7 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   board (three gates). `createLootObject(trx, item, level, maxCondition, plain)` — `plain` sets the modifier to 0: the item's own
   bands, nothing else; the kits use it. A plain roll gives dynamic attributes their minimum, which is what the common case was anyway
   (base chance 22 %, otherwise 0).
+- **Missions by direction (2026-10-28, Chuck).** `getWorldCoordinate(d, a)` takes an angle *relative to the player's facing*:
+  it steps (sin θ, cos θ) with θ = facing − a, so an absolute bearing θ is asked for as a = facing − θ. The two random pickers
+  (`randomizeGenericDestroyMission`, the scout/recon position loop) now take `fbMissionAngle(player)`; the radial on the mission
+  terminal (ids 90–99, after the city "Align" block's 72–77) writes the sector into `PlayerObject` screenplay data.

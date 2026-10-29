@@ -8,6 +8,7 @@
 #include "server/zone/managers/mission/MissionManager.h"
 #include "server/zone/objects/tangible/terminal/mission/MissionTerminal.h"
 #include "server/zone/objects/creature/CreatureObject.h"
+#include "server/zone/objects/player/PlayerObject.h"
 #include "server/zone/objects/creature/ai/AiAgent.h"
 #include "server/zone/objects/group/GroupObject.h"
 #include "server/zone/objects/mission/MissionObject.h"
@@ -637,6 +638,27 @@ namespace {
 	}
 }
 
+// Final Boss: a player may pin a terminal's missions to a compass sector (the terminal's "Missions by direction" radial
+// stores N, NE, … in the player's screenplay data FbMissionDir/dir; empty = anywhere). The stock position pickers take an
+// angle relative to the player's facing: getWorldCoordinate(d, a) steps (sin θ, cos θ) with θ = facing − a, so an
+// absolute bearing θ (0 = north, 90 = east) is asked for as a = facing − θ.
+static float fbMissionAngle(CreatureObject* player) {
+	auto ghost = player->getPlayerObject();
+	String dir = ghost != nullptr ? ghost->getScreenPlayData("FbMissionDir", "dir") : "";
+	static const char* sectors[8] = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" };
+	int idx = -1;
+	for (int i = 0; i < 8; ++i)
+		if (dir == sectors[i]) idx = i;
+	if (idx < 0)
+		return (float) System::random(360);
+	float theta = idx * 45.f + (float) System::random(44) - 22.f;
+	float facing = player->getDirection()->getRadians() * 180.f / M_PI;
+	float angle = facing - theta;
+	while (angle < 0) angle += 360;
+	while (angle >= 360) angle -= 360;
+	return angle;
+}
+
 void MissionManagerImplementation::populateMissionList(MissionTerminal* missionTerminal, CreatureObject* player, int counter) {
 	Locker crossLocker(missionTerminal, player);
 
@@ -934,7 +956,7 @@ void MissionManagerImplementation::randomizeGenericDestroyMission(CreatureObject
 
 		int distance = destroyMissionBaseDistance + destroyMissionDifficultyDistanceFactor * difficultyLevel;
 		distance += System::random(destroyMissionRandomDistance) + System::random(destroyMissionDifficultyRandomDistance * difficultyLevel);
-		startPos = player->getWorldCoordinate((float)distance, (float)System::random(360), false);
+		startPos = player->getWorldCoordinate((float)distance, fbMissionAngle(player), false);   // Final Boss: the chosen sector
 
 		if (zone->isWithinBoundaries(startPos)) {
 			float height = zone->getHeight(startPos.getX(), startPos.getY());
@@ -1698,7 +1720,7 @@ void MissionManagerImplementation::randomizeGenericReconMission(CreatureObject* 
 
 	int maximumNumberOfTries = 20;
 	while (!foundPosition && maximumNumberOfTries-- > 0) {
-		position = player->getWorldCoordinate(System::random(3000) + 1000, (float)System::random(360), false);
+		position = player->getWorldCoordinate(System::random(3000) + 1000, fbMissionAngle(player), false);   // Final Boss: the chosen sector
 
 		//Check if it is a position where you can build and away from any travel points.
 		if (playerZone->getPlanetManager()->isBuildingPermittedAt(position.getX(), position.getY(), nullptr)) {
