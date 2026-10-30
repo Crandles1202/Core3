@@ -1375,7 +1375,8 @@ cmd_live() {
 			local ucfg="$dir/user.cfg"
 			if [ -f "$ucfg" ]; then
 				if [ "$port" = 44453 ]; then sed -i 's/^# *\(0fd345d9 *= *true\)/\1/; s/^drawNetworkIds *= *0/drawNetworkIds = 1/' "$ucfg"; else sed -i 's/^\(0fd345d9 *= *true\)/# \1/; s/^drawNetworkIds *= *1/drawNetworkIds = 0/' "$ucfg"; fi
-				say "$ucfg: client admin flag $( grep -q '^0fd345d9' "$ucfg" && echo on || echo off )"
+				grep -q '^allowMultipleInstances' "$ucfg" || sed -i '/^\[ClientGame\]/a allowMultipleInstances = true   # several game windows at once (Final Boss; the server allows 4 characters an account)' "$ucfg"
+				say "$ucfg: client admin flag $( grep -q '^0fd345d9' "$ucfg" && echo on || echo off ), multiple instances $( grep -q '^allowMultipleInstances *= *true' "$ucfg" && echo on || echo off )"
 			fi
 			# the "(118) oid - name" labels: the client keeps drawNetworkIds in its SAVED machine options (an IFF it rewrites at
 			# exit and reloads over user.cfg), so the saved value is what counts — patched only while the game is closed

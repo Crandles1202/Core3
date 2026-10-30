@@ -44,7 +44,7 @@
 --GENERAL PLAYER SETTINGS
 -----------------------------------
 
-onlineCharactersPerAccount = 2 --How many characters are allowed online from a single account.
+onlineCharactersPerAccount = 4 -- Final Boss: several game windows at once (client user.cfg allowMultipleInstances). Stock 2. --How many characters are allowed online from a single account.
 allowSameAccountPvpRatingCredit = 0
 
 --Blue frog / GM buff values

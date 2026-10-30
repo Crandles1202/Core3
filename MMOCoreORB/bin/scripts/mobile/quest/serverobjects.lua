@@ -911,6 +911,8 @@ includeFile("quest/tatooine/fb_traveling_merchant.lua")   -- Phase 2.9
 includeFile("quest/tatooine/fb_holonet_relay.lua")   -- Phase 3.10
 includeFile("quest/tatooine/fb_droid_dispenser.lua")
 includeFile("quest/tatooine/fb_pet_dealer.lua")
+includeFile("quest/tatooine/fb_vehicle_dealer.lua")   -- Final Boss 2.13
+includeFile("quest/tatooine/fb_resource_dealer.lua")   -- Final Boss 2.14
 includeFile("quest/tatooine/fb_property_agent.lua")
 includeFile("quest/tatooine/fb_speeder_dealer.lua")
 includeFile("quest/tatooine/fb_cantina_manager.lua")

@@ -140,6 +140,7 @@ namespace server {
 		static int createLootSet(lua_State* L);
 		static int createLootFromCollection(lua_State* L);
 		static int givePlayerResource(lua_State* L);
+		static int givePlayerResourceNamed(lua_State* L);   // Final Boss (2.14): (pPlayer, spawnName, units) -> boolean
 		static int getRandomNumber(lua_State* L);
 		static int getHashCode(lua_State* L);
 		static int spatialChat(lua_State* L);

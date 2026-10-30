@@ -18,6 +18,8 @@ FbSites:add {
 		{ template = "fb_pet_dealer", label = "Handler Toobu, pets", room = "meetinge", x = -11.00, z = 1.13, y = -11.00, dir = 0 },
 		{ template = "fb_property_agent", label = "Property Agent Garlen, housing", room = "meetinge", x = -8.00, z = 1.13, y = -11.50, dir = 90 },
 		{ template = "fb_droid_dispenser", label = "FB-3D, droids", room = "halla", x = 10.60, z = 2.50, y = 9.50, dir = 180 },
+		{ template = "fb_vehicle_dealer", label = "Rook Valdane, vehicles", room = "hallb", x = -10.60, z = 2.50, y = 9.50, dir = 180 },
+		{ template = "fb_resource_dealer", label = "Mehra Tulk, raw resources", room = "foyer", x = 6.00, z = 2.50, y = 13.00, dir = 180 },
 	},
 	outside = {
 		{ template = "fb_trade_hall_keeper", x = 3524.0, z = 5.00, y = -4815.0, dir = 90 },

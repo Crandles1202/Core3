@@ -1684,3 +1684,10 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 - **Changing an IDL method signature** (a new defaulted parameter on `LootManager::createLootObject`): the first `~/bin/build` after
   it regenerates the header but links against objects compiled with the old one (`undefined symbol: …createLootObject(…, int, bool)`);
   a second build pass links clean. `bench use` runs one pass, so run `tools/swg build` once more and `bench use` again.
+- **Vendors 2.13 / 2.14 (2026-10-29).** `ResourceSpawner::harvestResource(player, type, n)` only looks at the player's own zone, and the
+  Lua `givePlayerResource` only knows harvester types — a shop that sells a *named* spawn needs `ResourceManager::givePlayerResource(player,
+  name, n)` (the admin command's path), now `givePlayerResourceNamed`. `getResourceSpawns` scans best spots per spawn (a 256 m sweep each):
+  a ten-planet catalogue must pass `true` as the second argument. `os.time()` is fine in screenplay Lua (the convoys use it). A three-level
+  SUI (family → spawn → amount) keeps its choices in quest status keyed by the player oid, resolved by *name* (list indexes differ between
+  Lua states only if the shift turns between two clicks). The client's `allowMultipleInstances` lives under `[ClientGame]` (the mutex
+  string beside it in the exe is `SwgClientInstanceRunning`); the server's per-account cap is `onlineCharactersPerAccount` (player_manager.lua).
