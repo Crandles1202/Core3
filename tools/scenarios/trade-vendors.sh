@@ -40,12 +40,14 @@ wait_online || die "$CHAR never came back online"
 CASH0=$(lab_kv "cash:$CHAR" cash)
 check_eq "speederbike_bought" "$(lab_kv "buyVehicle:$CHAR:Speederbike" result)" "ok"
 check_ge "speederbike_deed_in_inventory" "$(lab "inventory:$CHAR" | grep -c 'vehicle_deed/speederbike_deed')" 1
+CASH1=$(lab_kv "cash:$CHAR" cash)
+check_eq "vehicle_price_deducted" "$(( CASH0 - CASH1 ))" "6000" "cash $CASH0 -> $CASH1"
 check_eq "jetpack_refused_without_cash" "$(lab "cashSet:$CHAR:1000" >/dev/null; lab_kv "buyVehicle:$CHAR:Jetpack" result)" "no_credits"
-lab "cashSet:$CHAR:$CASH0" >/dev/null
+lab "cashSet:$CHAR:$CASH1" >/dev/null
 check_eq "resource_bought" "$(lab_kv "buyResource:$CHAR:$FIRST:5000" result)" "ok"
 check_ge "resource_stack_in_inventory" "$(lab "inventory:$CHAR" | grep -c -F "$SPAWN")" 1 "stack of $SPAWN"
-CASH1=$(lab_kv "cash:$CHAR" cash)
-check_eq "prices_deducted" "$(( CASH0 - CASH1 ))" "$(( 6000 + 5000 ))" "cash $CASH0 -> $CASH1"
+CASH2=$(lab_kv "cash:$CHAR" cash)
+check_eq "resource_price_deducted" "$(( CASH1 - CASH2 ))" "5000" "cash $CASH1 -> $CASH2"
 check_eq "unknown_resource_refused" "$(lab_kv "buyResource:$CHAR:no_such_spawn_xyz:1000" result)" "bad_item"
 wait "$BOT_PID"
 finish
