@@ -37,6 +37,7 @@ check "resource_explain_reached" "$(grep -aqi 'shifts of a few days' "$BOTLOG" &
 
 bot_bg --wait 25
 wait_online || die "$CHAR never came back online"
+lab "cashSet:$CHAR:200000" >/dev/null   # a reused lab character may carry an earlier run's pocket money
 CASH0=$(lab_kv "cash:$CHAR" cash)
 check_eq "speederbike_bought" "$(lab_kv "buyVehicle:$CHAR:Speederbike" result)" "ok"
 check_ge "speederbike_deed_in_inventory" "$(lab "inventory:$CHAR" | grep -c 'vehicle_deed/speederbike_deed')" 1
