@@ -280,11 +280,11 @@ cmd_bench() {
 			local branch=${1:-}; [ -n "$branch" ] || die "usage: swg bench merge <branch>"
 			local commit; commit=$(git -C "$BENCH" rev-parse --verify -q "$branch^{commit}") || die "unknown branch $branch"
 			if ! grep -qx "$commit" "$LABDIR/gate.passed" 2>/dev/null; then
-				# a quick gate (unit, lua, bot, the scenarios the change touches) is enough for a branch without C++ changes
-				if grep -qx "$commit" "$LABDIR/gate.quick" 2>/dev/null && ! git -C "$BENCH" diff --name-only "$(git -C "$BENCH" merge-base unstable "$commit")" "$commit" | grep -q '^MMOCoreORB/src/'; then
-					say "quick gate green on $branch @ $(cut -c1-10 <<<"$commit") (no C++ changed)"
+				# a quick gate (unit, lua, bot, the scenarios the change touches) is enough (Chuck, 2026-10-30); swg test all stays for a deliberate full run
+				if grep -qx "$commit" "$LABDIR/gate.quick" 2>/dev/null; then
+					say "quick gate green on $branch @ $(cut -c1-10 <<<"$commit")"
 				else
-					die "no green gate recorded for $branch @ $(cut -c1-10 <<<"$commit"): swg bench use $branch && swg test quick (no C++) or swg test all"
+					die "no green gate recorded for $branch @ $(cut -c1-10 <<<"$commit"): swg bench use $branch && swg test quick"
 				fi
 			fi
 			if lock_is_stale || [ "$(lock_field 1)" = "$(agent_name)" ]; then :; else die "bench $(lock_describe)"; fi
@@ -851,7 +851,9 @@ quick_scenarios() {
 test_quick() {
 	local changed; changed=$(quick_changed)
 	[ -n "$changed" ] || die "quick: nothing changed against unstable"
-	if grep -q '^MMOCoreORB/src/' <<<"$changed"; then die "quick: C++ changed — a quick gate does not cover a rebuild; run swg test all"; fi
+	# C++ changes ride the quick gate too (Chuck, 2026-10-30: the full run is a precaution, not a rule): the bench use built the
+	# binary, the unit tests cover the engine, and a changed source file picks the scenarios whose covers name it (DirectorManager…)
+	grep -q '^MMOCoreORB/src/' <<<"$changed" && say "== quick: C++ changed (built by bench use); scenarios chosen by the changed file names"
 	local picked; picked=$(quick_scenarios)
 	local uncovered; uncovered=$(grep -E '^MMOCoreORB/bin/scripts/.*\.lua$' <<<"$changed" | grep -v 'fb_lab_tests.lua' | while read -r path; do
 		local hit=0 f words w
@@ -1314,11 +1316,12 @@ cmd_live() {
 			git -C "$BENCH" fetch -q origin 2>/dev/null || warn "fetch from origin failed; comparing with the last known origin/unstable"
 			local tip; tip=$(git -C "$BENCH" rev-parse unstable)
 			[ "$tip" = "$(git -C "$BENCH" rev-parse origin/unstable)" ] || die "unstable here is not what origin has (push or pull first): only a pushed tip becomes a stable point"
-			# production takes only fully gated code: the tip itself, or a tip whose tree equals a fully gated commit (one branch
-			# merged after its gate brings exactly that tree; two merges since the last full gate need a new one on unstable)
+			# production takes only gated code: the tip itself, or a tip whose tree equals a gated commit (one branch merged after
+			# its gate brings exactly that tree; two merges since the last gate need a new one on unstable). A quick gate counts
+			# (Chuck, 2026-10-30); the full run is swg test all
 			local gated_tree=0 g
-			while read -r g; do [ -n "$g" ] && git -C "$BENCH" diff --quiet "$g" "$tip" 2>/dev/null && gated_tree=1 && break; done < <(tac "$LABDIR/gate.passed" 2>/dev/null | head -n 40)
-			(( gated_tree )) || die "no full gate (swg test all) covers unstable @ $(cut -c1-10 <<<"$tip") (neither the tip nor a commit with the same tree): swg bench use unstable && swg test all"
+			while read -r g; do [ -n "$g" ] && git -C "$BENCH" diff --quiet "$g" "$tip" 2>/dev/null && gated_tree=1 && break; done < <(cat "$LABDIR/gate.passed" "$LABDIR/gate.quick" 2>/dev/null | tac | head -n 80)
+			(( gated_tree )) || die "no gate covers unstable @ $(cut -c1-10 <<<"$tip") (neither the tip nor a commit with the same tree): swg bench use unstable && swg test quick"
 			git -C "$BENCH" rev-parse -q --verify "refs/tags/$name" >/dev/null && die "tag $name exists (swg live tag $name-2)"
 			git -C "$BENCH" tag -a "$name" "$tip" -m "stable point for the production server: unstable @ $(cut -c1-10 <<<"$tip") ($(date '+%F'))" || die "tag failed"
 			git -C "$BENCH" push -q origin "refs/tags/$name" || die "push of the tag failed (it exists locally: git push origin $name)"

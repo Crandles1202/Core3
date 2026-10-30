@@ -140,7 +140,7 @@ tools/swg test lua [<char>]     # reloadscreenplays, then FbLabTests:runAll on t
 tools/swg test bot [--user claude-admin]  # core3client: the account creates a char, zones in, 30 s, logs out
 tools/swg test scenario <name>  # tools/scenarios/<name>.sh: bot acts + Lua oracle observes (gameplay tests)
 tools/swg test all              # the full gate: stop if running → unit → start → lua → bot → every scenario (~80 min; server left running)
-tools/swg test quick            # the quick gate (~10 min): unit → lua → bot → only the scenarios whose "# covers:" words match the branch's changed paths (+ the core set); refused when C++ changed; its stamp lets `bench merge` through for a branch without C++
+tools/swg test quick            # THE gate (~10 min, Chuck 2026-10-30): unit → lua → bot → only the scenarios whose "# covers:" words match the branch's changed paths (+ the core set); C++ included (bench use built it); its stamp lets `bench merge` and `live tag` through
 tools/swg test pick             # which scenarios a quick gate would run for this branch (no lock, no server)
 tools/swg build                 # ~/bin/build with the client on; prints only errors/warnings and timing
 tools/swg logs --lua            # bin/log/lua.log
@@ -184,9 +184,10 @@ tools/citizens/crew up [names|all] [--idle S] [--dry] | down | status | log <cit
   change; `swg test all` runs them, and gives a red scenario **one retry** (a flake passes the second time, a real bug fails
   twice; the first run's log is kept as `last-scenario-<name>.first.log`). `*.manual.sh` scenarios (long audits such as `merchant-stops`, which
   walks every merchant stop) run only by name: `swg test scenario merchant-stops`.
-- **Gates (2026-10-28):** a branch merges on a **quick** gate (`swg test quick`: unit, Lua, bot, the scenarios whose `# covers:` header
-  names a changed path, plus `npc-conversation`) unless it changes C++, which needs the full `swg test all`; a **production tag**
-  (`swg live tag`) needs a full gate recorded on the `unstable` tip. Every scenario file carries `# covers: <path words>`; a Lua file
+- **Gates (2026-10-30, Chuck's call):** every branch merges on the **quick** gate (`swg test quick`: unit, Lua, bot, the scenarios whose
+  `# covers:` header names a changed path, plus `npc-conversation`), C++ included — a changed `DirectorManager.cpp` picks the scenarios
+  that name it; a **production tag** (`swg live tag`) needs a quick or full gate whose tree equals the `unstable` tip. The full
+  `swg test all` (~80 min) is for a deliberate sweep, not a rule. Every scenario file carries `# covers: <path words>`; a Lua file
   no scenario covers is named in the quick gate's output. Scenario durations go to `~/.swg-lab/scenario-times`.
 - Test accounts: `claude-admin` (admin_level 15), `claude-player` (admin_level 0). Passwords are in
   `~/.swg-lab/*.pass` (mode 600), never in the repo. Account hash = `SHA256(DBSecret + password + salt)`,

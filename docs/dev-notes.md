@@ -1691,3 +1691,6 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   SUI (family → spawn → amount) keeps its choices in quest status keyed by the player oid, resolved by *name* (list indexes differ between
   Lua states only if the shift turns between two clicks). The client's `allowMultipleInstances` lives under `[ClientGame]` (the mutex
   string beside it in the exe is `SwgClientInstanceRunning`); the server's per-account cap is `onlineCharactersPerAccount` (player_manager.lua).
+- **The quick gate is the gate (2026-10-30).** Chuck: "if we are not making any changes to the scenarios then can we skip those checks?"
+  `swg test quick` now takes C++ branches too (the scenarios are chosen by the changed file names against `# covers:`), `bench merge`
+  and `live tag` accept its stamp. `swg test all` remains for a deliberate full sweep. Cost of the rule before: ~80 min per C++ branch.
