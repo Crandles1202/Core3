@@ -4807,9 +4807,10 @@ int DirectorManager::getResourceSpawns(lua_State* L) {
 		}
 		lua_setfield(L, -2, "attributes");
 
-		if (!skipSpots)
+		if (!skipSpots) {   // the field goes with the push: a setfield without it would eat the row itself (bench crash 2026-10-29)
 			fbPushResourceBestSpots(L, spawn, zoneName);
-		lua_setfield(L, -2, "best");
+			lua_setfield(L, -2, "best");
+		}
 
 		lua_rawseti(L, -2, i + 1);
 	}
