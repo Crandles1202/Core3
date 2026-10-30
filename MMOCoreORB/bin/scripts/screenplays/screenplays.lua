@@ -782,6 +782,10 @@ includeFile("tasks/tatooine/fb_droid_dispenser_conv_handler.lua")
 includeFile("tasks/tatooine/fb_droid_dispenser.lua")
 includeFile("tasks/tatooine/fb_pet_dealer_conv_handler.lua")
 includeFile("tasks/tatooine/fb_pet_dealer.lua")
+includeFile("tasks/tatooine/fb_vehicle_dealer_conv_handler.lua")   -- Final Boss 2.13
+includeFile("tasks/tatooine/fb_vehicle_dealer.lua")
+includeFile("tasks/tatooine/fb_resource_dealer_conv_handler.lua")   -- Final Boss 2.14
+includeFile("tasks/tatooine/fb_resource_dealer.lua")
 includeFile("tasks/tatooine/fb_property_agent_conv_handler.lua")
 includeFile("tasks/tatooine/fb_property_agent.lua")
 includeFile("tasks/tatooine/fb_speeder_dealer_conv_handler.lua")

@@ -1437,6 +1437,43 @@ function FbLabTests:hasSchematic(charName, draftPath)
 end
 
 -- buyPart:<char>:<item name>  or  buyPart:<char>:<catIdx>:<itemIdx> → FbPartsDealer:purchase()
+-- buyVehicle:<char>:<name|idx> → FbVehicleDealer:purchase; INFO buyVehicle result=ok
+function FbLabTests:buyVehicle(charName, key)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	if FbVehicleDealer == nil then print("ERROR FbVehicleDealer not loaded"); return "none" end
+	local item = FbVehicleDealer:find(key)
+	local result = FbVehicleDealer:purchase(pPlayer, key)
+	print(string.format("INFO buyVehicle result=%s name=%s price=%s template=%s", result, item and item.name or "?", item and item.price or 0, item and item.template or "?"))
+	return result
+end
+
+-- resourceDealer → the dealer's catalogue: INFO resourceDealer families=N spawns=M, then one INFO resourceFamily line per family
+function FbLabTests:resourceDealer()
+	if FbResourceDealer == nil then print("ERROR FbResourceDealer not loaded"); return "none" end
+	FbResourceDealer._cat = nil
+	local families = FbResourceDealer:catalogue()
+	local total = 0
+	for _, f in ipairs(families) do
+		total = total + #f.items
+		print(string.format("INFO resourceFamily name=%s spawns=%d first=%s class=%s quality=%d", f.name, #f.items, f.items[1].name, f.items[1].class, f.items[1].quality))
+	end
+	print(string.format("INFO resourceDealer families=%d spawns=%d", #families, total))
+	return tostring(#families)
+end
+
+-- buyResource:<char>:<family|spawn>:<units> → the family's best spawn (or the named spawn); INFO buyResource result=ok name=…
+function FbLabTests:buyResource(charName, what, units)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	if FbResourceDealer == nil then print("ERROR FbResourceDealer not loaded"); return "none" end
+	local f = FbResourceDealer:family(what)
+	local name = f and f.items[1] and f.items[1].name or what
+	local result = FbResourceDealer:purchase(pPlayer, name, units)
+	print(string.format("INFO buyResource result=%s name=%s units=%s", result, name, tostring(units)))
+	return result
+end
+
 function FbLabTests:buyPart(charName, catIdx, itemIdx)
 	local pPlayer = onlinePlayer(charName)
 	if pPlayer == nil then return "offline" end

@@ -140,7 +140,7 @@ tools/swg test lua [<char>]     # reloadscreenplays, then FbLabTests:runAll on t
 tools/swg test bot [--user claude-admin]  # core3client: the account creates a char, zones in, 30 s, logs out
 tools/swg test scenario <name>  # tools/scenarios/<name>.sh: bot acts + Lua oracle observes (gameplay tests)
 tools/swg test all              # the full gate: stop if running → unit → start → lua → bot → every scenario (~80 min; server left running)
-tools/swg test quick            # the quick gate (~10 min): unit → lua → bot → only the scenarios whose "# covers:" words match the branch's changed paths (+ the core set); refused when C++ changed; its stamp lets `bench merge` through for a branch without C++
+tools/swg test quick            # THE gate (~10 min, Chuck 2026-10-30): unit → lua → bot → only the scenarios whose "# covers:" words match the branch's changed paths (+ the core set); C++ included (bench use built it); its stamp lets `bench merge` and `live tag` through
 tools/swg test pick             # which scenarios a quick gate would run for this branch (no lock, no server)
 tools/swg build                 # ~/bin/build with the client on; prints only errors/warnings and timing
 tools/swg logs --lua            # bin/log/lua.log
@@ -184,9 +184,10 @@ tools/citizens/crew up [names|all] [--idle S] [--dry] | down | status | log <cit
   change; `swg test all` runs them, and gives a red scenario **one retry** (a flake passes the second time, a real bug fails
   twice; the first run's log is kept as `last-scenario-<name>.first.log`). `*.manual.sh` scenarios (long audits such as `merchant-stops`, which
   walks every merchant stop) run only by name: `swg test scenario merchant-stops`.
-- **Gates (2026-10-28):** a branch merges on a **quick** gate (`swg test quick`: unit, Lua, bot, the scenarios whose `# covers:` header
-  names a changed path, plus `npc-conversation`) unless it changes C++, which needs the full `swg test all`; a **production tag**
-  (`swg live tag`) needs a full gate recorded on the `unstable` tip. Every scenario file carries `# covers: <path words>`; a Lua file
+- **Gates (2026-10-30, Chuck's call):** every branch merges on the **quick** gate (`swg test quick`: unit, Lua, bot, the scenarios whose
+  `# covers:` header names a changed path, plus `npc-conversation`), C++ included — a changed `DirectorManager.cpp` picks the scenarios
+  that name it; a **production tag** (`swg live tag`) needs a quick or full gate whose tree equals the `unstable` tip. The full
+  `swg test all` (~80 min) is for a deliberate sweep, not a rule. Every scenario file carries `# covers: <path words>`; a Lua file
   no scenario covers is named in the quick gate's output. Scenario durations go to `~/.swg-lab/scenario-times`.
 - Test accounts: `claude-admin` (admin_level 15), `claude-player` (admin_level 0). Passwords are in
   `~/.swg-lab/*.pass` (mode 600), never in the repo. Account hash = `SHA256(DBSecret + password + salt)`,
@@ -252,6 +253,7 @@ tools/citizens/crew up [names|all] [--idle S] [--dry] | down | status | log <cit
 | 1.5 | Character inventory 80 → 100 items: template re-registered (new characters) + `FBLogin` raises persisted limits on login (existing characters); Lua `SceneObject:setContainerVolumeLimit` added. Client's "/80" counter is cosmetic | `custom_scripts/object/tangible/inventory/fb_inventory_100.lua`, `custom_scripts/screenplays/fb_player_login.lua`, `LuaSceneObject.cpp` |
 | 1.9 | Player stimpacks (starter, crafted A–E, ranged/area, quest) heal mind too: `attributes = {0, 3, 6}` re-registered from `custom_scripts` | `custom_scripts/object/tangible/medicine/fb_stimpack_mind.lua` |
 | — | Blue frog "Combat Test Character" menu; Jedi trials no longer teleport to Yavin; FRS test build uses Defender Master | `terminal_character_builder.lua`, `jedi_trials.lua`, `PlayerManagerImplementation.cpp` |
+| 2.13 / 2.14 | **Vehicle dealer and raw resource dealer** (2026-10-29, Chuck's ask), both Trade Hall tenants: *Rook Valdane* (hall B) sells the seven stock vehicle deeds for cash (`FbVehicleDealer.items`, 6 000 – 120 000 cr; the deed is the template's, generated when called); *Mehra Tulk* (foyer) sells units of **every resource in shift on the ten planets** — the catalogue is `getResourceSpawns(planet, true)` (new second argument: no best-spot scan) over all planets, grouped by family, best of each class first (quality = mean attribute), cached five minutes per Lua state; the stack comes from the new Lua global `givePlayerResourceNamed(pPlayer, spawnName, units)` (the admin `/giveresource` path), 1 cr a unit (`pricePerUnit`), 1 000 / 5 000 / 20 000 / 100 000; window choices ride in quest status. **Several game windows at once**: `onlineCharactersPerAccount = 4` (`player_manager.lua`, stock 2) and `swg live client` writes `allowMultipleInstances = true` under `[ClientGame]` in the client's `user.cfg`. Lab: `buyVehicle`, `resourceDealer`, `buyResource`; scenario `trade-vendors` | `tasks/tatooine/fb_vehicle_dealer*.lua`, `fb_resource_dealer*.lua`, `mobile/quest/tatooine/`, `conversations/tasks/`, `sites/mos_eisley_trade_hall.lua`, `DirectorManager.cpp` |
 | 2.6 | FB-21 medical droid network (buffs, wound clear, travel) | `fb_mos_eisley_medical_droid*.lua` |
 | 2.7 | FB-72 armory droid (Mos Eisley starport + 2 weapon shops) | `fb_armory_droid*.lua` |
 | — | QoL: 100k cash/bank start, global XP ×3 (2026-10-28; was ×2), six missions at once (`Core3.Mission.MaxActive`, stock 2), **missions by direction** (a radial on every mission terminal, ids 90–99: the choice sits in the player's screenplay data `FbMissionDir/dir` and the destroy and scout position pickers roll their bearing inside that 45° sector; deliveries keep their contact's spot; lab `missionDir`, scenario `mission-direction`), group XP ×1.25, pet/vehicle call 5 s, 20 housing lots, resource stack 10M, admin `flag = 2` | `player_creation_manager.lua`, `player_manager.lua`, `*ControlDeviceImplementation.cpp`, `PlayerObject.idl`, `ResourceContainer.idl`, `staff/levels/admin.lua` |

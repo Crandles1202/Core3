@@ -23,10 +23,11 @@ check_eq "preview_at_the_new_spot" "$(sed -n 's/.*[[:space:]]x=\([-0-9.]*\).*/\1
 check_eq "preview_all_npcs" "$(sed -n 's/.*npcs=\([0-9]*\) of \([0-9]*\).*/\1/p' <<<"$PV")" "$(sed -n 's/.*npcs=\([0-9]*\) of \([0-9]*\).*/\2/p' <<<"$PV")" "$PV"
 check "no_fail_line" "$(grep -q '^FAIL' <<<"$PV" && echo 0 || echo 1)" "$(grep '^FAIL' <<<"$PV" | head -n2)"
 check_eq "live_hall_replaced" "$(lab "tradeHall" | sed -n 's/.*[[:space:]]x=\([-0-9.]*\).*/\1/p' | head -n1)" "3620.0" "the FbSites building of that name is now the preview"
-check_eq "one_set_of_tenants" "$(lab "findNpc:fb_sites" | grep -ac 'cell=[1-9]')" "11" "the old tenants were torn down with the old building"
+TENANTS=$(grep -c 'room = "' "$(dirname "${BASH_SOURCE[0]}")/../../MMOCoreORB/bin/scripts/screenplays/tasks/sites/mos_eisley_trade_hall.lua")   # the site file is the truth
+check_eq "one_set_of_tenants" "$(lab "findNpc:fb_sites" | grep -ac 'cell=[1-9]')" "$TENANTS" "the old tenants were torn down with the old building"
 
 PL=$(lab "sitePlacement:mos_eisley_trade_hall" 20 | grep -a 'INFO placement summary')
-check_eq "preview_audited" "$(sed -n 's/.*spawns=\([0-9]*\).*/\1/p' <<<"$PL")" "12" "$PL"
+check_eq "preview_audited" "$(sed -n 's/.*spawns=\([0-9]*\).*/\1/p' <<<"$PL")" "$(( TENANTS + 1 ))" "$PL"
 check_eq "preview_placement_clean" "$(sed -n 's/.*fail=\([0-9]*\).*/\1/p' <<<"$PL")" "0" "$PL"
 
 # the teardown + rebuild can outlast the console capture window; lab() then asks again and gets the
@@ -35,7 +36,7 @@ END=$(lab "sitePreviewEnd" 30)
 check "preview_ended" "$(grep -q 'restored=true\|nothing was previewed' <<<"$END" && echo 1 || echo 0)" "$END"
 AFTER=$(lab "tradeHall")
 check_eq "saved_hall_is_back" "$(sed -n 's/.*[[:space:]]x=\([-0-9.]*\).*/\1/p' <<<"$AFTER" | head -n1)" "$OX" "$AFTER"
-check_eq "tenants_back" "$(lab "findNpc:fb_sites" | grep -ac 'cell=[1-9]')" "11"
+check_eq "tenants_back" "$(lab "findNpc:fb_sites" | grep -ac 'cell=[1-9]')" "$TENANTS"
 check "nothing_previewed_now" "$(lab "sitePreviewEnd" | grep -q 'nothing was previewed' && echo 1 || echo 0)"
 rm -f "$SITES/.preview/preview.lua"
 finish

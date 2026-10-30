@@ -513,6 +513,7 @@ void DirectorManager::initializeLuaEngine(Lua* luaEngine) {
 	luaEngine->registerFunction("createLootSet", createLootSet);
 	luaEngine->registerFunction("createLootFromCollection", createLootFromCollection);
 	luaEngine->registerFunction("givePlayerResource", givePlayerResource);
+	luaEngine->registerFunction("givePlayerResourceNamed", givePlayerResourceNamed);   // Final Boss (2.14): (pPlayer, spawnName, units) -> boolean
 
 	luaEngine->registerFunction("getRegion", getRegion);
 	luaEngine->registerFunction("writeScreenPlayData", writeScreenPlayData);
@@ -1225,6 +1226,34 @@ int DirectorManager::givePlayerResource(lua_State* L) {
 	trx.commit();
 
 	return 0;
+}
+
+// Final Boss (2.14): givePlayerResourceNamed(pPlayer, spawnName, units) -> true when the spawn exists and a container of
+// that many units landed in the inventory (the admin /giveresource path: ResourceManager::givePlayerResource)
+int DirectorManager::givePlayerResourceNamed(lua_State* L) {
+	if (checkArgumentCount(L, 3) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::givePlayerResourceNamed";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+	const int quantity = lua_tointeger(L, -1);
+	const String name = lua_tostring(L, -2);
+	CreatureObject* player = (CreatureObject*)lua_touserdata(L, -3);
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	ResourceManager* resourceManager = zoneServer != nullptr ? zoneServer->getResourceManager() : nullptr;
+	if (player == nullptr || resourceManager == nullptr || quantity <= 0) {
+		lua_pushboolean(L, false);
+		return 1;
+	}
+	ManagedReference<ResourceSpawn*> spawn = resourceManager->getResourceSpawn(name);
+	if (spawn == nullptr) {
+		lua_pushboolean(L, false);
+		return 1;
+	}
+	resourceManager->givePlayerResource(player, name, quantity);
+	lua_pushboolean(L, true);
+	return 1;
 }
 
 int DirectorManager::getTimestamp(lua_State* L) {
@@ -4722,14 +4751,17 @@ static void fbPushResourceBestSpots(lua_State* L, ResourceSpawn* spawn, const St
 }
 
 int DirectorManager::getResourceSpawns(lua_State* L) {
-	if (checkArgumentCount(L, 1) == 1) {
+	const int argc = lua_gettop(L);
+	if (argc < 1 || argc > 2) {
 		String err = "incorrect number of arguments passed to DirectorManager::getResourceSpawns";
 		printTraceError(L, err);
 		ERROR_CODE = INCORRECT_ARGUMENTS;
 		return 0;
 	}
 
-	String zoneName = lua_tostring(L, -1);
+	// Final Boss (2.14): getResourceSpawns(zone, true) skips the best-spot scan (a catalogue of ten planets wants the rows only)
+	const bool skipSpots = argc == 2 && lua_toboolean(L, -1);
+	String zoneName = lua_tostring(L, argc == 2 ? -2 : -1);
 	ZoneServer* zoneServer = ServerCore::getZoneServer();
 	ResourceManager* resourceManager = zoneServer != nullptr ? zoneServer->getResourceManager() : nullptr;
 
@@ -4775,8 +4807,10 @@ int DirectorManager::getResourceSpawns(lua_State* L) {
 		}
 		lua_setfield(L, -2, "attributes");
 
-		fbPushResourceBestSpots(L, spawn, zoneName);
-		lua_setfield(L, -2, "best");
+		if (!skipSpots) {   // the field goes with the push: a setfield without it would eat the row itself (bench crash 2026-10-29)
+			fbPushResourceBestSpots(L, spawn, zoneName);
+			lua_setfield(L, -2, "best");
+		}
 
 		lua_rawseti(L, -2, i + 1);
 	}

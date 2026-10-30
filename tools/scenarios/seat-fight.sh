@@ -40,6 +40,7 @@ T1=$(date +%s)
 check_eq "fight_won" "$RC" "0" "$(grep -a '^fight:' <<<"$FIGHT" | head -n1) ($((T1 - T0)) s)"
 ALIVE=$(lab "objectAlive:$RAT" 8 | sed -n 's/.*alive=\([0-9]*\).*/\1/p' | head -n1)
 check_eq "rat_dead_on_server" "${ALIVE:-1}" "0" "alive=${ALIVE:-?}"
+printf '%s\n' "$FIGHT" | head -c 1500 | sed 's/^/   fight: /'   # the seat verdict, kept in the log
 check "corpse_looted" "$( grep -q '"looted": true' <<<"$FIGHT" && echo 1 || echo 0 )" "loot all sent on the corpse"
 SCOUT1=$(lab "xp:$CHAR:scout" 8 | sed -n 's/.*amount=\([0-9]*\).*/\1/p' | head -n1)
 check "corpse_harvested" "$( grep -q '"harvested": true' <<<"$FIGHT" && echo 1 || echo 0 )" "harvestcorpse on the kreetle: scout experience ${SCOUT0:-?} → ${SCOUT1:-?} $(grep -o '"harvestSaid": "[^"]*"' <<<"$FIGHT")"

@@ -356,6 +356,8 @@ includeFile("conversations/tasks/fb_traveling_merchant_conv.lua")   -- Phase 2.9
 includeFile("conversations/tasks/fb_holonet_relay_conv.lua")   -- Phase 3.10
 includeFile("conversations/tasks/fb_droid_dispenser_conv.lua")
 includeFile("conversations/tasks/fb_pet_dealer_conv.lua")
+includeFile("conversations/tasks/fb_vehicle_dealer_conv.lua")   -- Final Boss 2.13
+includeFile("conversations/tasks/fb_resource_dealer_conv.lua")   -- Final Boss 2.14
 includeFile("conversations/tasks/fb_property_agent_conv.lua")
 includeFile("conversations/tasks/fb_speeder_dealer_conv.lua")
 includeFile("conversations/tasks/fb_cantina_manager_conv.lua")
