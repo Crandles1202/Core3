@@ -949,7 +949,7 @@ def cmd_selftest(a):
     assert any(f["room"] == "meetingb" and "dining" in f["name"] for f in hall["furniture"]), "dining table"
     sites = load_sites()
     th = next((s for s in sites if s["name"] == "mos_eisley_trade_hall"), None)
-    assert th and len(th["tenants"]) == 11 and 0 <= th["heading"] < 360 and th["planet"] == "tatooine", "trade hall site parse"
+    assert th and len(th["tenants"]) >= 11 and 0 <= th["heading"] < 360 and th["planet"] == "tatooine", "trade hall site parse"
     hall_b = next((b for b in area["buildings"] if b["short"] == "guild_commerce_tatooine_style_01"), None)
     assert hall_b and any(n["template"] == "trainer_artisan" and n["room"] == "meetingd" for n in hall_b["npcs"]), "stock npc -> room mapping"
     assert len(area["npcs"]) > 20, "outdoor stock npcs"

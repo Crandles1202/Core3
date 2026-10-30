@@ -9,7 +9,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ST=$(lab "tradeHall")
 check "hall_open" "$(grep -q 'open=1' <<<"$ST" && echo 1 || echo 0)" "$ST"
 check_eq "hall_has_nine_cells" "$(sed -n 's/.*cells=\([0-9]*\).*/\1/p' <<<"$ST")" "9" "$ST"
-check_eq "tenants_recorded" "$(lab "findNpc:fb_sites" | grep -ac 'cell=[1-9]')" "11" "11 tenants spawned into cells by the site loader (fb_sites)"
+TENANTS=$(grep -c 'room = "' "$(dirname "${BASH_SOURCE[0]}")/../../MMOCoreORB/bin/scripts/screenplays/tasks/sites/mos_eisley_trade_hall.lua")   # the site file is the truth
+check_eq "tenants_recorded" "$(lab "findNpc:fb_sites" | grep -ac 'cell=[1-9]')" "$TENANTS" "$TENANTS tenants spawned into cells by the site loader (fb_sites)"
 check_eq "keeper_on_the_square" "$(lab "findNpc:Hallkeeper" | grep -ac 'cell=0')" "1"
 PL=$(lab "placement:fb_sites" | grep -a 'INFO placement summary')
 check_eq "placement_clean" "$(sed -n 's/.*fail=\([0-9]*\).*/\1/p' <<<"$PL")" "0" "$PL"
@@ -18,7 +19,7 @@ check "lot_is_flat" "$(lab "tradeHall" | grep -q 'lot_ok=1' && echo 1 || echo 0)
 # so the survey tool checks every tenant spot in the screenplay against it
 FURN=$("$REPO/tools/lotsurvey" check object/building/tatooine/shared_guild_commerce_tatooine_style_01.iff --lua "$REPO/MMOCoreORB/bin/scripts/screenplays/tasks/sites/mos_eisley_trade_hall.lua" 2>&1)
 check_eq "no_tenant_in_the_furniture" "$(sed -n 's/.*summary spots=\([0-9]*\) fail=\([0-9]*\).*/\2/p' <<<"$FURN")" "0" "$(grep -a '^FAIL\|^summary' <<<"$FURN" | tr '\n' ' ')"
-check_ge "furniture_check_covered_tenants" "$(sed -n 's/.*summary spots=\([0-9]*\).*/\1/p' <<<"$FURN")" 11
+check_ge "furniture_check_covered_tenants" "$(sed -n 's/.*summary spots=\([0-9]*\).*/\1/p' <<<"$FURN")" "$TENANTS"
 
 # --- the doorman marks the hall ---------------------------------------------------------------
 bot_bg --wait 25
