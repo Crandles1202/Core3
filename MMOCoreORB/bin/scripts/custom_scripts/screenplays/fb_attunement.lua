@@ -85,7 +85,7 @@ FbAttunement = ScreenPlay:new {
 		{ "corvette", 5, { "bdg_corvette_imp_destroy", "bdg_corvette_imp_rescue", "bdg_corvette_imp_assassin", "bdg_corvette_neutral_destroy", "bdg_corvette_neutral_rescue", "bdg_corvette_neutral_assassin", "bdg_corvette_reb_destroy", "bdg_corvette_reb_rescue", "bdg_corvette_reb_assassin" } },
 	},
 	-- deeds: a kill of a template whose name contains one of these pays 10 (one credit per kind)
-	killKinds = { { "dark_jedi", "dark_jedi" }, { "nightsister_elder", "nightsister_elder" }, { "krayt_dragon", "krayt_dragon" } },
+	killKinds = { { "dark_jedi", "dark_jedi" }, { "nightsister_elder", "nightsister_elder" }, { "krayt", "krayt_dragon" } },   -- "krayt": the juvenile is juvenile_canyon_krayt.iff, the big ones krayt_dragon_hue.iff (selrahc's kill went uncredited 2026-10-30)
 	-- items: template fragment → key, points
 	itemKinds = { { "lightsaber_module_force_crystal", "colour_crystal", 10 }, { "holocron", "holocron", 10 } },
 }
