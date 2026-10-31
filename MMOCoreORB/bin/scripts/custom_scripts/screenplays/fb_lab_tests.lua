@@ -1766,6 +1766,24 @@ function FbLabTests:cities()
 end
 
 -- killNpc:<char>:<oid> → the character deals a lethal blow to an NPC (observers see the character as attacker)
+-- shadowCamps → one INFO shadowCamp line per Sith Shadow camp (alive/recorded) and a summary
+function FbLabTests:shadowCamps()
+	if FbSithShadows == nil then print("ERROR FbSithShadows not loaded"); return "none" end
+	local lines = FbSithShadows:status()
+	local up = 0
+	for _, l in ipairs(lines) do print("INFO shadowCamp " .. l); up = up + (tonumber(l:match("alive=(%d+)")) or 0) end
+	print(string.format("INFO shadowCamps camps=%d alive=%d", #lines, up))
+	return tostring(up)
+end
+
+-- shadowCampsRefill → FbSithShadows:refill(); INFO shadowCampsRefill replaced=N
+function FbLabTests:shadowCampsRefill()
+	if FbSithShadows == nil then print("ERROR FbSithShadows not loaded"); return "none" end
+	local n = FbSithShadows:refill()
+	print("INFO shadowCampsRefill replaced=" .. n)
+	return tostring(n)
+end
+
 function FbLabTests:killNpc(charName, oid)
 	local pPlayer = onlinePlayer(charName)
 	if pPlayer == nil then return "offline" end

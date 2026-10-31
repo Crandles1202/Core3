@@ -140,6 +140,11 @@ function FbMasterBase:told(pPlayer, id)
 	self:set(pPlayer, "told:" .. id, os.time())
 	local t = self:currentTask(pPlayer)
 	if t ~= nil and t.id == id and t.kind == "sit" then self:armSit(pPlayer) end
+	if t ~= nil and t.id == id and t.kind == "kill" and t.match == "sith_shadow" and FbSithShadows ~= nil then   -- a waypoint to the nearest camp
+		local so = SceneObject(pPlayer)
+		local camp = FbSithShadows:nearest(so:getZoneName(), so:getWorldPositionX(), so:getWorldPositionY())
+		if camp ~= nil then waypointTo(pPlayer, camp.planet, camp.x, camp.y, "Sith Shadows, " .. camp.label) end
+	end
 end
 
 -- the task reported: Jedi experience, the next step
