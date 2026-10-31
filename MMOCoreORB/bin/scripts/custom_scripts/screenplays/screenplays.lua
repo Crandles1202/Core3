@@ -13,5 +13,6 @@ includeFile("../custom_scripts/screenplays/fb_knight.lua")       -- Phase 4b.4: 
 includeFile("../custom_scripts/screenplays/fb_companion.lua")    -- Phase 4b.5: the companion Padawan / Apprentice
 includeFile("../custom_scripts/screenplays/fb_loot_kits.lua")    -- Phase 2.4: loot kits, the drop roll
 includeFile("../custom_scripts/screenplays/fb_crystals.lua")     -- Phase 4a.0: crystal formations in four caves
+includeFile("../custom_scripts/screenplays/fb_sith_shadows.lua")   -- 4b.1: the Sith Shadow camps (the shadows task has something to hunt)
 includeFile("../custom_scripts/screenplays/fb_bounty.lua")       -- Phase 4c: the bounty on a visible Jedi
 includeFile("../custom_scripts/screenplays/fb_player_login.lua")   -- wraps PlayerTriggers:playerLoggedIn
