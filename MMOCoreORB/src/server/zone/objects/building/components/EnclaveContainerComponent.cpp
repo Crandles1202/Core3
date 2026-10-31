@@ -92,6 +92,11 @@ bool EnclaveContainerComponent::checkCellPermission(SceneObject* sceneObject, Cr
 	if (ghost->hasGodMode())
 		return true;
 
+	// Final Boss (Phase 4b.1): the cells admit the Padawan box like the door does — the door alone let a Padawan in and
+	// the first cell threw him back out (selrahc at the Light Enclave, 2026-10-31)
+	if (creature->hasSkill("force_title_jedi_novice"))
+		return true;
+
 	int enclaveType = 0;
 
 	ManagedReference<SceneObject*> enclave = sceneObject->getParent().get();

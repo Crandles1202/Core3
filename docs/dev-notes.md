@@ -1700,3 +1700,4 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   crafts a plain piece. The depot sells both and says which is which. `tools/components_gen.py` finds the loot items by regex over
   `loot/items/**` (`directObjectTemplate` under `object/tangible/component/`, `quest_item` left out) and the raw ones from the template
   tree (`base_*`, `dna`, `bio`, `food/secrets` left out). A SUI list box takes ~130 rows without complaint.
+- **Enclave entry has two checks** (2026-10-31): `EnclaveContainerComponent::checkBuildingPermission` (the door) and `checkCellPermission` (every cell inside); a rule added to one only lets the player through the door and the first cell ejects him. The lab's `gotoNpc` teleports past both, so the jedi-master scenario never walked in; the Padawan-box rule is now in both.
