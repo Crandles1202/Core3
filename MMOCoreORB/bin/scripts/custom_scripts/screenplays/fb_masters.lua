@@ -104,6 +104,7 @@ function FbMasterBase:screenFor(pPlayer)
 	if t.rank ~= nil and self:get(pPlayer, "told:" .. t.id) == nil and self:jediXp(pPlayer) < (t.xp or 0) then return "rank_wait_xp" end
 	if self:get(pPlayer, "ready:" .. t.id) ~= nil then return "done_" .. t.id end
 	if self:get(pPlayer, "told:" .. t.id) == nil then return "train_" .. t.id end
+	if t.kind == "sit" and self:get(pPlayer, "ready:" .. t.id) == nil then self:armSit(pPlayer, true) end   -- the talk (re)arms the count
 	return "wait_" .. t.id
 end
 
@@ -224,11 +225,15 @@ end
 -- ---------------------------------------------------------------- the tasks
 
 -- sit: a poll while the student sits in the Master's room (one chain per student, keyed in quest status)
-function FbMasterBase:armSit(pPlayer)
+function FbMasterBase:armSit(pPlayer, force)
 	if pPlayer == nil then return end
 	local oid = SceneObject(pPlayer):getObjectID()
-	if getQuestStatus(self.name .. ".sit." .. oid) ~= "" then return end
-	setQuestStatus(self.name .. ".sit." .. oid, tostring(os.time()))
+	local key = self.name .. ".sit." .. oid
+	local since = tonumber(getQuestStatus(key)) or 0
+	-- a chain older than two polls is dead (a restart, or the poll gave up): the key alone must not block a new one
+	if not force and since > 0 and os.time() - since < 2 * self.sitPoll / 1000 then return end
+	setQuestStatus(key, tostring(os.time()))
+	self:set(pPlayer, "sitMiss", 0)
 	createEvent(self.sitPoll, self.name, "pollSit", pPlayer, "")
 end
 
@@ -236,10 +241,19 @@ function FbMasterBase:pollSit(pPlayer)
 	if pPlayer == nil then return end
 	local oid = SceneObject(pPlayer):getObjectID()
 	local t = self:currentTask(pPlayer)
-	if t == nil or t.kind ~= "sit" or self:get(pPlayer, "ready:" .. t.id) ~= nil or SceneObject(pPlayer):getZoneName() == "" or not self:isStudent(pPlayer) then
+	if t == nil or t.kind ~= "sit" or self:get(pPlayer, "ready:" .. t.id) ~= nil or not self:isStudent(pPlayer) then
 		removeQuestStatus(self.name .. ".sit." .. oid)
 		return
 	end
+	if SceneObject(pPlayer):getZoneName() == "" then
+		-- the login hook runs before the character stands in the world: wait it out (a minute), a logout ends the chain
+		local miss = (tonumber(self:get(pPlayer, "sitMiss") or 0) or 0) + 1
+		self:set(pPlayer, "sitMiss", miss)
+		if miss > 12 then removeQuestStatus(self.name .. ".sit." .. oid); return end
+		createEvent(self.sitPoll, self.name, "pollSit", pPlayer, "")
+		return
+	end
+	setQuestStatus(self.name .. ".sit." .. oid, tostring(os.time()))   -- the chain is alive
 	local pCell = self:cell()
 	local inRoom = pCell ~= nil and SceneObject(pPlayer):getParentID() == SceneObject(pCell):getObjectID()
 	local still = CreatureObject(pPlayer):isMeditating() or CreatureObject(pPlayer):getPosture() == 8   -- CreaturePosture::SITTING: no SITTING global in this state (selrahc sat for nothing, 2026-10-31)

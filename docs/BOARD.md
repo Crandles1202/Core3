@@ -16,6 +16,7 @@ borrowing with a lock; this file carries the intent.
 | claude | `feature/depot` | the component depot: every crafting component, rolled or raw, generated catalogue | coding | — | 2026-10-30 |
 | claude | `feature/enclave` | the enclave cells admit the Padawan box (the door did, the cells did not) | coding | — | 2026-10-31 |
 | claude | `feature/ladder` | the Masters' sit poll (SITTING was nil), Initiate/Padawan titles on the ladder | coding | — | 2026-10-31 |
+| claude | `feature/sitpoll` | the Masters' sit poll survives login and is re-armed by the talk | coding | — | 2026-10-31 |
 | _(add a row with `swg agent new <name>`)_ | | | | | |
 
 Status words: `planning`, `coding`, `testing` (holds the bench), `gate` (running `swg test all`), `ready to merge`,
