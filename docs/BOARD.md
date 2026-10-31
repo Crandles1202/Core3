@@ -14,6 +14,7 @@ borrowing with a lock; this file carries the intent.
 | claude | `feature/client` | `live tag` picks the next free name; `live client` patches the client's saved floating-ids option; docs | coding | — | 2026-10-28 |
 | claude | `feature/vendors` | vehicle dealer + raw resource dealer in the Trade Hall; several game windows at once | coding | — | 2026-10-29 |
 | claude | `feature/depot` | the component depot: every crafting component, rolled or raw, generated catalogue | coding | — | 2026-10-30 |
+| claude | `feature/enclave` | the enclave cells admit the Padawan box (the door did, the cells did not) | coding | — | 2026-10-31 |
 | _(add a row with `swg agent new <name>`)_ | | | | | |
 
 Status words: `planning`, `coding`, `testing` (holds the bench), `gate` (running `swg test all`), `ready to merge`,
