@@ -1694,3 +1694,4 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
 - **The quick gate is the gate (2026-10-30).** Chuck: "if we are not making any changes to the scenarios then can we skip those checks?"
   `swg test quick` now takes C++ branches too (the scenarios are chosen by the changed file names against `# covers:`), `bench merge`
   and `live tag` accept its stamp. `swg test all` remains for a deliberate full sweep. Cost of the rule before: ~80 min per C++ branch.
+- **Kill kinds match the object template path, not the mobile name** (2026-10-30): the juvenile canyon krayt is `object/mobile/juvenile_canyon_krayt.iff` and the adult krayts `krayt_dragon_hue.iff`, so the attunement rule "krayt_dragon" missed the juvenile; it matches "krayt" now. Check `templates = {…}` in the mobile file before writing a kill rule.

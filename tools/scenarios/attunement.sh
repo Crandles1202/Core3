@@ -14,6 +14,7 @@ wait_online || die "$CHAR never came online"
 lab "attunementSit:$CHAR:stand" >/dev/null
 sleep 8
 lab "attunementReset:$CHAR" >/dev/null
+lab "takeItems:$CHAR:lightsaber_module_force_crystal" >/dev/null; lab "takeItems:$CHAR:holocron" >/dev/null   # an earlier lab check may have left a crystal in the bag (the kill scans it)
 check_eq "starts_at_zero" "$(lab_kv "attunement:$CHAR" total)" "0"
 lab "travel:$CHAR:tatooine:5264:113" >/dev/null
 sleep 4
