@@ -358,6 +358,7 @@ includeFile("conversations/tasks/fb_droid_dispenser_conv.lua")
 includeFile("conversations/tasks/fb_pet_dealer_conv.lua")
 includeFile("conversations/tasks/fb_vehicle_dealer_conv.lua")   -- Final Boss 2.13
 includeFile("conversations/tasks/fb_resource_dealer_conv.lua")   -- Final Boss 2.14
+includeFile("conversations/tasks/fb_component_depot_conv.lua")   -- Final Boss 2.15
 includeFile("conversations/tasks/fb_property_agent_conv.lua")
 includeFile("conversations/tasks/fb_speeder_dealer_conv.lua")
 includeFile("conversations/tasks/fb_cantina_manager_conv.lua")

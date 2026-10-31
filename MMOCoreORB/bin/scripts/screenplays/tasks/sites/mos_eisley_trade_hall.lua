@@ -20,6 +20,7 @@ FbSites:add {
 		{ template = "fb_droid_dispenser", label = "FB-3D, droids", room = "halla", x = 10.60, z = 2.50, y = 9.50, dir = 180 },
 		{ template = "fb_vehicle_dealer", label = "Rook Valdane, vehicles", room = "hallb", x = -10.60, z = 2.50, y = 9.50, dir = 180 },
 		{ template = "fb_resource_dealer", label = "Mehra Tulk, raw resources", room = "foyer", x = 6.00, z = 2.50, y = 13.00, dir = 180 },
+		{ template = "fb_component_depot", label = "BX-4, every component", room = "foyer", x = -6.00, z = 2.50, y = 13.00, dir = 180 },
 	},
 	outside = {
 		{ template = "fb_trade_hall_keeper", x = 3524.0, z = 5.00, y = -4815.0, dir = 90 },
