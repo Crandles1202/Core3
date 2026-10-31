@@ -48,6 +48,8 @@ bot_bg --wait 2 --command sitServer --command-nowait --wait 80
 wait_online || die "$CHAR never came back online"
 lab "gotoNpc:$CHAR:fb_jedi_master" >/dev/null
 sleep 10
+OID=$(lab_kv "where:$CHAR" oid)
+check "talk_arms_the_sit_poll" "$( [ "$(lab_kv "questStatus:FbJediMaster.sit.$OID" value)" != "nil" ] && echo 1 || echo 0 )" "the wait screen (re)arms the count"
 for i in $(seq 1 13); do lab "trainingTick:$CHAR" >/dev/null; sleep 1; done
 M=$(lab "jediMaster:$CHAR" | head -n1)
 check "stillness_credited" "$(grep -q 'current=stillness told=true ready=true' <<<"$M" && echo 1 || echo 0)" "$M"
