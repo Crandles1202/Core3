@@ -41,7 +41,8 @@ end
 
 local function alive(oid)
 	local p = getSceneObject(oid)
-	return p ~= nil and SceneObject(p):isCreatureObject() and not CreatureObject(p):isDead()
+	-- an object removed from the world still resolves for a while (no zone); a corpse resolves with a zone (dead)
+	return p ~= nil and SceneObject(p):isCreatureObject() and SceneObject(p):getZoneName() ~= "" and not CreatureObject(p):isDead()
 end
 
 function FbSithShadows:spawnOne(camp, template)
