@@ -1695,3 +1695,8 @@ Persist with `setQuestStatus(key, value)` / `getQuestStatus(key)` (strings; keys
   `swg test quick` now takes C++ branches too (the scenarios are chosen by the changed file names against `# covers:`), `bench merge`
   and `live tag` accept its stamp. `swg test all` remains for a deliberate full sweep. Cost of the rule before: ~80 min per C++ branch.
 - **Kill kinds match the object template path, not the mobile name** (2026-10-30): the juvenile canyon krayt is `object/mobile/juvenile_canyon_krayt.iff` and the adult krayts `krayt_dragon_hue.iff`, so the attunement rule "krayt_dragon" missed the juvenile; it matches "krayt" now. Check `templates = {…}` in the mobile file before writing a kill rule.
+- **Component depot (2.15, 2026-10-30).** Of ~600 component templates only 140 have a loot item (weapon, armor, chemistry, clothing,
+  munitions, lightsaber crystals, the krayt pearl); a component given from its bare template has no experimental attributes, so it
+  crafts a plain piece. The depot sells both and says which is which. `tools/components_gen.py` finds the loot items by regex over
+  `loot/items/**` (`directObjectTemplate` under `object/tangible/component/`, `quest_item` left out) and the raw ones from the template
+  tree (`base_*`, `dna`, `bio`, `food/secrets` left out). A SUI list box takes ~130 rows without complaint.

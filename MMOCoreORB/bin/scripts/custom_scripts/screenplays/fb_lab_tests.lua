@@ -1437,6 +1437,32 @@ function FbLabTests:hasSchematic(charName, draftPath)
 end
 
 -- buyPart:<char>:<item name>  or  buyPart:<char>:<catIdx>:<itemIdx> → FbPartsDealer:purchase()
+-- componentDepot → the depot's catalogue: INFO componentDepot categories=N rows=M rolled=R raw=W, one INFO depotCategory line each
+function FbLabTests:componentDepot()
+	if FbComponentDepot == nil then print("ERROR FbComponentDepot not loaded"); return "none" end
+	local rows, rolled = 0, 0
+	for _, cat in ipairs(FbComponentDepot:categories()) do
+		local r = 0
+		for _, it in ipairs(cat.items) do if it.loot ~= nil then r = r + 1 end end
+		rows = rows + #cat.items; rolled = rolled + r
+		print(string.format("INFO depotCategory name=%s rows=%d rolled=%d first=%s", (cat.name:gsub(" ", "_")), #cat.items, r, (cat.items[1].name:gsub(" ", "_"))))
+	end
+	print(string.format("INFO componentDepot categories=%d rows=%d rolled=%d raw=%d", #FbComponentDepot:categories(), rows, rolled, rows - rolled))
+	return tostring(rows)
+end
+
+-- buyComponent:<char>:<name|fragment|cat:idx> → FbComponentDepot:purchase; INFO buyComponent result=ok name=… template=…
+function FbLabTests:buyComponent(charName, key)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	if FbComponentDepot == nil then print("ERROR FbComponentDepot not loaded"); return "none" end
+	local item = FbComponentDepot:find(key)
+	local result = FbComponentDepot:purchase(pPlayer, key)
+	print(string.format("INFO buyComponent result=%s name=%s price=%s kind=%s template=%s", result, item and (item.name:gsub(" ", "_")) or "?", item and item.price or 0,
+		item and (item.loot and "rolled" or "raw") or "?", item and item.template or "?"))
+	return result
+end
+
 -- buyVehicle:<char>:<name|idx> → FbVehicleDealer:purchase; INFO buyVehicle result=ok
 function FbLabTests:buyVehicle(charName, key)
 	local pPlayer = onlinePlayer(charName)
