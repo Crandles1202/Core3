@@ -123,6 +123,9 @@ function FbMasterBase:take(pPlayer)
 	if not CreatureObject(pPlayer):hasSkill("force_title_jedi_novice") then awardSkillUnchecked(pPlayer, "force_title_jedi_novice") end
 	-- the rank box is given, not earned: stock requires a Knight behind it (awardSkillUnchecked, DirectorManager.cpp)
 	if not CreatureObject(pPlayer):hasSkill(self.rankSkill) then awardSkillUnchecked(pPlayer, self.rankSkill) end
+	-- the visible Force Progression tree keeps pace: a student is a Jedi Initiate (the training saber, crystal pack and
+	-- toolkit come with the box); the training done makes a Jedi Padawan; the Knight trial a Knight (rank_03)
+	if not CreatureObject(pPlayer):hasSkill("force_title_jedi_rank_01") then awardSkillUnchecked(pPlayer, "force_title_jedi_rank_01") end
 	FbAttunement:setFlag(pPlayer, "master", self.side)
 	FbAttunement:setFlag(pPlayer, "task", "training")
 	self:set(pPlayer, "step", 1)
@@ -152,6 +155,7 @@ function FbMasterBase:reward(pPlayer, id)
 	self:clear(pPlayer, "prog"); self:clear(pPlayer, "sat")
 	if self.tasks[step + 1] == nil then
 		FbAttunement:setFlag(pPlayer, "task", "trained")
+		if not CreatureObject(pPlayer):hasSkill("force_title_jedi_rank_02") then awardSkillUnchecked(pPlayer, "force_title_jedi_rank_02") end   -- Jedi Padawan
 		self:say(pPlayer, "trained_note")
 	end
 	printf("%s: %s reports %s (%d of %d)\n", self.name, CreatureObject(pPlayer):getFirstName(), id, step, #self.tasks)
@@ -238,7 +242,7 @@ function FbMasterBase:pollSit(pPlayer)
 	end
 	local pCell = self:cell()
 	local inRoom = pCell ~= nil and SceneObject(pPlayer):getParentID() == SceneObject(pCell):getObjectID()
-	local still = CreatureObject(pPlayer):isMeditating() or CreatureObject(pPlayer):getPosture() == SITTING
+	local still = CreatureObject(pPlayer):isMeditating() or CreatureObject(pPlayer):getPosture() == 8   -- CreaturePosture::SITTING: no SITTING global in this state (selrahc sat for nothing, 2026-10-31)
 	if inRoom and still then
 		local sat = (tonumber(self:get(pPlayer, "sat") or 0) or 0) + self.sitPoll / 1000
 		self:set(pPlayer, "sat", sat)

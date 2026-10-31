@@ -37,6 +37,7 @@ check_eq "offer_accepted" "$(bot_action_count converse ok)" "2" "$(grep -ao '=> 
 M=$(lab "jediMaster:$CHAR" | head -n1)
 check "taken_as_student" "$(grep -q 'student=true' <<<"$M" && echo 1 || echo 0)" "$M"
 check "novice_rank_and_council" "$(grep -q 'rank=true' <<<"$M" && grep -q 'council=1' <<<"$M" && echo 1 || echo 0)" "$M"
+check "initiate_title_on_enrolment" "$(lab "hasSkill:$CHAR:force_title_jedi_rank_01" | grep -q 'has=true' && echo 1 || echo 0)" "the Force Progression tree keeps pace: Jedi Initiate"
 check "stillness_given" "$(grep -q 'current=stillness told=true' <<<"$M" && echo 1 || echo 0)" "$M"
 check "client_got_taken" "$(grep -aq 'fb_force:master_taken' "$BOTLOG" && echo 1 || echo 0)" "$(grep -a 'master_' "$BOTLOG" | cut -c1-90 | tr '\n' ' ')"
 
@@ -80,6 +81,7 @@ XP2=$(lab "xp:$CHAR:jedi_general" | sed -n 's/.*amount=\([0-9-]*\).*/\1/p' | hea
 check_eq "shadows_paid" "$(( ${XP2:-0} - ${XP1:-0} ))" "5000" "jedi_general $XP1 -> $XP2"
 M=$(lab "jediMaster:$CHAR" | head -n1)
 check "training_complete" "$(grep -q 'done=stillness,shadows' <<<"$M" && grep -q 'current=rank1' <<<"$M" && echo 1 || echo 0)" "$M"
+check "padawan_title_when_trained" "$(lab "hasSkill:$CHAR:force_title_jedi_rank_02" | grep -q 'has=true' && echo 1 || echo 0)" "Jedi Padawan"
 check_eq "ladder_offers_rank1" "$(lab "jediMaster:$CHAR" | sed -n 's/.*screen=\([a-z_0-9]*\).*/\1/p')" "train_rank1"   # 10000 Jedi XP from the two tasks clears the 5000 of rank 1
 check "client_was_offered_rank1" "$(grep -aq 'option\[0\] I will\.' "$BOTLOG" && echo 1 || echo 0)" "$(grep -a 'option\[' "$BOTLOG" | tail -n2 | cut -c1-80 | tr '\n' ' ')"   # the second talk shows the rank task's screen (its text is a StringId the client does not decode)
 lab "attunementReset:$CHAR" >/dev/null
