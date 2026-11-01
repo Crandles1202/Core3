@@ -1224,6 +1224,18 @@ function FbLabTests:skillDrop(charName, skillName)
 end
 
 -- hasSkill:<char>:<skillName> → whether a loaded character has that skill box (7.2: citizen status)
+-- jediState:<char>[:<n>] → read (or set) the PlayerObject Jedi state (1 sensitive, 2 Padawan, 4/8 Knight light/dark)
+function FbLabTests:jediState(charName, n)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "none" end
+	local pGhost = CreatureObject(pPlayer):getPlayerObject()
+	if pGhost == nil then return "none" end
+	if n ~= nil then PlayerObject(pGhost):setJediState(tonumber(n)) end
+	local st = PlayerObject(pGhost):getJediState()
+	print(string.format("INFO jediState char=%s state=%d", charName, st))
+	return tostring(st)
+end
+
 function FbLabTests:hasSkill(charName, skillName)
 	local pPlayer = loadedPlayer(charName)
 	if pPlayer == nil then print("ERROR hasSkill: no loaded player " .. tostring(charName)); return "none" end
