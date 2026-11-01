@@ -18,6 +18,7 @@ borrowing with a lock; this file carries the intent.
 | claude | `feature/ladder` | the Masters' sit poll (SITTING was nil), Initiate/Padawan titles on the ladder | coding | — | 2026-10-31 |
 | claude | `feature/sitpoll` | the Masters' sit poll survives login and is re-armed by the talk | coding | — | 2026-10-31 |
 | claude | `feature/shadows` | Sith Shadow camps for the Masters' kill tasks (stock has none in the world) | coding | — | 2026-10-31 |
+| claude | `feature/padawan` | the Padawan title sets Jedi state 2 (discipline trees); titles caught up at login; quick gate on unstable vs the newest tag | coding | — | 2026-11-01 |
 | _(add a row with `swg agent new <name>`)_ | | | | | |
 
 Status words: `planning`, `coding`, `testing` (holds the bench), `gate` (running `swg test all`), `ready to merge`,

@@ -831,7 +831,19 @@ test_scenario() {
 # quick_scenarios: the scenarios a change needs — those whose "# covers:" words match a changed path (the branch against
 # unstable), the scenario files changed themselves, and the core set; C++ changes get no quick gate (swg test all).
 QUICK_CORE="npc-conversation"
-quick_changed() { git -C "$REPO" diff --name-only "$(git -C "$REPO" merge-base unstable HEAD)" HEAD 2>/dev/null; }
+quick_changed() {
+	# a branch: against its fork point; unstable itself (two merges since the last gate): against the newest stable tag, so
+	# the merged tip can take a quick gate and a tag (SWG_QUICK_BASE overrides either)
+	local base=${SWG_QUICK_BASE:-}
+	if [ -z "$base" ]; then
+		if [ "$(git -C "$REPO" rev-parse --abbrev-ref HEAD 2>/dev/null)" = unstable ] || [ "$(git -C "$REPO" rev-parse HEAD)" = "$(git -C "$REPO" rev-parse unstable)" ]; then
+			base=$(git -C "$REPO" tag -l 'chuck-stable-*' | sort -V | tail -n1)
+		else
+			base=$(git -C "$REPO" merge-base unstable HEAD)
+		fi
+	fi
+	git -C "$REPO" diff --name-only "$base" HEAD 2>/dev/null
+}
 quick_scenarios() {
 	local changed; changed=$(quick_changed)
 	local -A pick=()

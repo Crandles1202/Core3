@@ -159,9 +159,9 @@ function FbMasterBase:reward(pPlayer, id)
 	if t ~= nil and t.rank ~= nil then self:promote(pPlayer, t.rank) end
 	self:set(pPlayer, "step", step + 1)
 	self:clear(pPlayer, "prog"); self:clear(pPlayer, "sat")
+	self:ensureTitles(pPlayer)   -- Jedi Padawan once the training tasks are reported: the title and the Jedi state the discipline trees need
 	if self.tasks[step + 1] == nil then
 		FbAttunement:setFlag(pPlayer, "task", "trained")
-		if not CreatureObject(pPlayer):hasSkill("force_title_jedi_rank_02") then awardSkillUnchecked(pPlayer, "force_title_jedi_rank_02") end   -- Jedi Padawan
 		self:say(pPlayer, "trained_note")
 	end
 	printf("%s: %s reports %s (%d of %d)\n", self.name, CreatureObject(pPlayer):getFirstName(), id, step, #self.tasks)
@@ -291,9 +291,29 @@ function FbMasterBase:onKill(pPlayer, pVictim)
 	if prog >= t.count then self:complete(pPlayer, t.id) end
 end
 
--- a login re-arms the sit poll (events do not survive a restart)
+-- the visible ladder: Initiate at enrolment, Padawan when the training is done — and the Padawan title carries the
+-- Jedi state 2, which is what the client reads before it lists the discipline trees (lightsaber, powers, healing,
+-- enhancements, defender); a login brings an older student up to date (selrahc finished before the rule existed)
+function FbMasterBase:ensureTitles(pPlayer)
+	if pPlayer == nil then return end
+	local creo = CreatureObject(pPlayer)
+	if not creo:hasSkill("force_title_jedi_rank_01") then awardSkillUnchecked(pPlayer, "force_title_jedi_rank_01") end
+	-- "trained" = the training tasks (the ones without a rank) all reported; the rank tasks come after
+	local base = 0
+	for _, t in ipairs(self.tasks) do if t.rank == nil then base = base + 1 end end
+	local task = FbAttunement ~= nil and FbAttunement:flag(pPlayer, "task") or nil
+	local trained = (tonumber(self:get(pPlayer, "step") or 1) or 1) > base or task == "trained" or task == "knight" or task == "knighted"
+	if trained then
+		if not creo:hasSkill("force_title_jedi_rank_02") then awardSkillUnchecked(pPlayer, "force_title_jedi_rank_02") end
+		local pGhost = creo:getPlayerObject()
+		if pGhost ~= nil and PlayerObject(pGhost):getJediState() < 2 then PlayerObject(pGhost):setJediState(2) end
+	end
+end
+
+-- a login re-arms the sit poll (events do not survive a restart) and brings the titles up to date
 function FbMasterBase:onLogin(pPlayer)
 	if pPlayer == nil or not self:isStudent(pPlayer) then return end
+	self:ensureTitles(pPlayer)
 	removeQuestStatus(self.name .. ".sit." .. SceneObject(pPlayer):getObjectID())
 	local t = self:currentTask(pPlayer)
 	if t ~= nil and t.kind == "sit" and self:get(pPlayer, "told:" .. t.id) ~= nil and self:get(pPlayer, "ready:" .. t.id) == nil then self:armSit(pPlayer) end
