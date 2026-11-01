@@ -159,9 +159,9 @@ function FbMasterBase:reward(pPlayer, id)
 	if t ~= nil and t.rank ~= nil then self:promote(pPlayer, t.rank) end
 	self:set(pPlayer, "step", step + 1)
 	self:clear(pPlayer, "prog"); self:clear(pPlayer, "sat")
+	self:ensureTitles(pPlayer)   -- Jedi Padawan once the training tasks are reported: the title and the Jedi state the discipline trees need
 	if self.tasks[step + 1] == nil then
 		FbAttunement:setFlag(pPlayer, "task", "trained")
-		self:ensureTitles(pPlayer)   -- Jedi Padawan: the title and the Jedi state the discipline trees need
 		self:say(pPlayer, "trained_note")
 	end
 	printf("%s: %s reports %s (%d of %d)\n", self.name, CreatureObject(pPlayer):getFirstName(), id, step, #self.tasks)
@@ -298,8 +298,11 @@ function FbMasterBase:ensureTitles(pPlayer)
 	if pPlayer == nil then return end
 	local creo = CreatureObject(pPlayer)
 	if not creo:hasSkill("force_title_jedi_rank_01") then awardSkillUnchecked(pPlayer, "force_title_jedi_rank_01") end
+	-- "trained" = the training tasks (the ones without a rank) all reported; the rank tasks come after
+	local base = 0
+	for _, t in ipairs(self.tasks) do if t.rank == nil then base = base + 1 end end
 	local task = FbAttunement ~= nil and FbAttunement:flag(pPlayer, "task") or nil
-	local trained = (tonumber(self:get(pPlayer, "step") or 1) or 1) > #self.tasks or task == "trained" or task == "knight" or task == "knighted"
+	local trained = (tonumber(self:get(pPlayer, "step") or 1) or 1) > base or task == "trained" or task == "knight" or task == "knighted"
 	if trained then
 		if not creo:hasSkill("force_title_jedi_rank_02") then awardSkillUnchecked(pPlayer, "force_title_jedi_rank_02") end
 		local pGhost = creo:getPlayerObject()
