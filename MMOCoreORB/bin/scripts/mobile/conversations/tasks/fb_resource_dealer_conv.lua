@@ -7,7 +7,7 @@ fbResourceDealerConvoTemplate = ConvoTemplate:new {
 }
 intro = ConvoScreen:new {
 	id = "intro",
-	customDialogText = "Mehra Tulk, raw materials. Every resource in shift on the ten worlds, by the thousand units, no harvester needed. Pick a family and I will show you what is in the ground this week.",
+	customDialogText = "Mehra Tulk, raw materials. Every kind of resource there is, by the thousand units, no harvester needed: the best vein ever seen of each, and if nobody has seen one yet I put the word out and it is found. Pick a family.",
 	stopConversation = "false",
 	options = {
 		{"Show me the resources.", "do_list"},
@@ -18,14 +18,14 @@ intro = ConvoScreen:new {
 fbResourceDealerConvoTemplate:addScreen(intro)
 do_list = ConvoScreen:new {
 	id = "do_list",
-	customDialogText = "Here is what is in shift. Mind the stats: the best of each class is at the top.",
+	customDialogText = "Here is the ledger. Mind the quality: it is the best of each kind I have ever seen.",
 	stopConversation = "true",
 	options = {}
 }
 fbResourceDealerConvoTemplate:addScreen(do_list)
 do_explain = ConvoScreen:new {
 	id = "do_explain",
-	customDialogText = "Resources come and go in shifts of a few days. I list every spawn currently in the ground across the ten worlds, grouped by family, best first. You pay by the unit and the stack lands in your inventory, the same as a harvester hopper would give you. When a spawn leaves the ground it leaves my list.",
+	customDialogText = "Resources come and go in shifts of a few days, but a vein that has been seen once can always be dug again. I keep the best of every kind I have ever seen, and a kind nobody has seen yet I have found for you on the spot — it goes into the ground somewhere, so the surveyors will find it too. You pay by the unit and the stack lands in your inventory, the same as a harvester hopper would give you.",
 	stopConversation = "false",
 	options = {
 		{"Show me the resources.", "do_list"},

@@ -13,9 +13,11 @@ check "resource_dealer_spawned" "$( [ -n "$ROID" ] && echo 1 || echo 0 )" "oid=$
 
 CAT=$(lab "resourceDealer" 60)
 FAMILIES=$(printf '%s\n' "$CAT" | sed -n 's/.*families=\([0-9]*\).*/\1/p' | head -n1)
-FIRST=$(printf '%s\n' "$CAT" | grep '^INFO resourceFamily' | head -n1 | sed -n 's/.*name=\(.*\) spawns=.*/\1/p')
-SPAWN=$(printf '%s\n' "$CAT" | grep '^INFO resourceFamily' | head -n1 | sed -n 's/.*first=\(.*\) class=.*/\1/p')
-check_ge "catalogue_has_families" "${FAMILIES:-0}" 5 "$FAMILIES families, first '$FIRST' → $SPAWN"
+TYPES=$(printf '%s\n' "$CAT" | sed -n 's/.*resourceDealer families=[0-9]* types=\([0-9]*\).*/\1/p' | head -n1)
+UNKNOWN=$(printf '%s\n' "$CAT" | sed -n 's/.*firstUnknown=\([^ ]*\).*/\1/p' | head -n1)
+FIRST=$(printf '%s\n' "$CAT" | grep '^INFO resourceFamily' | head -n1 | sed -n 's/.*name=\([^ ]*\) types=.*/\1/p')   # underscores: a console argument carries no spaces
+check_ge "catalogue_has_families" "${FAMILIES:-0}" 5 "$FAMILIES families, first '$FIRST'"
+check_ge "catalogue_has_every_kind" "${TYPES:-0}" 300 "$TYPES kinds of resource, first unknown: $UNKNOWN"
 
 bot_bg --wait 15
 wait_online || die "$CHAR never came online"
@@ -45,8 +47,17 @@ CASH1=$(lab_kv "cash:$CHAR" cash)
 check_eq "vehicle_price_deducted" "$(( CASH0 - CASH1 ))" "6000" "cash $CASH0 -> $CASH1"
 check_eq "jetpack_refused_without_cash" "$(lab "cashSet:$CHAR:1000" >/dev/null; lab_kv "buyVehicle:$CHAR:Jetpack" result)" "no_credits"
 lab "cashSet:$CHAR:$CASH1" >/dev/null
-check_eq "resource_bought" "$(lab_kv "buyResource:$CHAR:$FIRST:5000" result)" "ok"
+B=$(lab "buyResource:$CHAR:$FIRST:5000" 60)
+SPAWN=$(sed -n 's/.*INFO buyResource result=ok name=\([^ ]*\).*/\1/p' <<<"$B" | head -n1)
+check_eq "resource_bought" "$(sed -n 's/.*result=\([a-z_]*\).*/\1/p' <<<"$B" | head -n1)" "ok" "$B"
 check_ge "resource_stack_in_inventory" "$(lab "inventory:$CHAR" | grep -c -F "$SPAWN")" 1 "stack of $SPAWN"
+if [ -n "$UNKNOWN" ] && [ "$UNKNOWN" != "-" ]; then
+	U=$(lab "buyResource:$CHAR:$UNKNOWN:1000" 60)
+	USPAWN=$(sed -n 's/.*INFO buyResource result=ok name=\([^ ]*\).*/\1/p' <<<"$U" | head -n1)
+	check_eq "unknown_kind_found_and_sold" "$(sed -n 's/.*result=\([a-z_]*\).*/\1/p' <<<"$U" | head -n1)" "ok" "$U"
+	check_ge "found_kind_in_inventory" "$(lab "inventory:$CHAR" | grep -c -F "$USPAWN")" 1 "stack of $USPAWN ($UNKNOWN)"
+	lab "cashSet:$CHAR:$CASH0" >/dev/null; lab "cashSet:$CHAR:$(( CASH0 - 6000 - 5000 ))" >/dev/null
+fi
 CASH2=$(lab_kv "cash:$CHAR" cash)
 check_eq "resource_price_deducted" "$(( CASH1 - CASH2 ))" "5000" "cash $CASH1 -> $CASH2"
 check_eq "unknown_resource_refused" "$(lab_kv "buyResource:$CHAR:no_such_spawn_xyz:1000" result)" "bad_item"

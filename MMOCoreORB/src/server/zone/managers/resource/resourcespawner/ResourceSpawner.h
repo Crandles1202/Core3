@@ -74,6 +74,8 @@ private:
 	int samplingMultiplier;
 
 public:
+	ResourceTree* getResourceTree() { return resourceTree; }   // Final Boss: the dealer's catalogue walks it
+
 	ResourceSpawner(ManagedReference<ZoneServer* > serv,
 			ZoneProcessServer* impl);
 	~ResourceSpawner();

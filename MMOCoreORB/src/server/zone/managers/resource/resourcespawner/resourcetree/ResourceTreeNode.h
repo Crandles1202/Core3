@@ -26,6 +26,10 @@ private:
 	ResourceTreeNode* parentNode;
 
 public:
+	// Final Boss: read access for the resource dealer's catalogue (DirectorManager::getResourceTypes)
+	const Vector<ResourceTreeEntry*>& getEntries() const { return entries; }
+	const Vector<ResourceTreeNode*>& getNodes() const { return nodes; }
+
 	ResourceTreeNode(const String& t, const String& n, const int d);
 	~ResourceTreeNode();
 

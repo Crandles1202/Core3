@@ -48,6 +48,11 @@ TEST_F(ConfigManagerTest, FbCraftingPracticeExpMultiplier) {
 	ASSERT_FLOAT_EQ(tmp1, 5.0f);
 }
 
+// Final Boss: factories make an item a second (config.lua Core3.Factory)
+TEST_F(ConfigManagerTest, FbFactorySecondsPerItem) {
+	ASSERT_EQ(configManager->getInt("Core3.Factory.SecondsPerItem", 0), 1);
+}
+
 TEST_F(ConfigManagerTest, BoolTest) {
 	auto tmp1 = configManager->getMakeZone();
 	ASSERT_TRUE(tmp1);
