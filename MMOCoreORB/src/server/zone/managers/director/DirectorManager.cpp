@@ -1381,8 +1381,8 @@ int DirectorManager::spawnResourceOfType(lua_State* L) {
 	return 1;
 }
 
-// Final Boss (2.16): setConsumableValues(pObj, nutrition, duration, quantity, filling) -> true when the object is a
-// consumable (food, drink) and took the values a chef's experimentation would have given it
+// Final Boss (2.16): setConsumableValues(pObj, nutrition, duration, quantity, filling) -> the use count the consumable now
+// has (0 when the object is no consumable); the values are what a chef's experimentation would have given it
 int DirectorManager::setConsumableValues(lua_State* L) {
 	if (checkArgumentCount(L, 5) == 1) {
 		String err = "incorrect number of arguments passed to DirectorManager::setConsumableValues";
@@ -1397,12 +1397,12 @@ int DirectorManager::setConsumableValues(lua_State* L) {
 	SceneObject* obj = (SceneObject*)lua_touserdata(L, -5);
 	Consumable* food = obj != nullptr ? dynamic_cast<Consumable*>(obj) : nullptr;
 	if (food == nullptr) {
-		lua_pushboolean(L, false);
+		lua_pushinteger(L, 0);
 		return 1;
 	}
 	Locker locker(food);
 	food->fbSetValues(nutrition, duration, quantity, filling);
-	lua_pushboolean(L, true);
+	lua_pushinteger(L, food->getUseCount());   // the use count read back (Lua has no other way to read it)
 	return 1;
 }
 

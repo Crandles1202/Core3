@@ -1511,7 +1511,7 @@ function FbLabTests:buyFood(charName, key)
 	key = tostring(key or ""):gsub("_", " ")
 	local item = FbFoodVendor:find(key)
 	local result = FbFoodVendor:purchase(pPlayer, key)
-	local uses = (result == "ok" and FbFoodVendor._last ~= nil) and TangibleObject(FbFoodVendor._last):getUseCount() or -1
+	local uses = result == "ok" and (FbFoodVendor._lastUses or -1) or -1
 	print(string.format("INFO buyFood result=%s name=%s price=%s template=%s uses=%s wanted=%s", result, item and (item.name:gsub(" ", "_")) or "?", item and item.price or 0,
 		item and item.template or "?", tostring(uses), item and tostring(item.quantity or "-") or "?"))
 	return result

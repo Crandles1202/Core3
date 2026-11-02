@@ -50,8 +50,9 @@ function FbFoodVendor:purchase(pPlayer, key)
 		creature:sendSystemMessage("Oola looks in the oven and finds no " .. item.name .. ".")
 		return "failed"
 	end
+	self._lastUses = -1
 	if item.nutrition ~= nil then
-		setConsumableValues(pItem, item.nutrition, item.duration, item.quantity, item.filling)
+		self._lastUses = setConsumableValues(pItem, item.nutrition, item.duration, item.quantity, item.filling) or -1
 	end
 	creature:subtractCashCredits(item.price)
 	creature:sendSystemMessage("Purchased " .. item.name .. " for " .. item.price .. " credits.")
