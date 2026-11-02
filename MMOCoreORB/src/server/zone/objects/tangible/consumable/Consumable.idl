@@ -147,13 +147,13 @@ class Consumable extends TangibleObject {
 		return (foragedFood == 1);
 	}
 
-	@read
 	/**
 	 * Final Boss (2.16): the values a crafter's experimentation would give — the food vendor hands out template foods
 	 * and sets a master chef's numbers on them (nutrition, duration in seconds, uses, filling)
 	 */
 	public native void fbSetValues(int nutritionValue, int durationValue, int quantity, int fillingValue);
 
+	@read
 	public boolean isSpice() {
 		return (isSpiceEffect() && isFood());
 	}
