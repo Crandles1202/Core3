@@ -1489,6 +1489,34 @@ function FbLabTests:buyComponent(charName, key)
 	return result
 end
 
+-- foodVendor → the chef's shelves: INFO foodShelf lines and INFO foodVendor shelves=N rows=M crafted=C
+function FbLabTests:foodVendor()
+	if FbFoodVendor == nil then print("ERROR FbFoodVendor not loaded"); return "none" end
+	local rows, crafted = 0, 0
+	for _, shelf in ipairs(FbFoodVendor:shelves()) do
+		local c = 0
+		for _, it in ipairs(shelf.items) do if it.nutrition ~= nil then c = c + 1 end end
+		rows = rows + #shelf.items; crafted = crafted + c
+		print(string.format("INFO foodShelf name=%s rows=%d crafted=%d first=%s", (shelf.name:gsub(" ", "_")), #shelf.items, c, (shelf.items[1].name:gsub(" ", "_"))))
+	end
+	print(string.format("INFO foodVendor shelves=%d rows=%d crafted=%d", #FbFoodVendor:shelves(), rows, crafted))
+	return tostring(rows)
+end
+
+-- buyFood:<char>:<name|shelf:idx> → FbFoodVendor:purchase; INFO buyFood result=ok name=… uses=… (the use count read back)
+function FbLabTests:buyFood(charName, key)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	if FbFoodVendor == nil then print("ERROR FbFoodVendor not loaded"); return "none" end
+	key = tostring(key or ""):gsub("_", " ")
+	local item = FbFoodVendor:find(key)
+	local result = FbFoodVendor:purchase(pPlayer, key)
+	local uses = (result == "ok" and FbFoodVendor._last ~= nil) and TangibleObject(FbFoodVendor._last):getUseCount() or -1
+	print(string.format("INFO buyFood result=%s name=%s price=%s template=%s uses=%s wanted=%s", result, item and (item.name:gsub(" ", "_")) or "?", item and item.price or 0,
+		item and item.template or "?", tostring(uses), item and tostring(item.quantity or "-") or "?"))
+	return result
+end
+
 -- buyVehicle:<char>:<name|idx> → FbVehicleDealer:purchase; INFO buyVehicle result=ok
 function FbLabTests:buyVehicle(charName, key)
 	local pPlayer = onlinePlayer(charName)
@@ -1530,16 +1558,6 @@ function FbLabTests:buyResource(charName, what, units)
 	return result
 end
 
--- buyVehicle:<char>:<name|idx> → FbVehicleDealer:purchase; INFO buyVehicle result=ok
-function FbLabTests:buyVehicle(charName, key)
-	local pPlayer = onlinePlayer(charName)
-	if pPlayer == nil then return "offline" end
-	if FbVehicleDealer == nil then print("ERROR FbVehicleDealer not loaded"); return "none" end
-	local item = FbVehicleDealer:find(key)
-	local result = FbVehicleDealer:purchase(pPlayer, key)
-	print(string.format("INFO buyVehicle result=%s name=%s price=%s template=%s", result, item and item.name or "?", item and item.price or 0, item and item.template or "?"))
-	return result
-end
 
 
 function FbLabTests:buyPart(charName, catIdx, itemIdx)
