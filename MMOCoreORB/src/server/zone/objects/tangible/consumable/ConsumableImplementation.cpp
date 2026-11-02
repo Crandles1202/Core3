@@ -121,6 +121,15 @@ void ConsumableImplementation::updateCraftingValues(CraftingValues* values, bool
 	}
 }
 
+// Final Boss (2.16): the values a chef's experimentation would have given (the food vendor's master numbers)
+void ConsumableImplementation::fbSetValues(int nutritionValue, int durationValue, int quantity, int fillingValue) {
+	nutrition = nutritionValue;
+	newNutrition = nutritionValue;
+	duration = durationValue;
+	filling = fillingValue;
+	setUseCount(quantity, true);
+}
+
 int ConsumableImplementation::handleObjectMenuSelect(CreatureObject* player, byte selectedID) {
 	if (!isASubChildOf(player))
 		return 0;
