@@ -25,6 +25,85 @@ FOLDER_NAMES = {
 }
 WORDS = {"enhancement": "enhancement", "max": "max", "min": "min", "hp": "HP", "dmg": "damage", "dna": "DNA", "cdef": "CDEF", "e11": "E11", "dh17": "DH17", "dl44": "DL44", "x34": "X-34", "av21": "AV-21", "x31": "X-31"}
 
+# ---- the game's own names: a template's objectName is "@table:key"; the table lives in string/en/<table>.stf inside one of the
+# stock archives (the first archive in Core3.TreFiles that has it wins, like the server and the client)
+import importlib.machinery
+_TRE = None
+_TABLES = {}
+_ARCHIVES = None
+
+def _tre():
+    global _TRE
+    if _TRE is None:
+        _TRE = importlib.machinery.SourceFileLoader("tre", os.path.join(os.path.dirname(os.path.abspath(__file__)), "tre")).load_module()
+    return _TRE
+
+def _archives():
+    global _ARCHIVES
+    if _ARCHIVES is None:
+        cfg = open(os.path.join(ROOT, "..", "conf", "config.lua")).read()
+        m = re.search(r"TreFiles\s*=\s*\{(.*?)\}", cfg, re.S)
+        names = re.findall(r'"([^"]+\.tre)"', m.group(1)) if m else []
+        # the archive folder: config-local.lua (the real one, git-ignored), then config.lua, then /tre
+        tre_path = None
+        for cf in (os.path.join(ROOT, "..", "conf", "config-local.lua"), os.path.join(ROOT, "..", "conf", "config.lua")):
+            if os.path.exists(cf):
+                mm = re.search(r'TrePath\s*=\s*"([^"]+)"', open(cf).read())
+                if mm and os.path.isdir(mm.group(1)):
+                    tre_path = mm.group(1)
+                    break
+        tre_path = tre_path or "/tre"
+        _ARCHIVES = []
+        for n in names:
+            f = os.path.join(tre_path, n)
+            if os.path.exists(f):
+                try:
+                    with open(f, "rb") as fh:
+                        _ARCHIVES.append(_tre().tre_read(fh.read()))
+                except Exception:
+                    pass
+    return _ARCHIVES
+
+def stf_table(table):
+    if table not in _TABLES:
+        _TABLES[table] = {}
+        want = "string/en/%s.stf" % table
+        for recs in _archives():
+            rec = next((r for r in recs if r.name == want), None)   # (tre's own _find exits the process on a miss)
+            if rec is not None:
+                _TABLES[table] = dict(_tre().stf_decode(rec.data()))
+                break
+    return _TABLES[table]
+
+# the server's component templates carry no objectName (it lives in the client template inside the archives), but the
+# stock string keys are the template's file stem in the folder's crafting table — tried in that order, then the others
+FOLDER_TABLES = {
+    "item": "craft_item_ingredients_n", "droid": "craft_droid_ingredients_n", "droid/repair": "craft_droid_ingredients_n",
+    "weapon": "craft_weapon_ingredients_n", "weapon/lightsaber": "craft_weapon_ingredients_n", "armor": "craft_armor_ingredients_n",
+    "clothing": "craft_clothing_ingredients_n", "chemistry": "craft_medicine_ingredients_n", "food": "craft_food_ingredients_n",
+    "structure": "craft_structure_ingredients_n", "munition": "craft_munition_ingredients_n", "vehicle": "craft_vehicle_ingredients_n",
+    "instrument": "craft_instrument_ingredients_n",
+}
+ALL_TABLES = ["craft_item_ingredients_n", "craft_droid_ingredients_n", "craft_weapon_ingredients_n", "craft_armor_ingredients_n",
+              "craft_clothing_ingredients_n", "craft_medicine_ingredients_n", "craft_food_ingredients_n", "craft_structure_ingredients_n",
+              "craft_munition_ingredients_n", "craft_vehicle_ingredients_n", "craft_tissue_ingredients_n", "craft_furniture_ingredients_n",
+              "craft_instrument_ingredients_n", "item_n"]
+
+def game_name(template_path):
+    lua = os.path.join(ROOT, template_path[:-4] + ".lua")
+    if os.path.exists(lua):
+        m = re.search(r'objectName\s*=\s*"@([^:"]+):([^"]+)"', open(lua).read())
+        if m:
+            text = stf_table(m.group(1)).get(m.group(2))
+            if text:
+                return text.strip()
+    stem = os.path.basename(template_path)[:-4]
+    folder = folder_of(template_path)
+    for table in [FOLDER_TABLES.get(folder)] + ALL_TABLES:
+        if table and stem in stf_table(table) and stf_table(table)[stem].strip():
+            return stf_table(table)[stem].strip()
+    return None
+
 def human(stem):
     parts = [WORDS.get(p, p) for p in stem.split("_") if p]
     return " ".join(p if p.isupper() or "-" in p else p.capitalize() for p in parts)
@@ -72,12 +151,21 @@ def build():
         cat = FOLDER_NAMES.get(folder, human(folder)) 
         adv = name.endswith("_advanced")
         price = PRICES["advanced"] if adv else PRICES["lightsaber"] if "lightsaber" in folder else PRICES["chemistry"] if folder == "chemistry" else PRICES["loot"]
-        cats.setdefault(cat, []).append(dict(name=human(name[:-9]) + " (advanced)" if adv else human(name), loot=name, level=ADVANCED_LEVEL if adv else LOOT_LEVEL, price=price, template=path))
+        base = game_name(path) or human(name[:-9] if adv else name)
+        shown = base + " (advanced)" if adv and not base.lower().startswith("advanced") else base   # the game's name often says Advanced already
+        cats.setdefault(cat, []).append(dict(name=shown, loot=name, level=ADVANCED_LEVEL if adv else LOOT_LEVEL, price=price, template=path))
     for folder, path in sorted(templates()):
         if path in made:
             continue
         cat = FOLDER_NAMES.get(folder, human(folder)) + " (raw)"
-        cats.setdefault(cat, []).append(dict(name=human(os.path.basename(path)[:-4]), template=path, price=PRICES["raw"]))
+        cats.setdefault(cat, []).append(dict(name=game_name(path) or human(os.path.basename(path)[:-4]), template=path, price=PRICES["raw"]))
+    for items in cats.values():
+        seen = {}
+        for it in items:
+            n = it["name"]
+            if n in seen:
+                it["name"] = "%s [%s]" % (n, os.path.basename(it["template"])[:-4])
+            seen[n] = True
     order = sorted(cats, key=lambda c: (c.endswith("(raw)"), c))
     return [(c, cats[c]) for c in order]
 
