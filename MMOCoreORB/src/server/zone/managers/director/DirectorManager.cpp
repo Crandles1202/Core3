@@ -5,9 +5,6 @@
  *      Author: victor
  */
 
-#include "server/zone/managers/resource/resourcespawner/resourcetree/ResourceTreeEntry.h"
-#include "server/zone/managers/resource/resourcespawner/resourcetree/ResourceTreeNode.h"
-#include "server/zone/managers/resource/resourcespawner/resourcetree/ResourceTree.h"
 #include "DirectorManager.h"
 #include "server/zone/objects/cell/CellObject.h"
 #include "server/zone/objects/installation/InstallationObject.h"
