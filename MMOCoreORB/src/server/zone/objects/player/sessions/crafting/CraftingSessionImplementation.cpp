@@ -5,6 +5,7 @@
  *      Author: Kyle
  */
 
+#include "conf/ConfigManager.h"
 #include "server/zone/objects/scene/variables/StringId.h"
 #include "server/zone/objects/player/sessions/crafting/CraftingSession.h"
 #include "server/zone/managers/player/PlayerManager.h"
@@ -1399,9 +1400,10 @@ void CraftingSessionImplementation::createPrototype(int clientCounter, bool crea
 			startCreationTasks(manufactureSchematic->getComplexity() * 2, false);
 
 		} else {
-			// This is for practicing
+			// This is for practicing — Final Boss: practice pays Core3.Crafting.PracticeExpMultiplier times the schematic's
+			// experience (stock 1.05; Chuck 2026-11-02: 5, on top of the crafting rate) — no item, more learning
 			startCreationTasks(manufactureSchematic->getComplexity() * 2, true);
-			xp = round(xp * 1.05f);
+			xp = round(xp * ConfigManager::instance()->getFloat("Core3.Crafting.PracticeExpMultiplier", 1.05f));
 		}
 
 		Reference<PlayerManager*> playerManager = crafter->getZoneServer()->getPlayerManager();
