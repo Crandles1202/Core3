@@ -23,6 +23,7 @@ borrowing with a lock; this file carries the intent.
 | claude | `feature/practice` | crafting practice mode pays x5 the schematic experience (config key) | coding | — | 2026-11-02 |
 | claude | `feature/frogs` | the blue frog terminals off (config) | coding | — | 2026-11-02 |
 | claude | `feature/resfactory` | the resource dealer sells every kind (best ever seen, or a vein found); factories an item a second | coding | — | 2026-11-02 |
+| claude | `feature/depotnames` | the component depot's shelves carry the game's own names (string tables) | coding | — | 2026-11-02 |
 | _(add a row with `swg agent new <name>`)_ | | | | | |
 
 Status words: `planning`, `coding`, `testing` (holds the bench), `gate` (running `swg test all`), `ready to merge`,

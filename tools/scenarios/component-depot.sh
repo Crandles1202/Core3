@@ -27,10 +27,10 @@ bot_bg --wait 25
 wait_online || die "$CHAR never came back online"
 lab "cashSet:$CHAR:200000" >/dev/null
 CASH0=$(lab_kv "cash:$CHAR" cash)
-R=$(lab "buyComponent:$CHAR:Blaster Power Handler")
+R=$(lab "buyComponent:$CHAR:Projectile Pistol Barrel")   # an exact game name (the shelves use the string tables)
 check_eq "rolled_part_bought" "$(sed -n 's/.*result=\([a-z_]*\).*/\1/p' <<<"$R" | head -n1)" "ok" "$R"
 check_eq "rolled_part_is_rolled" "$(sed -n 's/.*kind=\([a-z]*\).*/\1/p' <<<"$R" | head -n1)" "rolled"
-check_ge "rolled_part_in_inventory" "$(lab "inventory:$CHAR" | grep -c 'component/weapon/blaster_power_handler')" 1
+check_ge "rolled_part_in_inventory" "$(lab "inventory:$CHAR" | grep -c 'component/weapon/projectile_pistol_barrel')" 1
 R=$(lab "buyComponent:$CHAR:Droid parts (raw):1")
 [ -n "$R" ] || true
 RAWKEY=$(lab "componentDepot" 30 | grep '^INFO depotCategory name=Droid_parts_(raw)' | sed -n 's/.*first=\([^ ]*\).*/\1/p' | tr '_' ' ')
