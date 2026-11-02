@@ -1522,6 +1522,7 @@ function FbLabTests:buyResource(charName, what, units)
 	local pPlayer = onlinePlayer(charName)
 	if pPlayer == nil then return "offline" end
 	if FbResourceDealer == nil then print("ERROR FbResourceDealer not loaded"); return "none" end
+	what = tostring(what or ""):gsub("_", " ")   -- a console argument carries no spaces: the family lines print them as underscores
 	local f = FbResourceDealer:family(what)
 	local keyName = f and f.items[1] and f.items[1].type or what
 	local result = FbResourceDealer:purchase(pPlayer, keyName, units)

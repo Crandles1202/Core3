@@ -15,7 +15,7 @@ CAT=$(lab "resourceDealer" 60)
 FAMILIES=$(printf '%s\n' "$CAT" | sed -n 's/.*families=\([0-9]*\).*/\1/p' | head -n1)
 TYPES=$(printf '%s\n' "$CAT" | sed -n 's/.*resourceDealer families=[0-9]* types=\([0-9]*\).*/\1/p' | head -n1)
 UNKNOWN=$(printf '%s\n' "$CAT" | sed -n 's/.*firstUnknown=\([^ ]*\).*/\1/p' | head -n1)
-FIRST=$(printf '%s\n' "$CAT" | grep '^INFO resourceFamily' | head -n1 | sed -n 's/.*name=\([^ ]*\) types=.*/\1/p' | tr '_' ' ')
+FIRST=$(printf '%s\n' "$CAT" | grep '^INFO resourceFamily' | head -n1 | sed -n 's/.*name=\([^ ]*\) types=.*/\1/p')   # underscores: a console argument carries no spaces
 check_ge "catalogue_has_families" "${FAMILIES:-0}" 5 "$FAMILIES families, first '$FIRST'"
 check_ge "catalogue_has_every_kind" "${TYPES:-0}" 300 "$TYPES kinds of resource, first unknown: $UNKNOWN"
 
