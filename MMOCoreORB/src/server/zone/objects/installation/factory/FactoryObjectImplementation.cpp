@@ -5,6 +5,7 @@
  *      Author: kyle
  */
 
+#include "conf/ConfigManager.h"
 #include "server/zone/objects/installation/factory/FactoryObject.h"
 #include "server/zone/objects/installation/factory/FactoryHopperObserver.h"
 #include "sui/InsertSchematicSuiCallback.h"
@@ -567,6 +568,13 @@ bool FactoryObjectImplementation::startFactory() {
 	info(true) << "Factory Testing Timer Set To: " << timer;
 #else
 	timer = ((int)schematic->getComplexity()) * 8;
+	// Final Boss (Chuck, 2026-11-02): Core3.Factory.SecondsPerItem overrides the stock complexity x 8 s per item (0 keeps stock);
+	// 1 is as near to instant as the task scheduler goes — a run of a hundred items in under two minutes
+	{
+		int fixedSeconds = ConfigManager::instance()->getInt("Core3.Factory.SecondsPerItem", 0);
+		if (fixedSeconds > 0)
+			timer = fixedSeconds;
+	}
 #endif
 
 	if (!populateSchematicBlueprint(schematic))

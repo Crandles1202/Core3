@@ -247,7 +247,8 @@ Core3 = {
 	CharacterBuilderEnabled = "true",
 	AutoReg = 1,
 	Mission = { MaxActive = 6 }, -- Final Boss: missions a player may hold at once (stock 2; Chuck 2026-10-28)
-	Crafting = { PracticeExpMultiplier = 5.0 }, -- Final Boss: practice mode pays this many times the schematic experience (stock 1.05; Chuck 2026-11-02), on top of the crafting rate
+	Crafting = { PracticeExpMultiplier = 5.0 },
+	Factory = { SecondsPerItem = 1 }, -- Final Boss: seconds a factory takes per item (stock: complexity x 8; Chuck 2026-11-02: as near instant as it goes) -- Final Boss: practice mode pays this many times the schematic experience (stock 1.05; Chuck 2026-11-02), on top of the crafting rate
 	PlayerObject = { HelperDroid = false }, -- Final Boss: no R2 helper droid trailing characters under a day old (it spammed every lab bot and new citizen with its windows)
 
 	------TOS Config------

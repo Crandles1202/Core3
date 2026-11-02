@@ -1500,6 +1500,46 @@ function FbLabTests:buyVehicle(charName, key)
 	return result
 end
 
+-- resourceDealer → the dealer's catalogue: INFO resourceDealer families=N types=M known=K unknown=U, one INFO resourceFamily line each
+function FbLabTests:resourceDealer()
+	if FbResourceDealer == nil then print("ERROR FbResourceDealer not loaded"); return "none" end
+	FbResourceDealer._cat = nil
+	local families = FbResourceDealer:catalogue()
+	local total, known, firstUnknown = 0, 0, nil
+	for _, f in ipairs(families) do
+		local k = 0
+		for _, e in ipairs(f.items) do if e.best ~= nil then k = k + 1 elseif firstUnknown == nil then firstUnknown = e.type end end
+		total = total + #f.items; known = known + k
+		local first = f.items[1]
+		print(string.format("INFO resourceFamily name=%s types=%d known=%d first=%s class=%s best=%s quality=%d", (f.name:gsub(" ", "_")), #f.items, k, first.type, (first.class:gsub(" ", "_")), first.best or "-", first.quality))
+	end
+	print(string.format("INFO resourceDealer families=%d types=%d known=%d unknown=%d firstUnknown=%s", #families, total, known, total - known, firstUnknown or "-"))
+	return tostring(total)
+end
+
+-- buyResource:<char>:<family|type|class|spawn>:<units> → the family's first kind (or the named kind); INFO buyResource result=ok name=<spawn> type=…
+function FbLabTests:buyResource(charName, what, units)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	if FbResourceDealer == nil then print("ERROR FbResourceDealer not loaded"); return "none" end
+	local f = FbResourceDealer:family(what)
+	local keyName = f and f.items[1] and f.items[1].type or what
+	local result = FbResourceDealer:purchase(pPlayer, keyName, units)
+	print(string.format("INFO buyResource result=%s name=%s type=%s units=%s", result, FbResourceDealer._lastName or "-", keyName, tostring(units)))
+	return result
+end
+
+-- buyVehicle:<char>:<name|idx> → FbVehicleDealer:purchase; INFO buyVehicle result=ok
+function FbLabTests:buyVehicle(charName, key)
+	local pPlayer = onlinePlayer(charName)
+	if pPlayer == nil then return "offline" end
+	if FbVehicleDealer == nil then print("ERROR FbVehicleDealer not loaded"); return "none" end
+	local item = FbVehicleDealer:find(key)
+	local result = FbVehicleDealer:purchase(pPlayer, key)
+	print(string.format("INFO buyVehicle result=%s name=%s price=%s template=%s", result, item and item.name or "?", item and item.price or 0, item and item.template or "?"))
+	return result
+end
+
 -- resourceDealer → the dealer's catalogue: INFO resourceDealer families=N spawns=M, then one INFO resourceFamily line per family
 function FbLabTests:resourceDealer()
 	if FbResourceDealer == nil then print("ERROR FbResourceDealer not loaded"); return "none" end

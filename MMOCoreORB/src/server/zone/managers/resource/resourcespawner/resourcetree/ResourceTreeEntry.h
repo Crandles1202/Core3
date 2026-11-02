@@ -390,6 +390,8 @@ public:
 	 * Does entry have children
 	 * \return children
 	 */
+	bool isJtl() const { return jtl; }   // Final Boss
+
 	bool hasChildren() const {
 		return children;
 	}

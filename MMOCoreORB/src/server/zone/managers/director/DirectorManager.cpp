@@ -5,6 +5,9 @@
  *      Author: victor
  */
 
+#include "server/zone/managers/resource/resourcespawner/resourcetree/ResourceTreeEntry.h"
+#include "server/zone/managers/resource/resourcespawner/resourcetree/ResourceTreeNode.h"
+#include "server/zone/managers/resource/resourcespawner/resourcetree/ResourceTree.h"
 #include "DirectorManager.h"
 #include "server/zone/objects/cell/CellObject.h"
 #include "server/zone/objects/installation/InstallationObject.h"
@@ -513,7 +516,10 @@ void DirectorManager::initializeLuaEngine(Lua* luaEngine) {
 	luaEngine->registerFunction("createLootSet", createLootSet);
 	luaEngine->registerFunction("createLootFromCollection", createLootFromCollection);
 	luaEngine->registerFunction("givePlayerResource", givePlayerResource);
-	luaEngine->registerFunction("givePlayerResourceNamed", givePlayerResourceNamed);   // Final Boss (2.14): (pPlayer, spawnName, units) -> boolean
+	luaEngine->registerFunction("givePlayerResourceNamed", givePlayerResourceNamed);
+	luaEngine->registerFunction("getResourceTypes", getResourceTypes);             // Final Boss (2.14b): every leaf type of the resource tree
+	luaEngine->registerFunction("getResourceSpawnsAll", getResourceSpawnsAll);     // Final Boss (2.14b): every spawn the server knows, in shift or not
+	luaEngine->registerFunction("spawnResourceOfType", spawnResourceOfType);       // Final Boss (2.14b): (type) -> the new spawn's name   // Final Boss (2.14): (pPlayer, spawnName, units) -> boolean
 
 	luaEngine->registerFunction("getRegion", getRegion);
 	luaEngine->registerFunction("writeScreenPlayData", writeScreenPlayData);
@@ -1253,6 +1259,126 @@ int DirectorManager::givePlayerResourceNamed(lua_State* L) {
 	}
 	resourceManager->givePlayerResource(player, name, quantity);
 	lua_pushboolean(L, true);
+	return 1;
+}
+
+// Final Boss (2.14b): getResourceTypes() -> { {type, finalClass, family, classes = "a/b/c", zone}, … } for every leaf of the
+// resource tree that is neither recycled nor a space resource — the resource dealer sells every one of them
+static void fbCollectResourceEntries(const ResourceTreeNode* node, Vector<const ResourceTreeEntry*>& out) {
+	if (node == nullptr)
+		return;
+	const auto& entries = node->getEntries();
+	for (int i = 0; i < entries.size(); ++i) {
+		const ResourceTreeEntry* e = entries.get(i);
+		if (e != nullptr && !e->hasChildren() && !e->isRecycled() && !e->isJtl())
+			out.add(e);
+	}
+	const auto& nodes = node->getNodes();
+	for (int i = 0; i < nodes.size(); ++i)
+		fbCollectResourceEntries(nodes.get(i), out);
+}
+
+int DirectorManager::getResourceTypes(lua_State* L) {
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	ResourceManager* resourceManager = zoneServer != nullptr ? zoneServer->getResourceManager() : nullptr;
+	ResourceSpawner* spawner = resourceManager != nullptr ? resourceManager->getResourceSpawner() : nullptr;
+	ResourceTree* tree = spawner != nullptr ? spawner->getResourceTree() : nullptr;
+	if (tree == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+	Vector<const ResourceTreeEntry*> entries;
+	fbCollectResourceEntries(tree->getBaseNode(), entries);
+	lua_newtable(L);
+	for (int i = 0; i < entries.size(); ++i) {
+		const ResourceTreeEntry* e = entries.get(i);
+		StringBuffer classes;
+		for (int c = 0; c < e->getClassCount(); ++c) {
+			if (c > 0) classes << "/";
+			classes << e->getClass(c);
+		}
+		String family = e->getClassCount() >= 2 ? e->getClass(e->getClassCount() - 2) : e->getFinalClass();
+		lua_newtable(L);
+		lua_pushstring(L, e->getType().toCharArray()); lua_setfield(L, -2, "type");
+		lua_pushstring(L, e->getFinalClass().toCharArray()); lua_setfield(L, -2, "finalClass");
+		lua_pushstring(L, family.toCharArray()); lua_setfield(L, -2, "family");
+		lua_pushstring(L, classes.toString().toCharArray()); lua_setfield(L, -2, "classes");
+		lua_pushstring(L, e->getZoneRestriction().toCharArray()); lua_setfield(L, -2, "zone");
+		lua_rawseti(L, -2, i + 1);
+	}
+	return 1;
+}
+
+// Final Boss (2.14b): getResourceSpawnsAll() -> { {name, type, family, finalClass, inShift, attributes = {…}}, … } for every
+// spawn the server still knows — a despawned one keeps its object for the containers that hold it, so it can be sold again
+int DirectorManager::getResourceSpawnsAll(lua_State* L) {
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	ResourceManager* resourceManager = zoneServer != nullptr ? zoneServer->getResourceManager() : nullptr;
+	if (resourceManager == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+	Vector<ManagedReference<ResourceSpawn*> > spawns;
+	{
+		ReadLocker locker(resourceManager);
+		ResourceSpawner* spawner = resourceManager->getResourceSpawner();
+		ResourceMap* resourceMap = spawner != nullptr ? spawner->getResourceMap() : nullptr;
+		if (resourceMap != nullptr) {
+			for (int i = 0; i < resourceMap->size(); ++i) {
+				ManagedReference<ResourceSpawn*> spawn = resourceMap->elementAt(i).getValue();
+				if (spawn != nullptr)
+					spawns.add(spawn);
+			}
+		}
+	}
+	lua_newtable(L);
+	for (int i = 0; i < spawns.size(); ++i) {
+		ResourceSpawn* spawn = spawns.get(i);
+		lua_newtable(L);
+		lua_pushstring(L, spawn->getName().toCharArray()); lua_setfield(L, -2, "name");
+		lua_pushstring(L, spawn->getType().toCharArray()); lua_setfield(L, -2, "type");
+		lua_pushstring(L, spawn->getFamilyName().toCharArray()); lua_setfield(L, -2, "family");
+		lua_pushstring(L, spawn->getFinalClass().toCharArray()); lua_setfield(L, -2, "finalClass");
+		lua_pushboolean(L, spawn->inShift()); lua_setfield(L, -2, "inShift");
+		lua_newtable(L);
+		for (int a = 0; ; ++a) {
+			String attribute;
+			int value = spawn->getAttributeAndValue(attribute, a);
+			if (attribute.isEmpty())
+				break;
+			lua_pushinteger(L, value);
+			lua_setfield(L, -2, attribute.toCharArray());
+		}
+		lua_setfield(L, -2, "attributes");
+		lua_rawseti(L, -2, i + 1);
+	}
+	return 1;
+}
+
+// Final Boss (2.14b): spawnResourceOfType(type) -> the name of a fresh spawn of that leaf type (it enters the world like any
+// shift spawn), or nil
+int DirectorManager::spawnResourceOfType(lua_State* L) {
+	if (checkArgumentCount(L, 1) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::spawnResourceOfType";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+	String type = lua_tostring(L, -1);
+	ZoneServer* zoneServer = ServerCore::getZoneServer();
+	ResourceManager* resourceManager = zoneServer != nullptr ? zoneServer->getResourceManager() : nullptr;
+	ResourceSpawner* spawner = resourceManager != nullptr ? resourceManager->getResourceSpawner() : nullptr;
+	if (spawner == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+	Locker locker(resourceManager);
+	ResourceSpawn* spawn = spawner->createResourceSpawn(type);
+	if (spawn == nullptr) {
+		lua_pushnil(L);
+		return 1;
+	}
+	lua_pushstring(L, spawn->getName().toCharArray());
 	return 1;
 }
 
