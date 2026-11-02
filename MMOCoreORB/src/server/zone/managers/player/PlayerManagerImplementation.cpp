@@ -122,6 +122,14 @@
 
 #include "server/zone/managers/statistics/StatisticsManager.h"
 
+// Final Boss (2026-11-01, Chuck): crafting experience (every crafting_* type and shipwright) at its own rate instead of
+// globalExpMultiplier; player_manager.lua craftingExpMultiplier, 0 keeps the global rate. A file static: no IDL change.
+static float fbCraftingExpMultiplier = 0.f;
+
+static inline bool fbIsCraftingXp(const String& xpType) {
+	return xpType.beginsWith("crafting") || xpType == "shipwright";
+}
+
 // #define DEBUG_SPEED_HACK
 
 PlayerManagerImplementation::PlayerManagerImplementation(ZoneServer* zoneServer, ZoneProcessServer* impl, bool trackOnlineUsers) : Logger("PlayerManager") {
@@ -252,6 +260,7 @@ void PlayerManagerImplementation::loadLuaConfig() {
 	groupExpMultiplier = lua->getGlobalFloat("groupExpMultiplier");
 
 	globalExpMultiplier = lua->getGlobalFloat("globalExpMultiplier");
+	fbCraftingExpMultiplier = lua->getGlobalFloat("craftingExpMultiplier");   // Final Boss: crafting experience has its own rate (0 = the global one)
 
 	baseStoredCreaturePets = lua->getGlobalInt("baseStoredCreaturePets");
 	baseStoredFactionPets = lua->getGlobalInt("baseStoredFactionPets");
@@ -2625,9 +2634,10 @@ int PlayerManagerImplementation::awardExperience(CreatureObject* player, const S
 		trx.addState("speciesModifier", speciesModifier);
 		trx.addState("buffMultiplier", buffMultiplier);
 		trx.addState("localMultiplier", localMultiplier);
-		trx.addState("globalExpMultiplier", globalExpMultiplier);
+		float rate = (fbCraftingExpMultiplier > 0.f && fbIsCraftingXp(xpType)) ? fbCraftingExpMultiplier : globalExpMultiplier;   // Final Boss: the crafting rate
+		trx.addState("globalExpMultiplier", rate);
 
-		xp = playerObject->addExperience(trx, xpType, (int) (amount * speciesModifier * buffMultiplier * localMultiplier * globalExpMultiplier));
+		xp = playerObject->addExperience(trx, xpType, (int) (amount * speciesModifier * buffMultiplier * localMultiplier * rate));
 	} else {
 		xp = playerObject->addExperience(trx, xpType, (int)amount);
 	}

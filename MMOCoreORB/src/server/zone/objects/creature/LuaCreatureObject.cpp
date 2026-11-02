@@ -1045,12 +1045,16 @@ int LuaCreatureObject::isCombatDroidPet(lua_State* L) {
 }
 
 int LuaCreatureObject::awardExperience(lua_State* L) {
-	String experienceType = lua_tostring(L, -3);
-	int experienceAmount = lua_tointeger(L, -2);
-	bool sendSysMessage = lua_toboolean(L, -1);
+	// Final Boss: an optional fourth argument applies the multipliers (species, buffs, the global / crafting rate) — the
+	// lab measures the rates through it; the stock three-argument call awards the bare amount as before
+	const bool fourArgs = lua_gettop(L) >= 4;
+	bool applyModifiers = fourArgs && lua_toboolean(L, -1);
+	String experienceType = lua_tostring(L, fourArgs ? -4 : -3);
+	int experienceAmount = lua_tointeger(L, fourArgs ? -3 : -2);
+	bool sendSysMessage = lua_toboolean(L, fourArgs ? -2 : -1);
 
 	PlayerManager* playerManager = realObject->getZoneServer()->getPlayerManager();
-	playerManager->awardExperience(realObject, experienceType, experienceAmount, sendSysMessage, 1.0f, false);
+	playerManager->awardExperience(realObject, experienceType, experienceAmount, sendSysMessage, 1.0f, applyModifiers);
 
 	return 0;
 }
