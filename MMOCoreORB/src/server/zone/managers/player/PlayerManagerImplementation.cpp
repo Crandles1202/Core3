@@ -2637,7 +2637,7 @@ int PlayerManagerImplementation::awardExperience(CreatureObject* player, const S
 		float rate = (fbCraftingExpMultiplier > 0.f && fbIsCraftingXp(xpType)) ? fbCraftingExpMultiplier : globalExpMultiplier;   // Final Boss: the crafting rate
 		trx.addState("globalExpMultiplier", rate);
 
-		xp = playerObject->addExperience(trx, xpType, (int) (amount * speciesModifier * buffMultiplier * localMultiplier * globalExpMultiplier));
+		xp = playerObject->addExperience(trx, xpType, (int) (amount * speciesModifier * buffMultiplier * localMultiplier * rate));
 	} else {
 		xp = playerObject->addExperience(trx, xpType, (int)amount);
 	}
