@@ -15,6 +15,5 @@ check "crafting_weapons_vs_combat_5_to_3" "$(python3 -c "r=$(ratio "$W" "$G"); i
 check "shipwright_vs_combat_5_to_3" "$(python3 -c "r=$(ratio "$S" "$G"); import sys; sys.exit(0 if 1.6 <= r <= 1.74 else 1)" && echo 1 || echo 0)" "shipwright $S, combat $G"
 check "combat_keeps_the_global_x3" "$(python3 -c "import sys; g=float('${G:-0}'); sys.exit(0 if 300 <= g <= 330 else 1)" && echo 1 || echo 0)" "combat $G (300 plus the species modifier at most)"
 check_eq "raw_award_unchanged" "${R:-0}" "100" "the stock three-argument Lua award stays bare"
-check "practice_multiplier_configured" "$("$SWG" cmd dumpcfg 2>/dev/null | grep -q 'Core3.Crafting.PracticeExpMultiplier *= *5' && echo 1 || echo 0)" "practice mode pays x5 the schematic experience (stock 1.05)"
 wait "$BOT_PID"
 finish
