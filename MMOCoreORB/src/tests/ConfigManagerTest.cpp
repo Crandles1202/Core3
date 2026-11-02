@@ -42,6 +42,12 @@ TEST_F(ConfigManagerTest, StringTest) {
 	ASSERT_EQ(tmp1, tmp2);
 }
 
+// Final Boss: crafting practice mode pays this many times the schematic experience (config.lua Core3.Crafting)
+TEST_F(ConfigManagerTest, FbCraftingPracticeExpMultiplier) {
+	auto tmp1 = configManager->getFloat("Core3.Crafting.PracticeExpMultiplier", 0.f);
+	ASSERT_FLOAT_EQ(tmp1, 5.0f);
+}
+
 TEST_F(ConfigManagerTest, BoolTest) {
 	auto tmp1 = configManager->getMakeZone();
 	ASSERT_TRUE(tmp1);

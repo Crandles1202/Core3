@@ -20,6 +20,7 @@ borrowing with a lock; this file carries the intent.
 | claude | `feature/shadows` | Sith Shadow camps for the Masters' kill tasks (stock has none in the world) | coding | — | 2026-10-31 |
 | claude | `feature/padawan` | the Padawan title sets Jedi state 2 (discipline trees); titles caught up at login; quick gate on unstable vs the newest tag | coding | — | 2026-11-01 |
 | claude | `feature/craftxp` | crafting experience x5 (own rate beside the global x3) | coding | — | 2026-11-01 |
+| claude | `feature/practice` | crafting practice mode pays x5 the schematic experience (config key) | coding | — | 2026-11-02 |
 | _(add a row with `swg agent new <name>`)_ | | | | | |
 
 Status words: `planning`, `coding`, `testing` (holds the bench), `gate` (running `swg test all`), `ready to merge`,
