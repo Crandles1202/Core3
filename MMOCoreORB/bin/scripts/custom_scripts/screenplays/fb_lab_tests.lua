@@ -1357,6 +1357,20 @@ function FbLabTests:missionDir(charName, dir)
 end
 
 -- xp:<char>:<type> → the character's experience of one type (dance, music, combat_general, …)
+-- xpAward:<char>:<type>:<amount>[:raw] → award experience through the player manager WITH the multipliers (species, buffs,
+-- the global or crafting rate), unless "raw"; INFO xpAward type=… asked=… before=… after=… delta=…
+function FbLabTests:xpAward(charName, xpType, amount, raw)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "none" end
+	local pGhost = CreatureObject(pPlayer):getPlayerObject()
+	if pGhost == nil then return "none" end
+	local before = PlayerObject(pGhost):getExperience(xpType)
+	CreatureObject(pPlayer):awardExperience(xpType, tonumber(amount) or 0, false, raw ~= "raw")
+	local after = PlayerObject(pGhost):getExperience(xpType)
+	print(string.format("INFO xpAward char=%s type=%s asked=%s before=%d after=%d delta=%d", charName, xpType, tostring(amount), before, after, after - before))
+	return tostring(after - before)
+end
+
 function FbLabTests:xp(charName, xpType)
 	local pPlayer = loadedPlayer(charName)
 	if pPlayer == nil then return "none" end
