@@ -14,7 +14,7 @@ function FbFoodVendor:shelves() return FbFoodVendorCatalogue or {} end
 
 function FbFoodVendor:find(key)
 	key = tostring(key or "")
-	local c, i = key:match("^(%d+):(%d+)$")
+	local c, i = key:match("^(%d+)[:/](%d+)$")   -- "shelf:row", or "shelf/row" through the console (it splits on colons)
 	if c ~= nil then
 		local shelf = self:shelves()[tonumber(c)]
 		return shelf and shelf.items[tonumber(i)]

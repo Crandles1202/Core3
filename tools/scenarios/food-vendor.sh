@@ -31,7 +31,7 @@ check_eq "dish_bought" "$(sed -n 's/.*result=\([a-z_]*\).*/\1/p' <<<"$B" | head 
 USES=$(sed -n 's/.*[[:space:]]uses=\([-0-9]*\).*/\1/p' <<<"$B" | head -n1); WANT=$(sed -n 's/.*[[:space:]]wanted=\([-0-9]*\).*/\1/p' <<<"$B" | head -n1)
 check_eq "dish_has_the_chefs_helpings" "${USES:-x}" "${WANT:-y}" "uses $USES, the catalogue says $WANT (the template's default is less)"
 check_ge "dish_in_inventory" "$(lab "inventory:$CHAR" | grep -c 'food/crafted/dish_blood_chowder')" 1
-C=$(lab "buyFood:$CHAR:4:1")   # the cantina shelf, first row (a crafted drink shares the Bantha Blaster name)
+C=$(lab "buyFood:$CHAR:4/1")   # the cantina shelf, first row (a crafted drink shares the Bantha Blaster name; the console splits on colons)
 check_eq "cantina_drink_bought" "$(sed -n 's/.*result=\([a-z_]*\).*/\1/p' <<<"$C" | head -n1)" "ok" "$C"
 check "cantina_drink_is_the_bartenders" "$(grep -q 'bartender_drinks/' <<<"$C" && echo 1 || echo 0)"
 CASH1=$(lab_kv "cash:$CHAR" cash)
