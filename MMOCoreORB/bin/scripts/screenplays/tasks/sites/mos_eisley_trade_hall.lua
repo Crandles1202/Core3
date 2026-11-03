@@ -10,6 +10,7 @@ FbSites:add {
 		{ template = "fb_armory_droid", label = "FB-72, weapons", room = "mainroom", x = -3.70, z = 1.13, y = -6.00, dir = 11 },
 		{ template = "fb_armor_droid", label = "FB-44, armour", room = "mainroom", x = 3.70, z = 1.13, y = -6.00, dir = 349 },
 		{ template = "fb_stim_dealer", label = "Vex Renn, medical supplies", room = "meetinga", x = 12.00, z = 1.13, y = -1.50, dir = 0 },
+		{ template = "fb_food_vendor", label = "Oola Prenn, chef", room = "meetinga", x = 9.00, z = 1.13, y = 4.00, dir = 180 },
 		{ template = "fb_pet_vet", label = "Doctor Yan'lara, pet medicine", room = "meetingb", x = -12.00, z = 1.13, y = -1.50, dir = 0 },
 		{ template = "fb_parts_dealer", label = "Tamsin Rook, crafting parts", room = "meetingc", x = 9.00, z = 1.13, y = -11.00, dir = 0 },
 		{ template = "fb_schematic_broker", label = "Dannik Vosa, schematics", room = "meetingc", x = 13.00, z = 1.13, y = -11.00, dir = 0 },

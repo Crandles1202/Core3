@@ -106,6 +106,7 @@
 #include "server/zone/objects/tangible/spawning/SpawnEggObject.h"
 #include "server/zone/managers/crafting/schematicmap/SchematicMap.h"
 #include "server/zone/managers/director/ScreenPlayObserver.h"
+#include "server/zone/objects/tangible/consumable/Consumable.h"
 #include "server/zone/managers/resource/ResourceManager.h"
 #include "server/zone/managers/resource/resourcespawner/resourcemap/ResourceMap.h"
 #include "server/zone/managers/resource/resourcespawner/ResourceSpawner.h"
@@ -514,6 +515,7 @@ void DirectorManager::initializeLuaEngine(Lua* luaEngine) {
 	luaEngine->registerFunction("createLootFromCollection", createLootFromCollection);
 	luaEngine->registerFunction("givePlayerResource", givePlayerResource);
 	luaEngine->registerFunction("givePlayerResourceNamed", givePlayerResourceNamed);
+	luaEngine->registerFunction("setConsumableValues", setConsumableValues);   // Final Boss (2.16): (pObj, nutrition, duration, quantity, filling) -> boolean
 	luaEngine->registerFunction("getResourceTypes", getResourceTypes);             // Final Boss (2.14b): every leaf type of the resource tree
 	luaEngine->registerFunction("getResourceSpawnsAll", getResourceSpawnsAll);     // Final Boss (2.14b): every spawn the server knows, in shift or not
 	luaEngine->registerFunction("spawnResourceOfType", spawnResourceOfType);       // Final Boss (2.14b): (type) -> the new spawn's name   // Final Boss (2.14): (pPlayer, spawnName, units) -> boolean
@@ -1376,6 +1378,31 @@ int DirectorManager::spawnResourceOfType(lua_State* L) {
 		return 1;
 	}
 	lua_pushstring(L, spawn->getName().toCharArray());
+	return 1;
+}
+
+// Final Boss (2.16): setConsumableValues(pObj, nutrition, duration, quantity, filling) -> the use count the consumable now
+// has (0 when the object is no consumable); the values are what a chef's experimentation would have given it
+int DirectorManager::setConsumableValues(lua_State* L) {
+	if (checkArgumentCount(L, 5) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::setConsumableValues";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+	const int filling = lua_tointeger(L, -1);
+	const int quantity = lua_tointeger(L, -2);
+	const int duration = lua_tointeger(L, -3);
+	const int nutrition = lua_tointeger(L, -4);
+	SceneObject* obj = (SceneObject*)lua_touserdata(L, -5);
+	Consumable* food = obj != nullptr ? dynamic_cast<Consumable*>(obj) : nullptr;
+	if (food == nullptr) {
+		lua_pushinteger(L, 0);
+		return 1;
+	}
+	Locker locker(food);
+	food->fbSetValues(nutrition, duration, quantity, filling);
+	lua_pushinteger(L, food->getUseCount());   // the use count read back (Lua has no other way to read it)
 	return 1;
 }
 
