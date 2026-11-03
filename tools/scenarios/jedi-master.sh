@@ -19,6 +19,7 @@ sleep 4
 lab "attunementReset:$CHAR" >/dev/null
 lab "xpSet:$CHAR:jedi_general:0" >/dev/null       # a reused character may sit at the stock cap, where a reward adds nothing
 lab "attunementFlag:$CHAR:padawan:1" >/dev/null
+lab "skillDrop:$CHAR:force_title_jedi_novice" >/dev/null   # a reused lab character may carry the box from an earlier scenario
 E0=$(lab "enclaveCells:$CHAR" 30); CELLS=$(sed -n 's/.*cells=\([0-9]*\).*/\1/p' <<<"$E0" | head -n1); OPEN0=$(sed -n 's/.*open=\([0-9]*\).*/\1/p' <<<"$E0" | head -n1)
 check "inner_rooms_shut_to_a_stranger" "$( [ "${CELLS:-0}" -gt 0 ] && [ "${OPEN0:-0}" -lt "${CELLS:-0}" ] && echo 1 || echo 0 )" "$OPEN0 of $CELLS rooms open before the Padawan box (the council locks hold)"
 lab "skill:$CHAR:force_title_jedi_novice" >/dev/null       # the Padawan box itself: the enclave's cells admit it, a flag alone is ejected at the door
