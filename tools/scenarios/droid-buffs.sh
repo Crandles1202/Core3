@@ -9,7 +9,7 @@ wait_online || die "$CHAR never came online"
 L1=$(lab_kv "enhance:$CHAR" left)
 check "buff_lasts_eight_hours" "$( [ "${L1:-0}" -ge 28700 ] && [ "${L1:-0}" -le 28800 ] && echo 1 || echo 0 )" "health buff $L1 s left after the first visit (28800 asked)"
 sleep 6
-L2=$(lab_kv "buffLeft:$CHAR:2553454441" left)
+L2=$(lab_kv "buffLeft:$CHAR:0x98321369" left)
 check "clock_runs_down" "$( [ "${L2:-0}" -lt "${L1:-0}" ] && echo 1 || echo 0 )" "$L1 -> $L2 after six seconds"
 L3=$(lab_kv "enhance:$CHAR" left)
 check "second_visit_resets_the_clock" "$( [ "${L3:-0}" -gt "${L2:-0}" ] && [ "${L3:-0}" -ge 28700 ] && echo 1 || echo 0 )" "$L2 -> $L3 after the second visit"
