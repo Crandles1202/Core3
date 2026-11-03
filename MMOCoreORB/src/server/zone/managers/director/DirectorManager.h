@@ -143,6 +143,7 @@ namespace server {
 		static int givePlayerResourceNamed(lua_State* L);
 		static int setConsumableValues(lua_State* L);   // Final Boss (2.16)
 		static int cellWalkIn(lua_State* L);           // Final Boss: (pPlayer, pCell) -> boolean
+		static int buffTimeLeft(lua_State* L);         // Final Boss: (pPlayer, crc) -> seconds
 		static int getResourceTypes(lua_State* L);       // Final Boss (2.14b)
 		static int getResourceSpawnsAll(lua_State* L);   // Final Boss (2.14b)
 		static int spawnResourceOfType(lua_State* L);    // Final Boss (2.14b)   // Final Boss (2.14): (pPlayer, spawnName, units) -> boolean

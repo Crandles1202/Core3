@@ -50,8 +50,8 @@ allowSameAccountPvpRatingCredit = 0
 --Blue frog / GM buff values
 performanceBuff = 3000
 medicalBuff = 4500
-performanceDuration = 10800 -- in seconds
-medicalDuration = 10800 -- in seconds
+performanceDuration = 28800 -- in seconds; Final Boss: eight hours (stock three; Chuck 2026-11-03) — the FB-21 medical droids use these
+medicalDuration = 28800 -- in seconds; Final Boss: eight hours (stock three)
 
 --Sets the experience multiplier while grouped
 groupExpMultiplier = 1.25
