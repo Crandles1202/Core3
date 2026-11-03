@@ -59,6 +59,7 @@ groupExpMultiplier = 1.25
 --Sets a global experience multiplier
 globalExpMultiplier = 3.0   -- Final Boss: x3 (Chuck, 2026-10-28; was x2)
 craftingExpMultiplier = 5.0 -- Final Boss: crafting experience (every crafting_* type and shipwright) at x5 instead of the global rate (Chuck, 2026-11-01); 0 = the global rate
+jediExpMultiplier = 5.0     -- Final Boss: Jedi experience (jedi_general, every lightsaber kill and Force power) at x5 instead of the global rate (Chuck, 2026-11-03); 0 = the global rate
 
 --Sets the base number of control devices of each type that a player can have in their datapad at once
 --For creature pets, A Creature Handler will have the base number + their stored pets skill mod as limit
