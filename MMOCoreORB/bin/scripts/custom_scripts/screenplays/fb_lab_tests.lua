@@ -1554,6 +1554,25 @@ function FbLabTests:enclaveCells(charName, side)
 	return tostring(open)
 end
 
+-- enhance:<char> → the medical droid's buffs (CreatureObject:enhanceCharacter) and the health buff's time left; INFO enhance left=S
+function FbLabTests:enhance(charName)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "none" end
+	CreatureObject(pPlayer):enhanceCharacter()
+	local left = buffTimeLeft(pPlayer, 0x98321369)   -- medical_enhance_health
+	print(string.format("INFO enhance char=%s left=%d", charName, math.floor(left)))
+	return tostring(math.floor(left))
+end
+
+-- buffLeft:<char>:<crc> → seconds a buff has left (-1 without it); INFO buffLeft left=S
+function FbLabTests:buffLeft(charName, crc)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "none" end
+	local left = buffTimeLeft(pPlayer, tonumber(crc) or 0)
+	print(string.format("INFO buffLeft char=%s crc=%s left=%d", charName, tostring(crc), math.floor(left)))
+	return tostring(math.floor(left))
+end
+
 -- buyVehicle:<char>:<name|idx> → FbVehicleDealer:purchase; INFO buyVehicle result=ok
 function FbLabTests:buyVehicle(charName, key)
 	local pPlayer = onlinePlayer(charName)

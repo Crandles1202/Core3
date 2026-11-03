@@ -6666,8 +6666,10 @@ bool PlayerManagerImplementation::doEnhanceCharacter(uint32 crc, CreatureObject*
 	if (player == nullptr)
 		return false;
 
+	// Final Boss (Chuck, 2026-11-03): a buff the character already carries is replaced, so a visit to the medical droid
+	// resets the clock instead of being skipped (stock returned false and kept the old timer)
 	if (player->hasBuff(crc))
-		return false;
+		player->removeBuff(crc);
 
 	ManagedReference<Buff*> buff = new Buff(player, crc, duration, buffType);
 

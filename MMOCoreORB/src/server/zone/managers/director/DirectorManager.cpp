@@ -516,7 +516,8 @@ void DirectorManager::initializeLuaEngine(Lua* luaEngine) {
 	luaEngine->registerFunction("givePlayerResource", givePlayerResource);
 	luaEngine->registerFunction("givePlayerResourceNamed", givePlayerResourceNamed);
 	luaEngine->registerFunction("setConsumableValues", setConsumableValues);
-	luaEngine->registerFunction("cellWalkIn", cellWalkIn);   // Final Boss: (pPlayer, pCell) -> whether the cell admits the player (the walk-in rule)   // Final Boss (2.16): (pObj, nutrition, duration, quantity, filling) -> boolean
+	luaEngine->registerFunction("cellWalkIn", cellWalkIn);
+	luaEngine->registerFunction("buffTimeLeft", buffTimeLeft);   // Final Boss: (pPlayer, buffCRC) -> seconds left, -1 without the buff   // Final Boss: (pPlayer, pCell) -> whether the cell admits the player (the walk-in rule)   // Final Boss (2.16): (pObj, nutrition, duration, quantity, filling) -> boolean
 	luaEngine->registerFunction("getResourceTypes", getResourceTypes);             // Final Boss (2.14b): every leaf type of the resource tree
 	luaEngine->registerFunction("getResourceSpawnsAll", getResourceSpawnsAll);     // Final Boss (2.14b): every spawn the server knows, in shift or not
 	luaEngine->registerFunction("spawnResourceOfType", spawnResourceOfType);       // Final Boss (2.14b): (type) -> the new spawn's name   // Final Boss (2.14): (pPlayer, spawnName, units) -> boolean
@@ -1423,6 +1424,29 @@ int DirectorManager::cellWalkIn(lua_State* L) {
 		return 1;
 	}
 	lua_pushboolean(L, cellObj->checkContainerPermission(player, ContainerPermissions::WALKIN));
+	return 1;
+}
+
+// Final Boss: buffTimeLeft(pPlayer, buffCRC) -> the seconds the buff has left, -1 when the character does not carry it
+int DirectorManager::buffTimeLeft(lua_State* L) {
+	if (checkArgumentCount(L, 2) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::buffTimeLeft";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+	const uint32 crc = (uint32) lua_tointeger(L, -1);
+	CreatureObject* player = (CreatureObject*)lua_touserdata(L, -2);
+	if (player == nullptr) {
+		lua_pushnumber(L, -1);
+		return 1;
+	}
+	ManagedReference<Buff*> buff = player->getBuff(crc);
+	if (buff == nullptr) {
+		lua_pushnumber(L, -1);
+		return 1;
+	}
+	lua_pushnumber(L, buff->getTimeLeft());
 	return 1;
 }
 
