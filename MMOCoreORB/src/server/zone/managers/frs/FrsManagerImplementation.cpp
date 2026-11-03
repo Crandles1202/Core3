@@ -26,9 +26,6 @@ void FrsManagerImplementation::initialize() {
 
 	loadLuaConfig();
 
-	if (!frsEnabled)
-		return;
-
 	Zone* zone = zoneServer->getZone("yavin4");
 
 	if (zone == nullptr) {
@@ -37,7 +34,14 @@ void FrsManagerImplementation::initialize() {
 		return;
 	}
 
+	// Final Boss: the enclave rooms are set up whether the ranking system runs or not — the cells keep their council
+	// locks in the database from an earlier boot, and only this setup attaches the enclave rule (which admits a Padawan)
+	// to them; with it skipped, every inner door was shut to everyone (selrahc, 2026-11-03)
 	setupEnclaves();
+
+	if (!frsEnabled)
+		return;
+
 	loadFrsData();
 
 	Locker locker(managerData);

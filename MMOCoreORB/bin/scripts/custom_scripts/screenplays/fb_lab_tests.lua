@@ -1365,7 +1365,11 @@ function FbLabTests:xpAward(charName, xpType, amount, raw)
 	local pGhost = CreatureObject(pPlayer):getPlayerObject()
 	if pGhost == nil then return "none" end
 	local before = PlayerObject(pGhost):getExperience(xpType)
-	CreatureObject(pPlayer):awardExperience(xpType, tonumber(amount) or 0, false, raw ~= "raw")
+	if raw == "raw" then
+		CreatureObject(pPlayer):awardExperience(xpType, tonumber(amount) or 0, false)   -- the stock three-argument form (what the Masters use)
+	else
+		CreatureObject(pPlayer):awardExperience(xpType, tonumber(amount) or 0, false, true)
+	end
 	local after = PlayerObject(pGhost):getExperience(xpType)
 	print(string.format("INFO xpAward char=%s type=%s asked=%s before=%d after=%d delta=%d", charName, xpType, tostring(amount), before, after, after - before))
 	return tostring(after - before)
@@ -1515,6 +1519,39 @@ function FbLabTests:buyFood(charName, key)
 	print(string.format("INFO buyFood result=%s name=%s price=%s template=%s uses=%s wanted=%s", result, item and (item.name:gsub(" ", "_")) or "?", item and item.price or 0,
 		item and item.template or "?", tostring(uses), item and tostring(item.quantity or "-") or "?"))
 	return result
+end
+
+-- councilSet:<char>:<0|1|2> → the character's FRS council (0 none, 1 light, 2 dark) and rank 0; INFO councilSet council=N
+function FbLabTests:councilSet(charName, n)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "none" end
+	local pGhost = CreatureObject(pPlayer):getPlayerObject()
+	if pGhost == nil then return "none" end
+	PlayerObject(pGhost):setFrsCouncil(tonumber(n) or 0)
+	PlayerObject(pGhost):setFrsRank(0)
+	print("INFO councilSet char=" .. charName .. " council=" .. tostring(n))
+	return tostring(n)
+end
+
+-- enclaveCells:<char>[:light|dark] → every cell of the enclave and whether it admits the character (the walk-in rule the
+-- server checks at the door and tells the client); INFO enclaveCell lines and INFO enclaveCells building=… cells=N open=K
+function FbLabTests:enclaveCells(charName, side)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "none" end
+	local id = (side == "dark") and 3435626 or 8525417
+	local pBuilding = getSceneObject(id)
+	if pBuilding == nil or not SceneObject(pBuilding):isBuildingObject() then print("ERROR enclaveCells: no building " .. id); return "none" end
+	local n, open = BuildingObject(pBuilding):getTotalCellNumber(), 0
+	for i = 1, n do
+		local pCell = BuildingObject(pBuilding):getCell(i)
+		if pCell ~= nil then
+			local ok = cellWalkIn(pPlayer, pCell)
+			if ok then open = open + 1 end
+			print(string.format("INFO enclaveCell n=%d oid=%d name=%s walkin=%s", i, SceneObject(pCell):getObjectID(), tostring(BuildingObject(pBuilding):getCellName(i)), tostring(ok)))
+		end
+	end
+	print(string.format("INFO enclaveCells building=%d cells=%d open=%d", id, n, open))
+	return tostring(open)
 end
 
 -- buyVehicle:<char>:<name|idx> → FbVehicleDealer:purchase; INFO buyVehicle result=ok
