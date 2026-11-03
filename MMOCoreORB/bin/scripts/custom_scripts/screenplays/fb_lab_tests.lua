@@ -1521,6 +1521,18 @@ function FbLabTests:buyFood(charName, key)
 	return result
 end
 
+-- councilSet:<char>:<0|1|2> → the character's FRS council (0 none, 1 light, 2 dark) and rank 0; INFO councilSet council=N
+function FbLabTests:councilSet(charName, n)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "none" end
+	local pGhost = CreatureObject(pPlayer):getPlayerObject()
+	if pGhost == nil then return "none" end
+	PlayerObject(pGhost):setFrsCouncil(tonumber(n) or 0)
+	PlayerObject(pGhost):setFrsRank(0)
+	print("INFO councilSet char=" .. charName .. " council=" .. tostring(n))
+	return tostring(n)
+end
+
 -- enclaveCells:<char>[:light|dark] → every cell of the enclave and whether it admits the character (the walk-in rule the
 -- server checks at the door and tells the client); INFO enclaveCell lines and INFO enclaveCells building=… cells=N open=K
 function FbLabTests:enclaveCells(charName, side)
