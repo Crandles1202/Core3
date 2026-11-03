@@ -1047,7 +1047,10 @@ int LuaCreatureObject::isCombatDroidPet(lua_State* L) {
 int LuaCreatureObject::awardExperience(lua_State* L) {
 	// Final Boss: an optional fourth argument applies the multipliers (species, buffs, the global / crafting rate) — the
 	// lab measures the rates through it; the stock three-argument call awards the bare amount as before
-	const bool fourArgs = lua_gettop(L) >= 4;
+	// told apart by the argument types, never by the stack size: the stack carries the object itself, and counting it
+	// made every stock three-argument call read the wrong slots (a thrown IllegalArgumentException stopped the Masters'
+	// reports after the experience, 2026-11-01..03)
+	const bool fourArgs = lua_gettop(L) >= 4 && lua_isboolean(L, -1) && lua_isboolean(L, -2) && lua_isnumber(L, -3) && lua_isstring(L, -4);
 	bool applyModifiers = fourArgs && lua_toboolean(L, -1);
 	String experienceType = lua_tostring(L, fourArgs ? -4 : -3);
 	int experienceAmount = lua_tointeger(L, fourArgs ? -3 : -2);

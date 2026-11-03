@@ -1365,7 +1365,11 @@ function FbLabTests:xpAward(charName, xpType, amount, raw)
 	local pGhost = CreatureObject(pPlayer):getPlayerObject()
 	if pGhost == nil then return "none" end
 	local before = PlayerObject(pGhost):getExperience(xpType)
-	CreatureObject(pPlayer):awardExperience(xpType, tonumber(amount) or 0, false, raw ~= "raw")
+	if raw == "raw" then
+		CreatureObject(pPlayer):awardExperience(xpType, tonumber(amount) or 0, false)   -- the stock three-argument form (what the Masters use)
+	else
+		CreatureObject(pPlayer):awardExperience(xpType, tonumber(amount) or 0, false, true)
+	end
 	local after = PlayerObject(pGhost):getExperience(xpType)
 	print(string.format("INFO xpAward char=%s type=%s asked=%s before=%d after=%d delta=%d", charName, xpType, tostring(amount), before, after, after - before))
 	return tostring(after - before)
