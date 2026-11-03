@@ -1517,6 +1517,27 @@ function FbLabTests:buyFood(charName, key)
 	return result
 end
 
+-- enclaveCells:<char>[:light|dark] → every cell of the enclave and whether it admits the character (the walk-in rule the
+-- server checks at the door and tells the client); INFO enclaveCell lines and INFO enclaveCells building=… cells=N open=K
+function FbLabTests:enclaveCells(charName, side)
+	local pPlayer = loadedPlayer(charName)
+	if pPlayer == nil then return "none" end
+	local id = (side == "dark") and 3435626 or 8525417
+	local pBuilding = getSceneObject(id)
+	if pBuilding == nil or not SceneObject(pBuilding):isBuildingObject() then print("ERROR enclaveCells: no building " .. id); return "none" end
+	local n, open = BuildingObject(pBuilding):getTotalCellNumber(), 0
+	for i = 1, n do
+		local pCell = BuildingObject(pBuilding):getCell(i)
+		if pCell ~= nil then
+			local ok = cellWalkIn(pPlayer, pCell)
+			if ok then open = open + 1 end
+			print(string.format("INFO enclaveCell n=%d oid=%d name=%s walkin=%s", i, SceneObject(pCell):getObjectID(), tostring(BuildingObject(pBuilding):getCellName(i)), tostring(ok)))
+		end
+	end
+	print(string.format("INFO enclaveCells building=%d cells=%d open=%d", id, n, open))
+	return tostring(open)
+end
+
 -- buyVehicle:<char>:<name|idx> → FbVehicleDealer:purchase; INFO buyVehicle result=ok
 function FbLabTests:buyVehicle(charName, key)
 	local pPlayer = onlinePlayer(charName)

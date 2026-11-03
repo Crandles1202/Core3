@@ -515,7 +515,8 @@ void DirectorManager::initializeLuaEngine(Lua* luaEngine) {
 	luaEngine->registerFunction("createLootFromCollection", createLootFromCollection);
 	luaEngine->registerFunction("givePlayerResource", givePlayerResource);
 	luaEngine->registerFunction("givePlayerResourceNamed", givePlayerResourceNamed);
-	luaEngine->registerFunction("setConsumableValues", setConsumableValues);   // Final Boss (2.16): (pObj, nutrition, duration, quantity, filling) -> boolean
+	luaEngine->registerFunction("setConsumableValues", setConsumableValues);
+	luaEngine->registerFunction("cellWalkIn", cellWalkIn);   // Final Boss: (pPlayer, pCell) -> whether the cell admits the player (the walk-in rule)   // Final Boss (2.16): (pObj, nutrition, duration, quantity, filling) -> boolean
 	luaEngine->registerFunction("getResourceTypes", getResourceTypes);             // Final Boss (2.14b): every leaf type of the resource tree
 	luaEngine->registerFunction("getResourceSpawnsAll", getResourceSpawnsAll);     // Final Boss (2.14b): every spawn the server knows, in shift or not
 	luaEngine->registerFunction("spawnResourceOfType", spawnResourceOfType);       // Final Boss (2.14b): (type) -> the new spawn's name   // Final Boss (2.14): (pPlayer, spawnName, units) -> boolean
@@ -1403,6 +1404,25 @@ int DirectorManager::setConsumableValues(lua_State* L) {
 	Locker locker(food);
 	food->fbSetValues(nutrition, duration, quantity, filling);
 	lua_pushinteger(L, food->getUseCount());   // the use count read back (Lua has no other way to read it)
+	return 1;
+}
+
+// Final Boss: cellWalkIn(pPlayer, pCell) -> the cell's WALKIN rule for the player (what the server checks when a
+// character steps in, and what the client is told for its doors); the lab reads the enclave rooms with it
+int DirectorManager::cellWalkIn(lua_State* L) {
+	if (checkArgumentCount(L, 2) == 1) {
+		String err = "incorrect number of arguments passed to DirectorManager::cellWalkIn";
+		printTraceError(L, err);
+		ERROR_CODE = INCORRECT_ARGUMENTS;
+		return 0;
+	}
+	SceneObject* cellObj = (SceneObject*)lua_touserdata(L, -1);
+	CreatureObject* player = (CreatureObject*)lua_touserdata(L, -2);
+	if (cellObj == nullptr || player == nullptr || !cellObj->isCellObject()) {
+		lua_pushnil(L);
+		return 1;
+	}
+	lua_pushboolean(L, cellObj->checkContainerPermission(player, ContainerPermissions::WALKIN));
 	return 1;
 }
 
