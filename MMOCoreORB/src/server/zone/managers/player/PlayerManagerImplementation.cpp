@@ -125,6 +125,7 @@
 // Final Boss (2026-11-01, Chuck): crafting experience (every crafting_* type and shipwright) at its own rate instead of
 // globalExpMultiplier; player_manager.lua craftingExpMultiplier, 0 keeps the global rate. A file static: no IDL change.
 static float fbCraftingExpMultiplier = 0.f;
+static float fbJediExpMultiplier = 0.f;   // Final Boss: Jedi experience (jedi_general) at its own rate too (Chuck, 2026-11-03)
 
 static inline bool fbIsCraftingXp(const String& xpType) {
 	return xpType.beginsWith("crafting") || xpType == "shipwright";
@@ -261,6 +262,7 @@ void PlayerManagerImplementation::loadLuaConfig() {
 
 	globalExpMultiplier = lua->getGlobalFloat("globalExpMultiplier");
 	fbCraftingExpMultiplier = lua->getGlobalFloat("craftingExpMultiplier");   // Final Boss: crafting experience has its own rate (0 = the global one)
+	fbJediExpMultiplier = lua->getGlobalFloat("jediExpMultiplier");           // Final Boss: and Jedi experience
 
 	baseStoredCreaturePets = lua->getGlobalInt("baseStoredCreaturePets");
 	baseStoredFactionPets = lua->getGlobalInt("baseStoredFactionPets");
@@ -2634,7 +2636,11 @@ int PlayerManagerImplementation::awardExperience(CreatureObject* player, const S
 		trx.addState("speciesModifier", speciesModifier);
 		trx.addState("buffMultiplier", buffMultiplier);
 		trx.addState("localMultiplier", localMultiplier);
-		float rate = (fbCraftingExpMultiplier > 0.f && fbIsCraftingXp(xpType)) ? fbCraftingExpMultiplier : globalExpMultiplier;   // Final Boss: the crafting rate
+		float rate = globalExpMultiplier;   // Final Boss: crafting and Jedi experience at their own rates
+		if (fbCraftingExpMultiplier > 0.f && fbIsCraftingXp(xpType))
+			rate = fbCraftingExpMultiplier;
+		else if (fbJediExpMultiplier > 0.f && xpType == "jedi_general")
+			rate = fbJediExpMultiplier;
 		trx.addState("globalExpMultiplier", rate);
 
 		xp = playerObject->addExperience(trx, xpType, (int) (amount * speciesModifier * buffMultiplier * localMultiplier * rate));

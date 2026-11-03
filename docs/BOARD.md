@@ -26,6 +26,7 @@ borrowing with a lock; this file carries the intent.
 | claude | `feature/depotnames` | the component depot's shelves carry the game's own names (string tables) | coding | — | 2026-11-02 |
 | claude | `feature/foodvendor` | the chef: every crafted food and drink at a master's numbers, the cantina drinks, no spice | coding | — | 2026-11-02 |
 | claude | `feature/enclave2` | the enclave rooms set up at boot with the ranking system off (the inner doors were shut) | coding | — | 2026-11-03 |
+| claude | `feature/jedixp` | Jedi experience x5 (own rate beside crafting) | coding | — | 2026-11-03 |
 | _(add a row with `swg agent new <name>`)_ | | | | | |
 
 Status words: `planning`, `coding`, `testing` (holds the bench), `gate` (running `swg test all`), `ready to merge`,
